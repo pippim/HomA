@@ -1,0 +1,1 @@
+/home/rick/python/global_variables.py

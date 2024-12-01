@@ -1,0 +1,1 @@
+/home/rick/python/x11.py
