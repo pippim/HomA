@@ -1974,6 +1974,11 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                                    underline=0, state=tk.DISABLED,
                                    command=lambda: self.Rediscover(auto=False))
         self.file_menu.add_separator()
+        self.file_menu.add_command(label="Minimize", font=g.FONT, underline=0,
+                                   command=self.MinimizeApp, state=tk.NORMAL)
+        self.file_menu.add_command(label="Suspend", font=g.FONT, underline=0,
+                                   command=self.Suspend, state=tk.NORMAL)
+        self.file_menu.add_separator()
         self.file_menu.add_command(label="Exit", font=g.FONT, underline=0,
                                    command=self.CloseApp, state=tk.DISABLED)
 
@@ -2005,6 +2010,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.tools_menu.add_command(label="Big number calculator", font=g.FONT,
                                     underline=0, command=self.OpenCalculator,
                                     state=tk.DISABLED)
+        self.tools_menu.add_command(label="Timer 1 minute", font=g.FONT, underline=0,
+                                    command=lambda: self.ResumeWait(timer=60))
         self.tools_menu.add_separator()
 
         self.tools_menu.add_command(label="Debug information", font=g.FONT,
@@ -2578,25 +2585,34 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.last_rediscover_time = now - REDISCOVER_SECONDS * 10.0
         self.last_refresh_time = now + 1.0  # If abort, don't come back here
 
-    def ResumeWait(self):
-        """ Wait x seconds for devices to come online. """
+    def ResumeWait(self, timer=None):
+        """ Wait x seconds for devices to come online.
+            :param timer: When time passed it's a countdown timer
+        """
 
         _who = self.who + "ResumeWait():"
-        if RESUME_DELAY_RESTART <= 0:
+        if timer is None:
+            countdown_sec = RESUME_DELAY_RESTART
+            title = "Waiting after resume to check devices"
+        else:
+            countdown_sec = timer
+            title = "Countdown timer"
+
+        if countdown_sec <= 0:
             return  # No delay after resume
 
         tf = (None, 96)  # default font family with 96 point size for countdown
-        dtb = message.DelayedTextBox(title="Waiting after resume to check devices",
+        dtb = message.DelayedTextBox(title=title,
                                      toplevel=self, width=300, height=250,
                                      abort=True, tf=tf, ta="center")
 
         # Loop until delay start countdown finished
         now = time.time()
-        while time.time() < now + RESUME_DELAY_RESTART:
+        while time.time() < now + countdown_sec:
             # TODO: After abort, same amount of time seems to count down
             if dtb.forced_abort:
                 break
-            dtb.update(str(int(now + RESUME_DELAY_RESTART - time.time())))
+            dtb.update(str(int(now + countdown_sec - time.time())))
             time.sleep(1.0)  # Sleep a second
 
         dtb.close()
@@ -2885,7 +2901,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         # img.taskbar_icon(self.calc_top, 64, 'white', 'lightskyblue', 'black')
         ''' Create calculator class instance '''
         # TODO setup direct color config for calculator buttons
-        self.calculator = Calculator(self.calc_top, g.FONT, geom,
+        self.calculator = Calculator(self.calc_top, g.BIG_FONT, geom,
                                      btn_fg=ti['text'], btn_bg=ti['fill'])
 
         def calculator_close(*_args):
