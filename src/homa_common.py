@@ -95,14 +95,17 @@ def GetSudoPassword():
         except IndexError:
             continue  # empty string
 
+        SUDO_PASSWORD = ValidateSudoPassword(SUDO_PASSWORD)
         # Test if sudo password works
-        cmd1 = sp.Popen(['echo', str(SUDO_PASSWORD)], stdout=sp.PIPE)
-        cmd2 = sp.Popen(['sudo', '-S', 'ls', '-l', '/root'],
-                        stdin=cmd1.stdout, stdout=sp.PIPE)
+        #cmd1 = sp.Popen(['echo', str(SUDO_PASSWORD)], stdout=sp.PIPE)
+        #cmd2 = sp.Popen(['sudo', '-S', 'ls', '-l', '/root'],
+        #                stdin=cmd1.stdout, stdout=sp.PIPE)
 
-        output = cmd2.stdout.read().decode()
+        #output = cmd2.stdout.read().decode()
         # print("output:", output)
-        if output.startswith("total"):
+        #if output.startswith("total"):
+        #    return SUDO_PASSWORD
+        if SUDO_PASSWORD is not None:
             return SUDO_PASSWORD
         else:
             # Error invalid sudo password
@@ -122,6 +125,28 @@ def GetSudoPassword():
                 return None  # Pressed cancel at invalid password message
 
             continue
+
+
+def ValidateSudoPassword(text):
+    """ Validate sudo password. Test using:
+
+            echo PASSWORD | sudo -S ls -l /root
+
+        :param text: The sudo password to be tested
+        :returns: None if test failed else return validated password
+    """
+
+    # Test if sudo password works
+    cmd1 = sp.Popen(['echo', str(text)], stdout=sp.PIPE)
+    cmd2 = sp.Popen(['sudo', '-S', 'ls', '-l', '/root'],
+                    stdin=cmd1.stdout, stdout=sp.PIPE)
+
+    output = cmd2.stdout.read().decode()
+    # print("output:", output)
+    if output.startswith("total"):
+        return text
+    else:
+        return None
 
 
 def GetMouseLocation(coord_only=True):

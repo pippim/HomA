@@ -136,7 +136,7 @@ CURL_TIME = "0.2"  # Anything longer means not a Sony TV or disconnected
 ADB_CON_TIME = "0.3"  # Android TV Test if connected timeout
 ADB_PWR_TIME = "1.0"  # Android TV Test if power state is on. Test increment .5 sec
 ADB_KEY_TIME = "5.0"  # Android keyevent KEYCODE_SLEEP or KEYCODE_WAKEUP timeout
-ADB_MAGIC_TIME = "6.0"  # Android TV Magic Packet wait time.
+ADB_MAGIC_TIME = "0.2"  # Android TV Magic Packet wait time.
 PLUG_TIME = "2"  # Smart plug timeout to turn power on/off
 
 APP_RESTART_TIME = time.time()  # Time started or resumed. Use for elapsed time print
@@ -144,6 +144,7 @@ REFRESH_MS = 16  # Refresh tooltip fades 60 frames per second
 REDISCOVER_SECONDS = 60  # Check devices changes every x seconds
 RESUME_TEST_SECONDS = 10  # > x seconds disappeared means system resumed
 RESUME_DELAY_RESTART = 3  # Pause x seconds after resuming from suspend
+TIMER_SEC = 120  # Tools Dropdown Menubar - Countdown Timer
 
 SENSOR_CHECK = 1.0  # Check `sensors` (CPU/GPU temp & fan speeds) every x seconds
 SENSOR_LOG = 3600.0  # Log `sensors` every x seconds override if fan speed changes
@@ -1675,6 +1676,7 @@ class TclGoogleAndroidTV(DeviceCommonSelf):
         # real	0m3.010s
         # user	0m0.001s
         # sys	0m0.005s
+        os.popen("adb devices -l")  # Will force daemon to run on port 5037
 
         cnt = 1
         while not self.IsDevice(forgive=True, timeout=ADB_MAGIC_TIME):
@@ -1713,7 +1715,7 @@ class TclGoogleAndroidTV(DeviceCommonSelf):
 
         command_line_list = ["timeout", ADB_PWR_TIME, "adb",
                              "shell", "dumpsys", "input_method",
-                             "|", "grep", "-i", "screenon"]
+                             "|", "grep", "-i", "screenOn"]
         command_line_str = ' '.join(command_line_list)
         pipe = sp.Popen(command_line_list, stdout=sp.PIPE, stderr=sp.PIPE)
         text, err = pipe.communicate()  # This performs .wait() too
@@ -1721,7 +1723,7 @@ class TclGoogleAndroidTV(DeviceCommonSelf):
         v3_print(_who, "Results from '" + command_line_str + "':")
         v3_print(_who, "text: '" + text.strip() + "'")
         v3_print(_who, "err: '" + err + "'  | pipe.returncode:", pipe.returncode)
-        v2_print(_who, "reply from grep 'screenon':", text, err)
+        v2_print(_who, "reply from grep 'screenOn':", text, err)
 
         if not pipe.returncode == 0:
             if forgive is False:
@@ -1749,49 +1751,61 @@ class TclGoogleAndroidTV(DeviceCommonSelf):
         return self.power_status
 
     def TurnOn(self, forgive=False):
-        """ Turn On TCL / Google Android TV """
+        """ Turn On TCL / Google Android TV.
+            Send KEYCODE_WAKEUP 5 times until screenOn = true
+        """
 
         _who = self.who + "TurnOn():"
-        v2_print(_who, "Send KEYCODE_WAKEUP to:", self.ip)
+        v2_print("\n" + _who, "Send KEYCODE_WAKEUP to:", self.ip)
 
         # Connect() will try 60 times with wakeonlan and IsDevice check.
         if not self.Connect(forgive=forgive):  # TODO else: error message
             return self.PowerStatus()
 
-        # timeout 1 adb shell input keyevent KEYCODE_WAKEUP  # Turn Google TV off
-        ext.t_init(_who + " time for 'adb shell input keyevent KEYCODE_WAKEUP'")
-        command_line_list = ["timeout", ADB_KEY_TIME, "adb", "shell", "input",
-                             "keyevent", "KEYCODE_WAKEUP"]
-        command_line_str = ' '.join(command_line_list)
-        pipe = sp.Popen(command_line_list, stdout=sp.PIPE, stderr=sp.PIPE)
-        text, err = pipe.communicate()  # This performs .wait() too
+        cnt = 1
+        self.power_status = "?"
+        while not self.power_status == "ON":
 
-        if p_args.verbose2 or p_args.verbose3:
-            ext.t_end('print')  # TclGoogleAndroidTV().TurnOff():: 1.8827719688
-        else:
-            ext.t_end('no_print')
+            v1_print(_who, "Attempt #:", cnt, "Send 'KEYCODE_WAKEUP' to IP:", self.ip)
 
-        v3_print(_who, "Results from '" + command_line_str + "':")
-        v3_print(_who, "text: '" + text.strip() + "'")
-        v3_print(_who, "err: '" + err + "'  | pipe.returncode:", pipe.returncode)
-        # TclGoogleAndroidTV().TurnOn(): err: error: device unauthorized.
-        # This adbd's $ADB_VENDOR_KEYS is not set; try 'adb kill-server' if that seems wrong.
-        # Otherwise check for a confirmation dialog on your device.
+            # timeout 1 adb shell input keyevent KEYCODE_WAKEUP  # Turn Google TV off
+            ext.t_init(_who + "time for 'adb shell input keyevent KEYCODE_WAKEUP'")
+            command_line_list = ["timeout", ADB_KEY_TIME, "adb", "shell", "input",
+                                 "keyevent", "KEYCODE_WAKEUP"]
+            command_line_str = ' '.join(command_line_list)
+            pipe = sp.Popen(command_line_list, stdout=sp.PIPE, stderr=sp.PIPE)
+            text, err = pipe.communicate()  # This performs .wait() too
 
-        # 2024-12-01 TODO: Error message to revoke keys
+            if p_args.verbose2 or p_args.verbose3:
+                ext.t_end('print')  # TclGoogleAndroidTV().TurnOff():: 1.8827719688
+            else:
+                ext.t_end('no_print')
 
-        v2_print(_who, "reply from KEYCODE_WAKEUP:", text, err)
+            v3_print(_who, "Results from '" + command_line_str + "':")
+            v3_print(_who, "text: '" + text.strip() + "'")
+            v3_print(_who, "err: '" + err + "'  | pipe.returncode:", pipe.returncode)
+            # TclGoogleAndroidTV().TurnOn(): err: error: device unauthorized.
+            # This adb d's $ADB_VENDOR_KEYS is not set; try 'adb kill-server' if that seems wrong.
+            # Otherwise check for a confirmation dialog on your device.
 
-        if not pipe.returncode == 0:
-            # 2024-10-19 - Always returns '124' which is timeout exit code
-            #   https://stackoverflow.com/a/42615416/6929343
-            if forgive is False:
-                v0_print(_who, "pipe.returncode:", pipe.returncode)
-                if pipe.returncode == 124:
-                    v0_print(_who, self.ip, "timeout after:", ADB_KEY_TIME)
-            return "?"
+            # 2024-12-01 TODO: Error message to revoke keys
 
-        return self.PowerStatus()
+            v2_print(_who, "reply from KEYCODE_WAKEUP:", text, err)
+
+            if not pipe.returncode == 0:
+                # 2024-10-19 - Always returns '124' which is timeout exit code
+                #   https://stackoverflow.com/a/42615416/6929343
+                if forgive is False:
+                    v0_print(_who, "pipe.returncode:", pipe.returncode)
+                    if pipe.returncode == 124:
+                        v0_print(_who, self.ip, "timeout after:", ADB_KEY_TIME)
+                #return "?"
+                # pipe.returncode == 255 is sometimes returned.
+
+            self.PowerStatus()
+            if self.power_status == "ON" or cnt >= 5:
+                return self.power_status
+            cnt += 1
 
     def TurnOff(self, forgive=False):
         """ Send 'adb shell input keyevent KEYCODE_SLEEP' """
@@ -2010,8 +2024,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.tools_menu.add_command(label="Big number calculator", font=g.FONT,
                                     underline=0, command=self.OpenCalculator,
                                     state=tk.DISABLED)
-        self.tools_menu.add_command(label="Timer 1 minute", font=g.FONT, underline=0,
-                                    command=lambda: self.ResumeWait(timer=60))
+        self.tools_menu.add_command(label="Timer " + str(TIMER_SEC) + " seconds",
+                                    font=g.FONT, underline=0,
+                                    command=lambda: self.ResumeWait(timer=TIMER_SEC))
         self.tools_menu.add_separator()
 
         self.tools_menu.add_command(label="Debug information", font=g.FONT,
@@ -2595,17 +2610,17 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             countdown_sec = RESUME_DELAY_RESTART
             title = "Waiting after resume to check devices"
         else:
-            countdown_sec = timer
+            countdown_sec = timer + 1  # 2024-12-01 - Losing 1 second on startup???
             title = "Countdown timer"
 
         if countdown_sec <= 0:
             return  # No delay after resume
 
         tf = (None, 96)  # default font family with 96 point size for countdown
-        dtb = message.DelayedTextBox(title=title,
-                                     toplevel=self, width=300, height=250,
+        width = len(str(countdown_sec)) * 150
+        dtb = message.DelayedTextBox(title=title, toplevel=self,
+                                     width=width, height=250, startup_delay=0,
                                      abort=True, tf=tf, ta="center")
-
         # Loop until delay start countdown finished
         now = time.time()
         while time.time() < now + countdown_sec:
@@ -2616,6 +2631,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             time.sleep(1.0)  # Sleep a second
 
         dtb.close()
+        # If countdown timer completed, don't let ResumeFromSuspend() to run
+        self.last_refresh_time = time.time() + 1.0  # If abort, don't come back here
 
     def SetAllPower(self, state):
         """ Loop through instances and set power state to "ON" or "OFF".
@@ -2926,6 +2943,25 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         if event.num == 5:  # Override mousewheel scroll down
             event.widget.yview_scroll(1, "units")  # tree = event.widget
             return "break"  # Don't let regular event handler do scroll of 5
+
+    def GetPassword(self):
+        """ Get Sudo password with message.AskString(show='*'...). """
+
+        global SUDO_PASSWORD
+        msg = "Sudo password required for laptop display.\n\n"
+
+        answer = message.AskString(
+            self, text=msg, thread=self.Refresh, show='*',
+            title="Enter sudo password", icon="information")
+
+        if answer.result != "yes":
+            return False
+
+        if len(answer.string) == 8:
+            return False
+
+        SUDO_PASSWORD = answer.string
+        SUDO_PASSWORD = hc.ValidateSudoPassword(SUDO_PASSWORD)
 
 
 class TreeviewRow(DeviceCommonSelf):
