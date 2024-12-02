@@ -49,17 +49,34 @@ gi.require_version('AppIndicator3', '0.1')
 from gi.repository import Gtk
 from gi.repository import AppIndicator3
 
+try:
+    reload(sys)  # June 25, 2023 - Without these commands, os.popen() fails on OS
+    sys.setdefaultencoding('utf8')  # filenames that contain unicode characters
+except NameError:  # name 'reload' is not defined
+    pass  # Python 3 already in unicode by default
+
+import global_variables as g
+g.init(appname="homa")
 import homa_common as hc  # hc.GetSudoPassword() and hc.GetMouseLocation()
 
 APP_ID = 'homa-indicator'  # Unique app indicator id
 HOMA_TITLE = "HomA - Home Automation"
 EYESOME_TITLE = "eyesome setup"
-
 SUDO_PASSWORD = None
+save_cwd = ""  # Saved current working directory. Will change to program directory.
 
 
 def Main():
     """ Main loop """
+
+    global save_cwd  # Saved current working directory to restore on exit
+
+    ''' Save current working directory '''
+    save_cwd = os.getcwd()  # Bad habit from old code in mserve.py
+    if save_cwd != g.PROGRAM_DIR:
+        #print("Changing from:", save_cwd, "to g.PROGRAM_DIR:", g.PROGRAM_DIR)
+        os.chdir(g.PROGRAM_DIR)
+
     indicator = AppIndicator3.Indicator.new(
         APP_ID, os.path.abspath('/usr/share/icons/gnome/32x32/devices/display.png'),
         AppIndicator3.IndicatorCategory.SYSTEM_SERVICES)
@@ -84,7 +101,7 @@ def BuildMenu():
         menu.append(item_eyesome)
 
     item_quit = Gtk.MenuItem('Quit')
-    item_quit.connect('activate', Gtk.main_quit)
+    item_quit.connect('activate', Quit)
     menu.append(item_quit)
     menu.show_all()
 
@@ -104,7 +121,7 @@ def HomA(_):
     # window: 0x05c0000a  0 4354 72   1200 700    N/A HomA - Home Automation
     if len(window) < 4:  # Not running yet
         #print("homa-indicator.py HomA(): Starting HomA with '-f -s &'")
-        _out = os.popen("~/homa/homa.py -f -s &")
+        _out = os.popen("./homa.py -f -s &")
         time.sleep(1.0)
 
     MoveHere(HOMA_TITLE)  # Move opened window to current mouse location
@@ -140,6 +157,18 @@ def Eyesome(_):
         time.sleep(1.0)  # Allow 1 second startup time before moving window
 
     MoveHere(EYESOME_TITLE)  # Move opened window to current mouse location
+
+
+def Quit(_):
+    """ Quit homa-indicator.py """
+
+    ''' reset to original save_cwd (current working directory) '''
+    if save_cwd != g.PROGRAM_DIR:
+        #print("Changing from g.PROGRAM_DIR:", g.PROGRAM_DIR,
+        #      "to save_cwd:", save_cwd)
+        os.chdir(save_cwd)
+
+    Gtk.main_quit()
 
 
 def CheckRunning(title):

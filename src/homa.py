@@ -16,6 +16,7 @@ import warnings  # 'warnings' advises which commands aren't supported
 #       homa.py (Home Automation) - Manage devices
 #
 #       2024-10-02 - Creation date.
+#       2024-12-01 - Create GitHub repo. Add dropdown menus and Big Number Calc.
 #
 # ==============================================================================
 
@@ -27,6 +28,10 @@ warnings.simplefilter('default')  # in future Python versions.
     python(3)-appdirs
     python(3)-xlib        # imported as Xlib.X
     python(3)-ttkwidgets  # Also stored as subdirectory in ~/python/ttkwidgets
+    xdotool  # To minimize window
+    systemctl  # To suspend. Or suitable replacement like `suspend` external command
+    adb  # Android debugging bridge for Google Android TV's
+    curl  # For Sony Bravia KDL professional displays (TV's)
 
 '''
 
@@ -35,13 +40,13 @@ import inspect
 import os
 
 try:
-    filename = inspect.stack()[1][1]  # If there is a parent, it must be 'm'
+    filename = inspect.stack()[1][1]  # If there is a parent, it must be 'h'
     parent = os.path.basename(filename)
-    if parent != 'homa_daemon.py':
+    if parent != 'h':
         print("homa.py called by unrecognized:", parent)
         exit()
 except IndexError:  # list index out of range
-    ''' 'm' hasn't been run to get global variables or verify configuration '''
+    ''' 'h' hasn't been run to get global variables or verify configuration '''
     #import mserve_config as m_cfg  # Differentiate from sql.Config as cfg
 
     caller = "homa.py"
@@ -117,6 +122,7 @@ import sql  # For color options - Lots of irrelevant mserve.py code though
 import image as img  # Image processing. E.G. Create Taskbar icon
 import external as ext  # Call external functions, programs, etc.
 import timefmt as tmf  # Time formatting, ago(), days(), hh_mm_ss(), etc.
+from calc import Calculator  # Big Number calculator
 
 import homa_common as hc  # hc.GetSudoPassword()
 
@@ -1917,6 +1923,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         ''' System Monitor '''
         sm = SystemMonitor(self)  # sm = This machines fan speed and CPU temperatures
 
+        ''' Big Number Calculator - same naming convention as mserve '''
+        self.calculator = self.calc_top = None
+
         ''' File/Edit/View/Tools dropdown menu bars '''
         self.file_menu = self.edit_menu = self.view_menu = self.tools_menu = None
         self.BuildMenu()  # Dropdown Menu Bars after 'sm ='
@@ -1994,7 +2003,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         # Tools Dropdown Menu
         self.tools_menu = tk.Menu(mb, tearoff=0)
         self.tools_menu.add_command(label="Big number calculator", font=g.FONT,
-                                    underline=0, command=self.CloseApp,
+                                    underline=0, command=self.OpenCalculator,
                                     state=tk.DISABLED)
         self.tools_menu.add_separator()
 
@@ -2028,7 +2037,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.view_menu.entryconfig("Network devices", state=tk.DISABLED)
 
         # 2024-12-01 - Tools menu options not written yet
-        self.tools_menu.entryconfig("Big number calculator", state=tk.DISABLED)
+        self.tools_menu.entryconfig("Big number calculator", state=tk.NORMAL)
         self.tools_menu.entryconfig("Debug information", state=tk.DISABLED)
 
     def CloseApp(self, *_args):
@@ -2851,6 +2860,46 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.last_rediscover_time = time.time()
         self.file_menu.entryconfig("Rediscover now", state=tk.NORMAL)
 
+    def OpenCalculator(self):
+        """ Big Number Calculator allows K, M, G, T, etc. UoM """
+        if self.calculator and self.calc_top:
+            self.calc_top.focus_force()
+            self.calc_top.lift()
+            return
+
+        geom = monitor.get_window_geom('calculator')
+        self.calc_top = tk.Toplevel()
+
+        ''' Set program icon in taskbar '''
+        # From: sql.py - Config() class - Big Number Calculator
+        ti = {
+            "height": 64, "outline": 'Black', "fill": 'LemonChiffon',
+            "text": 'Black', "font_family": 'DejaVuSans.ttf',
+            "char": 'C'
+        }
+
+        #sql_key = ['cfg_calculator', 'toplevel', 'taskbar_icon', 'height & colors']
+        #ti = cfg.get_cfg(sql_key)
+        img.taskbar_icon(self.calc_top, ti['height'], ti['outline'],
+                         ti['fill'], ti['text'], char=ti['char'])
+        # img.taskbar_icon(self.calc_top, 64, 'white', 'lightskyblue', 'black')
+        ''' Create calculator class instance '''
+        # TODO setup direct color config for calculator buttons
+        self.calculator = Calculator(self.calc_top, g.FONT, geom,
+                                     btn_fg=ti['text'], btn_bg=ti['fill'])
+
+        def calculator_close(*_args):
+            """ Save last geometry for next Calculator startup """
+            last_geom = monitor.get_window_geom_string(
+                self.calc_top, leave_visible=False)  # Destroy toplevel
+            monitor.save_window_geom('calculator', last_geom)
+            self.calculator = None  # Prevent lifting window
+            self.calc_top = None
+
+        ''' Trap <Escape> key and  '✘' Window Close Button '''
+        self.calc_top.bind("<Escape>", calculator_close)
+        self.calc_top.protocol("WM_DELETE_WINDOW", calculator_close)
+        self.calc_top.update_idletasks()
 
     @staticmethod
     def MouseWheel(event):
