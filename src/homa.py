@@ -124,7 +124,7 @@ import external as ext  # Call external functions, programs, etc.
 import timefmt as tmf  # Time formatting, ago(), days(), hh_mm_ss(), etc.
 from calc import Calculator  # Big Number calculator
 
-import homa_common as hc  # hc.GetSudoPassword()
+import homa_common as hc  # hc.ValidateSudoPassword()
 
 SONY_PWD = "123"  # Sony TV REST API password
 CONFIG_FNAME = "config.json"  # Future configuration file.
@@ -144,10 +144,10 @@ REFRESH_MS = 16  # Refresh tooltip fades 60 frames per second
 REDISCOVER_SECONDS = 60  # Check devices changes every x seconds
 RESUME_TEST_SECONDS = 10  # > x seconds disappeared means system resumed
 RESUME_DELAY_RESTART = 3  # Pause x seconds after resuming from suspend
-TIMER_SEC = 120  # Tools Dropdown Menubar - Countdown Timer
+TIMER_SEC = 150  # Tools Dropdown Menubar - Countdown Timer
 
 SENSOR_CHECK = 1.0  # Check `sensors` (CPU/GPU temp & fan speeds) every x seconds
-SENSOR_LOG = 3600.0  # Log `sensors` every x seconds override if fan speed changes
+SENSOR_LOG = 3600.0  # Log `sensors` every x seconds. Log more if fan speed changes
 FAN_GRANULAR = 200  # Skip logging when fan changes <= FAN_GRANULAR
 
 # Device type global identifier variables stored in "inst.type_code"
@@ -1026,6 +1026,8 @@ class LaptopDisplay(DeviceCommonSelf):
         self.wifi_mac = cp.wifi_mac  # aa:bb:cc:dd:ee:ff
         self.wifi_ip = cp.wifi_ip  # 192.168.0.999
 
+        self.app = None  # Parent app for calling GetPassword() method.
+
     def IsDevice(self, forgive=False):
         """ Test if passed ip == ethernet ip or WiFi ip.
             Initially a laptop base could be assigned with IP but now it
@@ -1127,7 +1129,8 @@ class LaptopDisplay(DeviceCommonSelf):
         global SUDO_PASSWORD
 
         if SUDO_PASSWORD is None:
-            SUDO_PASSWORD = hc.GetSudoPassword()
+            SUDO_PASSWORD = self.app.GetPassword()
+            self.app.EnableMenu()
             if SUDO_PASSWORD is None:
                 return "?"  # Cancel button (256) or escape or 'X' on window decoration (64512)
 
@@ -1714,6 +1717,7 @@ class TclGoogleAndroidTV(DeviceCommonSelf):
 
         _who = self.who + "PowerStatus():"
         v2_print("\n" + _who, "Get Power Status for:", self.ip)
+        self.Connect()  # 2024-12-02 - constant connection seems to be required
 
         command_line_list = ["timeout", ADB_PWR_TIME, "adb",
                              "shell", "dumpsys", "input_method",
@@ -1970,11 +1974,23 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.last_leave_time = APP_RESTART_TIME
         self.last_motion_time = APP_RESTART_TIME
 
+        # Laptop Display needs to call .GetPassword() method in this Application()
+        for instance in ni.instances:
+            inst = instance['instance']
+            if inst.type_code == LAPTOP_D:
+                inst.app = self
+
         while self.Refresh():  # Run forever until quit
             self.update_idletasks()  # Get queued tasks
 
     def BuildMenu(self):
         """ Build dropdown Menu bars: File, Edit, View & Tools """
+
+
+        def ForgetPassword():
+            """ Clear sudo password for extreme caution """
+            global SUDO_PASSWORD
+            SUDO_PASSWORD = None
 
         mb = tk.Menu(self)
         self.config(menu=mb)
@@ -2031,6 +2047,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                                     command=lambda: self.ResumeWait(timer=TIMER_SEC))
         self.tools_menu.add_separator()
 
+        self.tools_menu.add_command(label="Forget sudo password", underline=0,
+                                    font=g.FONT, command=ForgetPassword, state=tk.DISABLED)
         self.tools_menu.add_command(label="Debug information", font=g.FONT,
                                     underline=0, command=self.CloseApp,
                                     state=tk.DISABLED)
@@ -2062,6 +2080,10 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         # 2024-12-01 - Tools menu options not written yet
         self.tools_menu.entryconfig("Big number calculator", state=tk.NORMAL)
+        if SUDO_PASSWORD is None:
+            self.tools_menu.entryconfig("Forget sudo password", state=tk.DISABLED)
+        else:
+            self.tools_menu.entryconfig("Forget sudo password", state=tk.NORMAL)
         self.tools_menu.entryconfig("Debug information", state=tk.DISABLED)
 
     def CloseApp(self, *_args):
@@ -2619,6 +2641,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             return  # No delay after resume
 
         tf = (None, 96)  # default font family with 96 point size for countdown
+        # 2 digits needs 300, 3 digits needs 450
         width = len(str(countdown_sec)) * 150
         dtb = message.DelayedTextBox(title=title, toplevel=self,
                                      width=width, height=250, startup_delay=0,
@@ -2708,9 +2731,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             Use device instance to get Power Status.
         """
         _who = self.who + "RefreshAllPowerStatuses():"
-
-        if auto is False:
-            v0_print(_who, "Called from Files Dropdown Menubar")
 
         usingDevicesTreeview = \
             self.sensors_devices_btn['text'] != self.devices_btn_text
@@ -2829,7 +2849,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             rd = NetworkInfo()  # rd. class is newer instance ni. class
             self.rediscover_done = False  # Signal job in progress
             ext.t_end('no_print')
-            if auto:  # If called from File dropdown menubar keep running
+            if auto:  # If called from File dropdown menubar DON'T return
+                self.last_refresh_time = time.time()  # Override resume from suspend
                 return  # Reenter refresh loop. Return here in 16 ms
 
         arp_count = len(rd.arp_dicts)
@@ -2893,48 +2914,10 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         rd = None
         self.rediscover_done = True
         self.last_rediscover_time = time.time()
+        # 2024-12-02 - Couple hours watching TV, suddenly ResumeFromSuspend() ran
+        #   a few times with 3 second countdown. Reset self.last_refresh_time.
+        self.last_refresh_time = time.time()  # Override resume from suspend
         self.file_menu.entryconfig("Rediscover now", state=tk.NORMAL)
-
-    def OpenCalculator(self):
-        """ Big Number Calculator allows K, M, G, T, etc. UoM """
-        if self.calculator and self.calc_top:
-            self.calc_top.focus_force()
-            self.calc_top.lift()
-            return
-
-        geom = monitor.get_window_geom('calculator')
-        self.calc_top = tk.Toplevel()
-
-        ''' Set program icon in taskbar '''
-        # From: sql.py - Config() class - Big Number Calculator
-        ti = {
-            "height": 64, "outline": 'Black', "fill": 'LemonChiffon',
-            "text": 'Black', "font_family": 'DejaVuSans.ttf',
-            "char": 'C'
-        }
-
-        #sql_key = ['cfg_calculator', 'toplevel', 'taskbar_icon', 'height & colors']
-        #ti = cfg.get_cfg(sql_key)
-        img.taskbar_icon(self.calc_top, ti['height'], ti['outline'],
-                         ti['fill'], ti['text'], char=ti['char'])
-        # img.taskbar_icon(self.calc_top, 64, 'white', 'lightskyblue', 'black')
-        ''' Create calculator class instance '''
-        # TODO setup direct color config for calculator buttons
-        self.calculator = Calculator(self.calc_top, g.BIG_FONT, geom,
-                                     btn_fg=ti['text'], btn_bg=ti['fill'])
-
-        def calculator_close(*_args):
-            """ Save last geometry for next Calculator startup """
-            last_geom = monitor.get_window_geom_string(
-                self.calc_top, leave_visible=False)  # Destroy toplevel
-            monitor.save_window_geom('calculator', last_geom)
-            self.calculator = None  # Prevent lifting window
-            self.calc_top = None
-
-        ''' Trap <Escape> key and  '✘' Window Close Button '''
-        self.calc_top.bind("<Escape>", calculator_close)
-        self.calc_top.protocol("WM_DELETE_WINDOW", calculator_close)
-        self.calc_top.update_idletasks()
 
     @staticmethod
     def MouseWheel(event):
@@ -2957,13 +2940,56 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             title="Enter sudo password", icon="information")
 
         if answer.result != "yes":
-            return False
+            return None
 
         if len(answer.string) == 8:
-            return False
+            return None
 
         SUDO_PASSWORD = answer.string
         SUDO_PASSWORD = hc.ValidateSudoPassword(SUDO_PASSWORD)
+        #print("SUDO_PASSWORD:", SUDO_PASSWORD)
+        return SUDO_PASSWORD
+
+    def OpenCalculator(self):
+        """ Big Number Calculator allows K, M, G, T, etc. UoM """
+        if self.calculator and self.calc_top:
+            self.calc_top.focus_force()
+            self.calc_top.lift()
+            return
+
+        geom = monitor.get_window_geom('calculator')
+        self.calc_top = tk.Toplevel()
+
+        ''' Set program icon in taskbar '''
+        # From: sql.py - Config() class - Big Number Calculator
+        ti = {
+            "height": 64, "outline": 'Black', "fill": 'LemonChiffon',
+            "text": 'Black', "font_family": 'DejaVuSans.ttf',
+            "char": 'C'
+        }
+
+        cfg_key = ['cfg_calculator', 'toplevel', 'taskbar_icon', 'height & colors']
+        ti = cfg.get_cfg(cfg_key)
+        img.taskbar_icon(self.calc_top, ti['height'], ti['outline'],
+                         ti['fill'], ti['text'], char=ti['char'])
+        # img.taskbar_icon(self.calc_top, 64, 'white', 'lightskyblue', 'black')
+        ''' Create calculator class instance '''
+        # TODO setup direct color config for calculator buttons
+        self.calculator = Calculator(self.calc_top, g.BIG_FONT, geom,
+                                     btn_fg=ti['text'], btn_bg=ti['fill'])
+
+        def calculator_close(*_args):
+            """ Save last geometry for next Calculator startup """
+            last_geom = monitor.get_window_geom_string(
+                self.calc_top, leave_visible=False)  # Destroy toplevel
+            monitor.save_window_geom('calculator', last_geom)
+            self.calculator = None  # Prevent lifting window
+            self.calc_top = None
+
+        ''' Trap <Escape> key and  '✘' Window Close Button '''
+        self.calc_top.bind("<Escape>", calculator_close)
+        self.calc_top.protocol("WM_DELETE_WINDOW", calculator_close)
+        self.calc_top.update_idletasks()
 
 
 class TreeviewRow(DeviceCommonSelf):
@@ -3111,8 +3137,6 @@ class TreeviewRow(DeviceCommonSelf):
         if p_args.fast:
             text = "Wait..."  # Wait for idle loop
         else:
-            if self.arp_dict['type_code'] == TCL_TV:
-                self.inst.Connect()
             self.inst.PowerStatus()
             text = "  " + self.inst.power_status
 
@@ -3635,7 +3659,10 @@ def discover(update=False, start=None, end=None):
 v1_print(sys.argv[0], "- Home Automation", " | verbose1:", p_args.verbose1,
          " | verbose2:", p_args.verbose2, " | verbose3:", p_args.verbose3,
          " | fast:", p_args.fast, " | silent:", p_args.silent)
+
+''' Global classes '''
 root = None  # Tkinter toplevel
+cfg = sql.Config()  # Colors configuration SQL records
 cp = Computer()  # cp = Computer Platform
 ni = NetworkInfo()  # ni = global class instance used everywhere
 ni.adb_reset()  # When TCL TV is communicating this is necessary
@@ -3742,6 +3769,7 @@ def main():
         When existing restore original current directory.
     """
     global root  # named when main() called
+    global app
     global ni  # NetworkInformation() class instance used everywhere
     global save_cwd  # Saved current working directory to restore on exit
 

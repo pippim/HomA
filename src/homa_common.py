@@ -142,7 +142,7 @@ def ValidateSudoPassword(text):
                     stdin=cmd1.stdout, stdout=sp.PIPE)
 
     output = cmd2.stdout.read().decode()
-    # print("output:", output)
+    #print("output:", output)
     if output.startswith("total"):
         return text
     else:
