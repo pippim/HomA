@@ -134,7 +134,7 @@ VIEW_ORDER_FNAME = "view_order.json"  # Read into ni.view_order[mac1, mac2, ... 
 # Timeouts to improve TV interface performance
 CURL_TIME = "0.2"  # Anything longer means not a Sony TV or disconnected
 ADB_CON_TIME = "0.3"  # Android TV Test if connected timeout
-ADB_PWR_TIME = "1.0"  # Android TV Test if power state is on. Test increment .5 sec
+ADB_PWR_TIME = "2.0"  # Android TV Test if power state is on. Test increment .5 sec
 ADB_KEY_TIME = "5.0"  # Android keyevent KEYCODE_SLEEP or KEYCODE_WAKEUP timeout
 ADB_MAGIC_TIME = "0.2"  # Android TV Magic Packet wait time.
 PLUG_TIME = "2"  # Smart plug timeout to turn power on/off
@@ -1662,7 +1662,9 @@ class TclGoogleAndroidTV(DeviceCommonSelf):
             v1_print(_who, "TCL Google Android TV dependencies are not installed.")
 
     def Connect(self, forgive=False):
-        """ Wakeup and Connect to TCL / Google Android TV """
+        """ Wakeonlan and Connect to TCL / Google Android TV
+            Called on startup. Also called from TurnOff() and TurnOn().
+        """
 
         _who = self.who + "Connect():"
         v1_print(_who, "Connect to:", self.ip)
@@ -1711,7 +1713,7 @@ class TclGoogleAndroidTV(DeviceCommonSelf):
         """
 
         _who = self.who + "PowerStatus():"
-        v2_print(_who, "Get Power Status for:", self.ip)
+        v2_print("\n" + _who, "Get Power Status for:", self.ip)
 
         command_line_list = ["timeout", ADB_PWR_TIME, "adb",
                              "shell", "dumpsys", "input_method",
@@ -3107,41 +3109,14 @@ class TreeviewRow(DeviceCommonSelf):
 
         ''' 2024-11-29 - Use faster method for repainting devices treeview '''
         if p_args.fast:
-            _power_status = "Wait..."  # Wait for idle loop
+            text = "Wait..."  # Wait for idle loop
         else:
-            #if PYTHON_VER == "3":
-            #    power_status = self.inst.PowerStatus()
-            #else:
-            #    power_status = str(self.inst.PowerStatus())
-            #   File "/home/rick/homa/homa.py", line 1869, in Add
-            #     power_status = str(self.inst.PowerStatus())
-            #   File "/home/rick/homa/homa.py", line 1052, in PowerStatus
-            #     if "true" in Reply:
-            # TypeError: a bytes-like object is required, not 'str'
-            pass
-        '''
-        if self.inst.power_status == "?":
-            if p_args.fast:
-                self.text = "  Wait..."  # Wait for idle loop
-            else:
-                self.PowerStatus()
-                self.text = "  " + self.inst.power_status
-        else:
-            self.text = "  " + self.inst.power_status
-        
-        # Traceback (most recent call last):
-        #   File "/home/rick/homa/homa.py", line 3493, in <module>
-        #     main()
-        #   File "/home/rick/homa/homa.py", line 3487, in main
-        #     app = Application(root)  # Treeview of ni.discovered[{}, {}...{}]
-        #   File "/home/rick/homa/homa.py", line 1858, in __init__
-        #     self.PopulateTree()
-        #   File "/home/rick/homa/homa.py", line 2066, in PopulateTree
-        #     nr.Add(i)  # Add new row
-        #   File "/home/rick/homa/homa.py", line 2822, in Add
-        #     if self.inst.power_status == "?":
-        # AttributeError: TreeviewRow instance has no attribute 'power_status'
-        '''
+            if self.arp_dict['type_code'] == TCL_TV:
+                self.inst.Connect()
+            self.inst.PowerStatus()
+            text = "  " + self.inst.power_status
+
+        self.text = text
 
         self.top.tree.insert(
             '', 'end', iid=trg_iid, text=self.text,
