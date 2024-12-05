@@ -144,7 +144,7 @@ REFRESH_MS = 16  # Refresh tooltip fades 60 frames per second
 REDISCOVER_SECONDS = 60  # Check devices changes every x seconds
 RESUME_TEST_SECONDS = 10  # > x seconds disappeared means system resumed
 RESUME_DELAY_RESTART = 3  # Pause x seconds after resuming from suspend
-TIMER_SEC = 150  # Tools Dropdown Menubar - Countdown Timer
+TIMER_SEC = 300  # Tools Dropdown Menubar - Countdown Timer
 
 SENSOR_CHECK = 1.0  # Check `sensors` (CPU/GPU temp & fan speeds) every x seconds
 SENSOR_LOG = 3600.0  # Log `sensors` every x seconds. Log more if fan speed changes
@@ -2081,7 +2081,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         def ForgetPassword():
             """ Clear sudo password for extreme caution """
             global SUDO_PASSWORD
-            SUDO_PASSWORD = None
+            SUDO_PASSWORD = None  # clear global password in homa
+            sp.call(["sudo", "-K"])  # clear Linux short-term memory of password
 
         mb = tk.Menu(self)
         self.config(menu=mb)
@@ -2136,6 +2137,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.tools_menu.add_command(label="Timer " + str(TIMER_SEC) + " seconds",
                                     font=g.FONT, underline=0,
                                     command=lambda: self.ResumeWait(timer=TIMER_SEC))
+        # 2024-12-04 TODO: After timer ends, Resume from Suspend countdown starts with
+        #   3 seconds to go.
         self.tools_menu.add_separator()
 
         self.tools_menu.add_command(label="Forget sudo password", underline=0,
@@ -2583,7 +2586,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.nightPowerOn = 0  # Did nighttime power on the device?
         self.menuPowerOn += 1  # User powered on the device via menu
 
-        # Setting laptop display power requires sudo prompt which causes fake resume
+        # Setting Power can loop for a minute in worst case scenario using adb
         self.last_refresh_time = time.time()  # Refresh idle loop last entered time
 
     def TurnOff(self, cr):
@@ -2601,8 +2604,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.dayPowerOff = 0  # Did daylight power off the device?
         self.menuPowerOff += 1  # User powered off the device via menu
 
-        # Setting laptop display power requires sudo prompt which causes fake resume
+        # Setting Power can loop for a minute in worst case scenario using adb
         self.last_refresh_time = time.time()  # Refresh idle loop last entered time
+
 
     def MoveRowUp(self, cr):
         """ Mouse right button click selected "Move Row Up". """
@@ -2712,6 +2716,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         # Set variables to force rediscovery
         now = time.time()
         rd = None  # Just in case rediscovery was in progress during suspend
+        # Force rediscovery immediately after resume from suspend
         self.last_rediscover_time = now - REDISCOVER_SECONDS * 10.0
         self.last_refresh_time = now + 1.0  # If abort, don't come back here
 
@@ -2732,7 +2737,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             return  # No delay after resume
 
         tf = (None, 96)  # default font family with 96 point size for countdown
-        # 2 digits needs 300, 3 digits needs 450
+        # 2 digits needs 300px width, 3 digits needs 450px width
         width = len(str(countdown_sec)) * 150
         dtb = message.DelayedTextBox(title=title, toplevel=self,
                                      width=width, height=250, startup_delay=0,
@@ -2740,15 +2745,14 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         # Loop until delay start countdown finished
         now = time.time()
         while time.time() < now + countdown_sec:
-            # TODO: After abort, same amount of time seems to count down
             if dtb.forced_abort:
                 break
             dtb.update(str(int(now + countdown_sec - time.time())))
             time.sleep(1.0)  # Sleep a second
+            # During countdown timer, don't let ResumeFromSuspend() to run
+            self.last_refresh_time = time.time() + 1.0  # If abort, don't call again
 
         dtb.close()
-        # If countdown timer completed, don't let ResumeFromSuspend() to run
-        self.last_refresh_time = time.time() + 1.0  # If abort, don't come back here
 
     def SetAllPower(self, state):
         """ Loop through instances and set power state to "ON" or "OFF".
@@ -3007,7 +3011,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.last_rediscover_time = time.time()
         # 2024-12-02 - Couple hours watching TV, suddenly ResumeFromSuspend() ran
         #   a few times with 3 second countdown. Reset self.last_refresh_time.
-        self.last_refresh_time = time.time()  # Override resume from suspend
+        self.last_refresh_time = time.time()  # Prevent resume from suspend
         self.file_menu.entryconfig("Rediscover now", state=tk.NORMAL)
 
     @staticmethod
@@ -3023,12 +3027,13 @@ class Application(DeviceCommonSelf, tk.Toplevel):
     def GetPassword(self):
         """ Get Sudo password with message.AskString(show='*'...). """
 
-        global SUDO_PASSWORD
         msg = "Sudo password required for laptop display.\n\n"
-
         answer = message.AskString(
             self, text=msg, thread=self.Refresh, show='*',
             title="Enter sudo password", icon="information")
+
+        # Setting laptop display power requires sudo prompt which causes fake resume
+        self.last_refresh_time = time.time()  # Refresh idle loop last entered time
 
         if answer.result != "yes":
             return None
@@ -3036,9 +3041,10 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         if len(answer.string) == 8:
             return None
 
+        global SUDO_PASSWORD
         SUDO_PASSWORD = answer.string
         SUDO_PASSWORD = hc.ValidateSudoPassword(SUDO_PASSWORD)
-        #print("SUDO_PASSWORD:", SUDO_PASSWORD)
+        self.last_refresh_time = time.time()  # Refresh idle loop last entered time
         return SUDO_PASSWORD
 
     def OpenCalculator(self):

@@ -132,6 +132,14 @@ def ValidateSudoPassword(text):
 
             echo PASSWORD | sudo -S ls -l /root
 
+
+────────────────────────────────────────────────────────────────────────────────────────────
+rick@alien:~/HomA$ sudo -n true 2>/dev/null
+────────────────────────────────────────────────────────────────────────────────────────────
+rick@alien:~/HomA$ echo $?
+0
+
+
         :param text: The sudo password to be tested
         :returns: None if test failed else return validated password
     """
