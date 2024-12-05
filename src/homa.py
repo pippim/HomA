@@ -463,7 +463,7 @@ class Computer(DeviceCommonSelf):
 
         return ""  # Return null string = False
 
-    def IsDevice(self, forgive=False):
+    def isDevice(self, forgive=False):
         """ Test if passed ip == ethernet ip or WiFi ip.
             Initially a laptop base could be assigned with IP but now it
             is assigned as a laptop display. A laptop will have two on/off
@@ -473,7 +473,7 @@ class Computer(DeviceCommonSelf):
             A desktop will only have a single image and desktop on/off option.
 
         """
-        _who = self.who + "IsDevice():"
+        _who = self.who + "isDevice():"
         v2_print(_who, "Test if device is Computer:", self.ip)
 
         if forgive:
@@ -1028,7 +1028,7 @@ class LaptopDisplay(DeviceCommonSelf):
 
         self.app = None  # Parent app for calling GetPassword() method.
 
-    def IsDevice(self, forgive=False):
+    def isDevice(self, forgive=False):
         """ Test if passed ip == ethernet ip or WiFi ip.
             Initially a laptop base could be assigned with IP but now it
             is assigned as a laptop display. A laptop will have two images
@@ -1037,7 +1037,7 @@ class LaptopDisplay(DeviceCommonSelf):
             A desktop will have a single image - desktop.jpg.
 
         """
-        _who = self.who + "IsDevice():"
+        _who = self.who + "isDevice():"
         v2_print(_who, "Test if device is Laptop Display:", self.ip)
 
         if forgive:
@@ -1185,11 +1185,11 @@ class SmartPlugHS100(DeviceCommonSelf):
         if not self.dependencies_installed:
             v1_print(_who, "Smart Plug hs100.sh dependencies are not installed.")
 
-    def IsDevice(self, forgive=False):
+    def isDevice(self, forgive=False):
         """ Return True if "On" or "Off", False if no communication
             If forgive=True then don't report pipe.returncode != 0
         """
-        _who = self.who + "IsDevice():"
+        _who = self.who + "isDevice():"
         v2_print(_who, "Test if device is TP-Link Kasa HS100 Smart Plug:", self.ip)
 
         Reply = self.PowerStatus(forgive=forgive)  # ON, OFF or N/A
@@ -1352,7 +1352,7 @@ https://stackoverflow.com/questions/2829613/how-do-you-tell-if-a-string-contains
         self.type_code = KDL_TV
         self.power_status = "?"  # Can be "ON", "OFF" or "?"
         self.power_saving_mode = "?"  # set with PowerSavingMode()
-        self.volume = "?"  # Set with GetVolume()
+        self.volume = "?"  # Set with getVolume()
         self.requires = ['curl']
         self.installed = []
         self.CheckDependencies(self.requires, self.installed)
@@ -1402,6 +1402,11 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/
         else:
             v3_print(_who, "Something weird: ?")  # Router
             self.power_status = "?"  # Can be "ON", "OFF" or "?"
+
+        # 2024-12-04 - Some tests
+        #self.getSoundSettings()
+        #self.getSpeakerSettings()
+        #self.getVolume()
 
         return self.power_status
 
@@ -1547,10 +1552,100 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/
 
         return "Pic. OFF"
 
-    def GetVolume(self, forgive=False):
+    def getSoundSettings(self, forgive=False):
+        """ Get Sony Bravia KDL TV Sound Settings (Version 1.1)
+https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/audio/v1_1/getSoundSettings/index.html
+        """
+
+        _who = self.who + "getSoundSettings():"
+        v2_print(_who, 'Send: "id": 73, "params": [], to:', self.ip)
+
+        # Copy and paste JSON strings from Sony website:
+        # https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/getPowerStatus/index.html
+        JSON_str = \
+            '{"method": "getSoundSettings", "id": 73, ' \
+            '"params": [{"target": "outputTerminal"}], "version": "1.1"}'
+
+        reply_dict = ni.curl(JSON_str, "audio", self.ip, forgive=forgive)
+        v2_print(_who, "curl reply_dict:", reply_dict)
+        print(_who, "curl reply_dict:", reply_dict)
+        # SonyBraviaKdlTV().getSoundSettings(): curl reply_dict: {'result': [[
+        # {'currentValue': 'speaker', 'target': 'outputTerminal'}]], 'id': 73}
+        #print(_who, "curl reply_dict:", reply_dict)
+        # "outputTerminal" - Selecting speakers or terminals to output sound.
+        # {
+        #     "result": [[{
+        #         "currentValue": "audioSystem",
+        #         "target": "outputTerminal"
+        #     }]],
+        #     "id": 73
+        # }
+
+        try:
+            reply = reply_dict['result'][0][0]['currentValue']
+        except (KeyError, IndexError):
+            reply = reply_dict  # Probably "7" for not a Sony TV
+        v2_print(_who, "curl reply:", reply)
+        print(_who, "curl reply:", reply)
+        # SonyBraviaKdlTV().getSoundSettings(): curl reply: speaker
+
+        if True is True:
+            return
+
+        return
+
+    def getSpeakerSettings(self, forgive=False):
+        """ Get Sony Bravia KDL TV Sound Settings (Version 1.1)
+https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/audio/v1_0/getSpeakerSettings/index.html
+        """
+
+        _who = self.who + "getSpeakerSettings():"
+        v2_print(_who, 'Send: "id": 73, "params": [], to:', self.ip)
+
+        # Copy and paste JSON strings from Sony website:
+        # https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/getPowerStatus/index.html
+        JSON_str = \
+            '{"method": "getSpeakerSettings", "id": 67, ' \
+            '"params": [{"target": "tvPosition"}], "version": "1.0"}'  # tableTop
+            #'"params": [{"target": "tvPosition"}], "version": "1.0"}'  # tableTop
+            # Settings below ignore the fact the subwoofer is powered off
+            #'"params": [{"target": "subwooferLevel"}], "version": "1.0"}'  # 17
+            #'"params": [{"target": "subwooferFreq"}], "version": "1.0"}'  # 10
+            #'"params": [{"target": "subwooferPhase"}], "version": "1.0"}'  # normal
+            #'"params": [{"target": "subwooferPower"}], "version": "1.0"}'  # on
+
+        reply_dict = ni.curl(JSON_str, "audio", self.ip, forgive=forgive)
+        v2_print(_who, "curl reply_dict:", reply_dict)
+        print(_who, "curl reply_dict:", reply_dict)
+        # SonyBraviaKdlTV().getSoundSettings(): curl reply_dict: {'result': [[
+        # {'currentValue': 'speaker', 'target': 'outputTerminal'}]], 'id': 73}
+        #print(_who, "curl reply_dict:", reply_dict)
+        # "outputTerminal" - Selecting speakers or terminals to output sound.
+        # {
+        #     "result": [[{
+        #         "currentValue": "audioSystem",
+        #         "target": "outputTerminal"
+        #     }]],
+        #     "id": 73
+        # }
+
+        try:
+            reply = reply_dict['result'][0][0]['currentValue']
+        except (KeyError, IndexError):
+            reply = reply_dict  # Probably "7" for not a Sony TV
+        v2_print(_who, "curl reply:", reply)
+        print(_who, "curl reply:", reply)
+        # SonyBraviaKdlTV().getSoundSettings(): curl reply: speaker
+
+        if True is True:
+            return
+
+        return
+
+    def getVolume(self, forgive=False):
         """ Get Sony Bravia KDL TV volume """
 
-        _who = self.who + "GetVolume():"
+        _who = self.who + "getVolume():"
         v2_print(_who, 'Send: "id": 33, "params": [], to:', self.ip)
 
         # Copy and paste JSON strings from Sony website:
@@ -1558,47 +1653,44 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/
         JSON_str = \
             '{"method": "getVolumeInformation", "id": 33, "params": [], "version": "1.0"}'
 
+        ext.t_init(_who)
         reply_dict = ni.curl(JSON_str, "audio", self.ip, forgive=forgive)
+        ext.t_end('print')  # SonyBraviaKdlTV().getVolume(): 0.0106749535
         v2_print(_who, "curl reply_dict:", reply_dict)
+        print(_who, "curl reply_dict:", reply_dict)
+        # SonyBraviaKdlTV().getVolume(): curl reply_dict: {'result': [[
+        # {'volume': 28, 'maxVolume': 100, 'minVolume': 0, 'target': 'speaker', 'mute': False},
+        # {'volume': 15, 'maxVolume': 100, 'minVolume': 0, 'target': 'headphone', 'mute': False}
+        # ]], 'id': 33}
         #print(_who, "curl reply_dict:", reply_dict)
-        # SonyBraviaKdlTV().GetVolume(): curl reply_dict: 
+        # SonyBraviaKdlTV().getVolume(): curl reply_dict: 
         # {'result': [
         # [{'volume': 23, 'maxVolume': 100, 'minVolume': 0, 'target': 'speaker', 
         # 'mute': False}, 
         # {'volume': 15, 'maxVolume': 100, 'minVolume': 0, 'target': 'headphone', 
         # 'mute': False}]], 'id': 33}
 
+        try:
+            reply = reply_dict['result'][0][0]['volume']
+        except (KeyError, IndexError):
+            reply = reply_dict  # Probably "7" for not a Sony TV
+        v2_print(_who, "curl reply:", reply)
+        print(_who, "curl reply:", reply)
+        # SonyBraviaKdlTV().getVolume(): curl reply: 28
+
         if True is True:
             return
 
-        try:
-            reply = reply_dict['result'][0]['volume']
-        except (KeyError, IndexError):
-            reply = reply_dict  # Probably "7" for not a Sony TV
-        v2_print(_who, "curl reply_dict:", reply_dict)
+        return
 
-        # {'result': [{'mode': 'off'}], 'id': 51}
-        if isinstance(reply, int):
-            v3_print(_who, "Integer found:", reply)  # 7
-            self.power_saving_mode = "?"
-        elif u"pictureOff" == reply:
-            self.power_saving_mode = "ON"  # Reduce states from Off / Low / High / Picture Off
-        elif u"off" == reply:
-            self.power_saving_mode = "OFF"
-        else:
-            v3_print(_who, "Something weird in reply:", reply)
-            self.power_saving_mode = "?"
-
-        return self.power_saving_mode
-
-    def IsDevice(self, forgive=False):
+    def isDevice(self, forgive=False):
         """ Return True if active or standby, False if power off or no communication
             If forgive=True then don't report pipe.returncode != 0
 
-            Consider generic call to PowerStatus using IsDevice, TestSonyOn and TestSonyOff
+            Consider generic call to PowerStatus using isDevice, TestSonyOn and TestSonyOff
         """
 
-        _who = self.who + "IsDevice():"
+        _who = self.who + "isDevice():"
         v3_print(_who, "Test if device is Sony Bravia KDL TV:", self.ip)
 
         Reply = self.PowerStatus(forgive=forgive)
@@ -1630,8 +1722,8 @@ class TclGoogleAndroidTV(DeviceCommonSelf):
             
             AdbReset() - adb kill-server && adb start-server
             PowerStatus() - timeout 2.0 adb shell dumpsys input_method | grep -i screen on
-            IsDevice() - timeout 0.1 adb connect <ip>
-            Connect() - Call IsDevice followed by wakeonlan up to 60 times
+            isDevice() - timeout 0.1 adb connect <ip>
+            Connect() - Call isDevice followed by wakeonlan up to 60 times
             TurnOn() - timeout 0.5 adb shell input key event KEYCODE_WAKEUP
             TurnOff() - timeout 0.5 adb shell input key event KEYCODE_SLEEP
 
@@ -1684,7 +1776,7 @@ class TclGoogleAndroidTV(DeviceCommonSelf):
         os.popen("adb devices -l")  # Will force daemon to run on port 5037
 
         cnt = 1
-        while not self.IsDevice(forgive=True, timeout=ADB_MAGIC_TIME):
+        while not self.isDevice(forgive=True, timeout=ADB_MAGIC_TIME):
 
             v2_print(_who, "Attempt #:", cnt, "Call 'wakeonlan' for MAC:", self.mac)
             command_line_list = ["wakeonlan", self.mac]
@@ -1764,7 +1856,7 @@ class TclGoogleAndroidTV(DeviceCommonSelf):
         _who = self.who + "TurnOn():"
         v2_print("\n" + _who, "Send KEYCODE_WAKEUP to:", self.ip)
 
-        # Connect() will try 60 times with wakeonlan and IsDevice check.
+        # Connect() will try 60 times with wakeonlan and isDevice check.
         if not self.Connect(forgive=forgive):  # TODO else: error message
             return self.PowerStatus()
 
@@ -1849,14 +1941,14 @@ class TclGoogleAndroidTV(DeviceCommonSelf):
         self.power_status = "OFF"  # Can be "ON", "OFF" or "?"
         return self.power_status
 
-    def IsDevice(self, forgive=False, timeout=ADB_CON_TIME):
+    def isDevice(self, forgive=False, timeout=ADB_CON_TIME):
         """ Return True if active or standby, False if power off or no communication
             If forgive=True then don't report pipe.returncode != 0
 
-            Consider generic call to PowerStatus using IsDevice, TestSonyOn and TestSonyOff
+            Consider generic call to PowerStatus using isDevice, TestSonyOn and TestSonyOff
         """
 
-        _who = self.who + "IsDevice():"
+        _who = self.who + "isDevice():"
         v2_print(_who, "Test if device is TCL Google Android TV:", self.ip)
 
         command_line_list = ["timeout", timeout, "adb", "connect", self.ip]
@@ -1986,7 +2078,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
     def BuildMenu(self):
         """ Build dropdown Menu bars: File, Edit, View & Tools """
 
-
         def ForgetPassword():
             """ Clear sudo password for extreme caution """
             global SUDO_PASSWORD
@@ -2011,7 +2102,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.file_menu.add_command(label="Suspend", font=g.FONT, underline=0,
                                    command=self.Suspend, state=tk.NORMAL)
         self.file_menu.add_separator()
-        self.file_menu.add_command(label="Exit", font=g.FONT, underline=0,
+        self.file_menu.add_command(label="Exit", font=g.FONT, underline=1,
                                    command=self.CloseApp, state=tk.DISABLED)
 
         mb.add_cascade(label="File", font=g.FONT, underline=0, menu=self.file_menu)
@@ -2426,7 +2517,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             menu.add_command(label="Turn " + name + " Picture Off ",
                              font=g.FONT, state=tk.DISABLED,
                              command=lambda: self.PictureOff(cr))
-            cr.inst.GetVolume()
+            cr.inst.getVolume()
             menu.add_separator()
 
         menu.add_command(label="Turn On " + name, font=g.FONT, state=tk.DISABLED,
@@ -2561,6 +2652,16 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.CloseApp()
             return False  # Not required because this point never reached.
 
+        ''' Resuming from suspend? '''
+        now = time.time()
+        delta = now - self.last_refresh_time
+        if delta > RESUME_TEST_SECONDS:  # Assume > is resume from suspend
+            v0_print("\n" + "= "*4, _who, "Resuming from suspend after:",
+                     tmf.days(delta), " ="*4 + "\n")
+            self.ResumeFromSuspend()  # Power on all devices
+            now = time.time()  # can be 15 seconds or more later
+            APP_RESTART_TIME = now  # Reset app started time to resume time
+
         ''' Always give time slice to tooltips - requires sql.py color config '''
         self.tt.poll_tips()  # Tooltips fade in and out. self.info piggy backing
         self.update()  # process events in queue. E.G. message.ShowInfo()
@@ -2572,17 +2673,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         if not tk_after:
             return self.winfo_exists()
 
-        ''' Resuming from suspend? '''
-        now = time.time()
-        delta = now - self.last_refresh_time
-        if delta > RESUME_TEST_SECONDS:  # Assume > is resume from suspend
-            v0_print("\n" + "= "*4, _who, "Resuming from suspend after:",
-                     tmf.days(delta), " ="*4 + "\n")
-            self.ResumeFromSuspend()  # Power on all devices
-            now = time.time()  # can be 15 seconds or more later
-            APP_RESTART_TIME = now  # Reset app started time to resume time
-
-        ''' Check Sensors (if installed) every SENSOR_CHECK seconds '''
+        ''' Check `sensors` (if installed) every SENSOR_CHECK seconds '''
         sm.Sensors()
 
         ''' Rediscover devices every REDISCOVER_SECONDS '''
@@ -3620,7 +3711,7 @@ def discover(update=False, start=None, end=None):
         def test_one(cname):
             """ Test if hs100, SonyTV, GoogleTV, etc. """
             inst = cname(arp['mac'], arp['ip'], arp['name'], arp['alias'])
-            is_device = inst.IsDevice(forgive=True)
+            is_device = inst.isDevice(forgive=True)
             if not is_device:
                 return False
 

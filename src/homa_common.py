@@ -136,7 +136,8 @@ def ValidateSudoPassword(text):
         :returns: None if test failed else return validated password
     """
 
-    # Test if sudo password works
+    # Test if sudo password is valid
+    os.environ["SUDO_PROMPT"] = ""  # Change prompt "[sudo] password for <USER>:"
     cmd1 = sp.Popen(['echo', str(text)], stdout=sp.PIPE)
     cmd2 = sp.Popen(['sudo', '-S', 'ls', '-l', '/root'],
                     stdin=cmd1.stdout, stdout=sp.PIPE)
