@@ -134,11 +134,13 @@ def ValidateSudoPassword(text):
 
 
 ────────────────────────────────────────────────────────────────────────────────────────────
-rick@alien:~/HomA$ sudo -n true 2>/dev/null
+$ sudo -n true 2>/dev/null
 ────────────────────────────────────────────────────────────────────────────────────────────
-rick@alien:~/HomA$ echo $?
+$ echo $?
 0
-
+────────────────────────────────────────────────────────────────────────────────────────────
+$ sudo cat /etc/sudoers | grep ^"Defaults" | grep timestamp_timeout
+Defaults	env_reset, timestamp_timeout=120
 
         :param text: The sudo password to be tested
         :returns: None if test failed else return validated password

@@ -2607,7 +2607,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         # Setting Power can loop for a minute in worst case scenario using adb
         self.last_refresh_time = time.time()  # Refresh idle loop last entered time
 
-
     def MoveRowUp(self, cr):
         """ Mouse right button click selected "Move Row Up". """
         _who = self.who + "MoveRowUp():"
@@ -2691,7 +2690,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         sleep = sleep if sleep > 0 else 1  # Sleep minimum 1 millisecond
         if sleep == 1:
             v0_print(_who, "Only sleeping 1 millisecond")
-        self.last_refresh_time = now
+        self.last_refresh_time = time.time()  # 2024-12-05 was 'now' too stale?
         self.after(sleep)  # Sleep until next 60 fps time
 
         ''' Wrapup '''
@@ -2821,6 +2820,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
     def RefreshAllPowerStatuses(self, auto=False):
         """ Read ni.instances and update the power statuses.
+            Called from one place: self.Rediscover(auto=False)
             If Devices Treeview is visible (mounted) update power status.
             TreeviewRow.Get() creates a device instance.
             Use device instance to get Power Status.
@@ -2834,7 +2834,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         cr = row = None  # Assume Sensors Treeview is displayed
         if usingDevicesTreeview:
             cr = TreeviewRow(self)  # Setup treeview row processing instance
-            pass
 
         # Loop through ni.instances
         for i, instance in enumerate(ni.instances):
@@ -2843,7 +2842,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 # Get treeview row based on matching MAC address + device_type
                 row = cr.GetByInstance(inst)  # Get row number and set instance
                 if row is not None:
-                    if auto is False:
+                    if auto is False or cr.text == "Wait...":
                         self.tree.see(row)
                         cr.FadeIn(row)
 
@@ -2862,7 +2861,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 v1_print(_who, cr.mac, "Power status changed from: '"
                          + old_text.strip() + "' to: '" + cr.text.strip() + "'.")
             cr.Update(row)  # Update row with new ['text']
-            if auto is False:
+            if auto is False or old_text == "Wait...":
+                # Fade in/out performed when called from Dropdown Menu.
+                # Or on startup when status is "Wait...". Otherwise, too distracting.
                 cr.FadeOut(row)
 
             # Display row by row when there is processing lag
