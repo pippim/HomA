@@ -177,8 +177,8 @@ def CheckRunning(title):
     # wmctrl -lG | grep "$title"
     cmd1 = sp.Popen(['wmctrl', "-lG"], stdout=sp.PIPE)
     cmd2 = sp.Popen(['grep', title], stdin=cmd1.stdout, stdout=sp.PIPE)
-    output = cmd2.stdout.read().decode()  # Works for HomA not Eyesome
-    #print("homa-indicator.py CheckRunning(): output:", output)
+    output = cmd2.stdout.read().decode()  # Decode stdout stream to text
+    print("homa-indicator.py CheckRunning(): output:", output)
     # HomA   : 0x05c0000a  0 4354 72   1200 700    N/A HomA - Home Automation
     # Eyesome: 0x06400007  0 3449 667  782  882  alien eyesome setup
     return output

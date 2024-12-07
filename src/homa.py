@@ -159,8 +159,8 @@ LAPTOP_B = 110  # Laptop base (CPU, GPU, Keyboard, Fans, Ports, etc.)
 LAPTOP_D = 120  # Laptop display (Can be turned on/off separate from base)
 SUDO_PASSWORD = None  # Sudo password required for laptop backlight
 BACKLIGHT_NAME = os.popen("ls /sys/class/backlight").read().strip()  # intel_backlight
-BACKLIGHT_ON = "0"
-BACKLIGHT_OFF = "4"
+BACKLIGHT_ON = "0"  # Sudo echo to "/sys/class/backlight/intel_backlight/bl_power"
+BACKLIGHT_OFF = "4"  # Ditto
 
 POWER_OFF_CMD_LIST = ["systemctl", "suspend"]  # When calling "Turn Off" for Computer()
 POWER_ALL_EXCL_LIST = [DESKTOP, LAPTOP_B, LAPTOP_D]  # Exclude when powering "All"
@@ -2017,6 +2017,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.tree = None  # Painted in PopulateTree()
         self.photos = None  # Used in PopulateTree() and many other methods
 
+        ''' Top '''
         tk.Toplevel.__init__(self, master)  # https://stackoverflow.com/a/24743235/6929343
         self.minsize(width=120, height=63)
         self.geometry('1200x700')
@@ -2066,7 +2067,11 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.last_leave_time = APP_RESTART_TIME
         self.last_motion_time = APP_RESTART_TIME
 
+        # Monitors and window positions when un-minimizing
+        self.monitors = self.windows = []  # List of dictionaries
+
         # Laptop Display needs to call .GetPassword() method in this Application()
+        # Assign this Application() instance to the LaptopDisplay() instance self.app
         for instance in ni.instances:
             inst = instance['instance']
             if inst.type_code == LAPTOP_D:

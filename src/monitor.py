@@ -1,0 +1,1 @@
+/home/rick/python/monitor.py
