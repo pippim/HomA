@@ -3063,21 +3063,13 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         geom = monitor.get_window_geom('calculator')
         self.calc_top = tk.Toplevel()
 
-        ''' Set program icon in taskbar '''
-        # From: sql.py - Config() class - Big Number Calculator
-        ti = {
-            "height": 64, "outline": 'Black', "fill": 'LemonChiffon',
-            "text": 'Black', "font_family": 'DejaVuSans.ttf',
-            "char": 'C'
-        }
-
+        ''' Set Calculator program icon in taskbar '''
         cfg_key = ['cfg_calculator', 'toplevel', 'taskbar_icon', 'height & colors']
         ti = cfg.get_cfg(cfg_key)
         img.taskbar_icon(self.calc_top, ti['height'], ti['outline'],
                          ti['fill'], ti['text'], char=ti['char'])
-        # img.taskbar_icon(self.calc_top, 64, 'white', 'lightskyblue', 'black')
+
         ''' Create calculator class instance '''
-        # TODO setup direct color config for calculator buttons
         self.calculator = Calculator(self.calc_top, g.BIG_FONT, geom,
                                      btn_fg=ti['text'], btn_bg=ti['fill'])
 
