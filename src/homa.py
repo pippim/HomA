@@ -3076,10 +3076,11 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         def calculator_close(*_args):
             """ Save last geometry for next Calculator startup """
             last_geom = monitor.get_window_geom_string(
-                self.calc_top, leave_visible=False)  # Destroy toplevel
+                self.calc_top, leave_visible=False)  # Leave toplevel invisible
             monitor.save_window_geom('calculator', last_geom)
+            self.calc_top.destroy()
+            self.calc_top = None  # Prevent lifting window
             self.calculator = None  # Prevent lifting window
-            self.calc_top = None
 
         ''' Trap <Escape> key and  '✘' Window Close Button '''
         self.calc_top.bind("<Escape>", calculator_close)
@@ -3658,19 +3659,19 @@ def v0_print(*args, **kwargs):
 
 
 def v1_print(*args, **kwargs):
-    """ Debug printing for argument -v """
+    """ Debug printing for argument -v (--verbose1). Overrides -s (--silent) """
     if p_args.verbose1 or p_args.verbose2 or p_args.verbose3:
         print(*args, **kwargs)
 
 
 def v2_print(*args, **kwargs):
-    """ Debug printing for argument -vv """
+    """ Debug printing for argument -vv (--verbose2). Overrides -s (--silent) """
     if p_args.verbose2 or p_args.verbose3:
         print(*args, **kwargs)
 
 
 def v3_print(*args, **kwargs):
-    """ Debug printing for argument -vvv """
+    """ Debug printing for argument -vvv (--verbose3). Overrides -s (--silent) """
     if p_args.verbose3:
         print(*args, **kwargs)
         
