@@ -16,6 +16,7 @@ import warnings  # 'warnings' advises which commands aren't supported
 #       homa-indicator.py (Home Automation) - Systray application indicator
 #
 #       2024-11-18 - Creation date.
+#       2024-12-08 - Use monitor.Monitors() for monitor aware window positions
 #
 # ==============================================================================
 
@@ -57,28 +58,33 @@ except NameError:  # name 'reload' is not defined
 
 import global_variables as g
 g.init(appname="homa")
+import monitor  # Pippim monitor and window classes and functions
 import homa_common as hc  # hc.GetSudoPassword() and hc.GetMouseLocation()
 
-APP_ID = 'homa-indicator'  # Unique app indicator id
-HOMA_TITLE = "HomA - Home Automation"
-EYESOME_TITLE = "eyesome setup"
-SUDO_PASSWORD = None
-save_cwd = ""  # Saved current working directory. Will change to program directory.
+APP_ID = "homa-indicator"  # Unique application name used for app indicator id
+APP_ICON = "/usr/share/icons/gnome/32x32/devices/display.png"
+SAVE_CWD = ""  # Saved current working directory. Will change to program directory
+HOMA_TITLE = "HomA - Home Automation"  # Window title must match program's title bar
+EYESOME_TITLE = "eyesome setup"  # Move by window title under application indicator
+SUDO_PASSWORD = None  # Sudo required for running eyesome
+MONITOR_INSTANCE = None  # Pippim instance of all monitors
+MOVE_WINDOW_RIGHT_ADJUST = -20  # Move Window Top Right Adjustment
 
 
 def Main():
     """ Main loop """
 
-    global save_cwd  # Saved current working directory to restore on exit
+    global SAVE_CWD  # Saved current working directory to restore on exit
 
     ''' Save current working directory '''
-    save_cwd = os.getcwd()  # Bad habit from old code in mserve.py
-    if save_cwd != g.PROGRAM_DIR:
-        #print("Changing from:", save_cwd, "to g.PROGRAM_DIR:", g.PROGRAM_DIR)
+    SAVE_CWD = os.getcwd()  # Bad habit from old code in mserve.py
+    if SAVE_CWD != g.PROGRAM_DIR:
+        #print("Changing from:", SAVE_CWD, "to g.PROGRAM_DIR:", g.PROGRAM_DIR)
         os.chdir(g.PROGRAM_DIR)
 
+    # https://lazka.github.io/pgi-docs/AyatanaAppIndicator3-0.1/classes/Indicator.html
     indicator = AppIndicator3.Indicator.new(
-        APP_ID, os.path.abspath('/usr/share/icons/gnome/32x32/devices/display.png'),
+        APP_ID, os.path.abspath(APP_ICON),
         AppIndicator3.IndicatorCategory.SYSTEM_SERVICES)
     indicator.set_status(AppIndicator3.IndicatorStatus.ACTIVE)
     indicator.set_menu(BuildMenu())
@@ -123,8 +129,11 @@ def HomA(_):
         #print("homa-indicator.py HomA(): Starting HomA with '-f -s &'")
         _out = os.popen("./homa.py -f -s &")
         time.sleep(1.0)
+        new_window = True
+    else:
+        new_window = False
 
-    MoveHere(HOMA_TITLE)  # Move opened window to current mouse location
+    MoveHere(HOMA_TITLE, new_window=new_window)  # Move opened window to current mouse location
 
 
 def Eyesome(_):
@@ -144,9 +153,10 @@ def Eyesome(_):
         global SUDO_PASSWORD
 
         if SUDO_PASSWORD is None:
-            SUDO_PASSWORD = hc.GetSudoPassword()
+            SUDO_PASSWORD = hc.GetSudoPassword()  # Get valid sudo password
             if SUDO_PASSWORD is None:
-                return "?"  # Cancel button (256) or escape or 'X' on window decoration (64512)
+                # Cancel button (256) or escape or 'X' on window decoration (64512)
+                return
 
         cmd1 = sp.Popen(['echo', SUDO_PASSWORD], stdout=sp.PIPE)
         _out = sp.Popen(['sudo', '-S', 'eyesome-cfg.sh', '&'],
@@ -155,24 +165,33 @@ def Eyesome(_):
         # print("_out.pid:", _out.pid)
 
         time.sleep(1.0)  # Allow 1 second startup time before moving window
+        new_window = True
+    else:
+        new_window = False
 
-    MoveHere(EYESOME_TITLE)  # Move opened window to current mouse location
+    # Move opened window to current mouse location under the app indicator
+    MoveHere(EYESOME_TITLE, new_window=new_window)
 
 
 def Quit(_):
     """ Quit homa-indicator.py """
 
-    ''' reset to original save_cwd (current working directory) '''
-    if save_cwd != g.PROGRAM_DIR:
+    ''' reset to original SAVE_CWD (current working directory) '''
+    if SAVE_CWD != g.PROGRAM_DIR:
         #print("Changing from g.PROGRAM_DIR:", g.PROGRAM_DIR,
-        #      "to save_cwd:", save_cwd)
-        os.chdir(save_cwd)
+        #      "to SAVE_CWD:", SAVE_CWD)
+        os.chdir(SAVE_CWD)
 
     Gtk.main_quit()
 
 
 def CheckRunning(title):
-    """ Check if program is running; homa.py or eyesome-cfg.sh, etc. """
+    """ Check if program is running; homa.py or eyesome-cfg.sh, etc.
+        Match passed 'title' to window decoration application name.
+    """
+    global MONITOR_INSTANCE
+    MONITOR_INSTANCE = monitor.Monitors()
+    mon = MONITOR_INSTANCE  # Traditional Pippim abbreviation for Monitors() instance
     #print("homa-indicator.py CheckRunning(): grep title:", title)
     # wmctrl -lG | grep "$title"
     cmd1 = sp.Popen(['wmctrl', "-lG"], stdout=sp.PIPE)
@@ -181,14 +200,31 @@ def CheckRunning(title):
     #print("homa-indicator.py CheckRunning(): output:", output)
     # HomA   : 0x05c0000a  0 4354 72   1200 700    N/A HomA - Home Automation
     # Eyesome: 0x06400007  0 3449 667  782  882  alien eyesome setup
+    _line = output.split()
+    #print("_line[0]:", _line[0])  # _line[0]: 0x06000018
+
+    _active_window = mon.get_active_window()
+    #print("mon.get_active_window():", _active_window)
+    # (number=92274698L, name='homa-indicator', x=2261, y=1225, width=1734, height=902)
+    _active_monitor = mon.get_active_monitor()
+    #print("mon.get_active_monitor():", _active_monitor)
+    # (number=1, name='DP-1-1', x=1920, y=0, width=3840, height=2160, primary=False)
+    _mouse_monitor = mon.get_mouse_monitor()
+    #print("mon.get_mouse_monitor():", _mouse_monitor)
+    # (number=2, name='eDP-1-1', x=3840, y=2160, width=1920, height=1080, primary=True)
+
+    # 2024-12-08 TODO: Create list of application geometries for every monitor
     return output
 
 
-def MoveHere(title):
-    """ Move a running program's window below mouse cursor.
-        Shift window left as necessary so it doesn't pass right edge of monitor.
+def MoveHere(title, new_window=True):
+    """ Move a running program's window below mouse cursor. Program may have been
+        started by homa-indicator or it may have already been running. When program
+        was already running and this is the same monitor, simply un-minimize and lift
+        window in the stacking order.
 
         :param title: "HomA - Home Automation" / "eyesome setup"
+        :param new_window: Always move to app indicator position + offset
         :returns True: if successful, else False
 
     """
@@ -210,7 +246,12 @@ def MoveHere(title):
     #print(_who, "wId, wWidth, wHeight:", wId, wWidth, wHeight)
 
     xPos, yPos = hc.GetMouseLocation()  # Get current mouse location
-    xPos2 = int(xPos) - int(wWidth) + 200  # Adjust x-offset using window's width
+    # Adjust x-offset using window's width
+    xPos2 = int(xPos) - int(wWidth) + MOVE_WINDOW_RIGHT_ADJUST
+
+    if not new_window:
+        # Use previously saved window position if on same monitor
+        pass
 
     # Move program window to mouse position
     # wmctrl -ir $window -e 1,$x2Pos,$yPos,$width,$height

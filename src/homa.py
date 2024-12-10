@@ -144,7 +144,7 @@ REFRESH_MS = 16  # Refresh tooltip fades 60 frames per second
 REDISCOVER_SECONDS = 60  # Check devices changes every x seconds
 RESUME_TEST_SECONDS = 10  # > x seconds disappeared means system resumed
 RESUME_DELAY_RESTART = 3  # Pause x seconds after resuming from suspend
-TIMER_SEC = 300  # Tools Dropdown Menubar - Countdown Timer
+TIMER_SEC = 420  # Tools Dropdown Menubar - Countdown Timer
 
 SENSOR_CHECK = 1.0  # Check `sensors` (CPU/GPU temp & fan speeds) every x seconds
 SENSOR_LOG = 3600.0  # Log `sensors` every x seconds. Log more if fan speed changes
@@ -153,7 +153,7 @@ FAN_GRANULAR = 200  # Skip logging when fan changes <= FAN_GRANULAR
 # Device type global identifier variables stored in "inst.type_code"
 HS1_SP = 10  # TP-Link Kasa WiFi Smart Plug HS100, HS103 or HS110 using hs100.sh
 KDL_TV = 20  # Sony Bravia KDL Android TV using REST API (curl)
-TCL_TV = 30  # TCL Google Android TV using adb (wakeonlan)
+TCL_TV = 30  # TCL Google Android TV using adb (after wakeonlan)
 DESKTOP = 100  # Desktop Computer, Tower, NUC, Raspberry Pi, etc.
 LAPTOP_B = 110  # Laptop base (CPU, GPU, Keyboard, Fans, Ports, etc.)
 LAPTOP_D = 120  # Laptop display (Can be turned on/off separate from base)
@@ -2017,18 +2017,24 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.tree = None  # Painted in PopulateTree()
         self.photos = None  # Used in PopulateTree() and many other methods
 
-        ''' Top '''
+        ''' Toplevel window (self) '''
         tk.Toplevel.__init__(self, master)  # https://stackoverflow.com/a/24743235/6929343
         self.minsize(width=120, height=63)
         self.geometry('1200x700')
         #monitor.center(self)  # Temporary until saved geometry coded
         self.configure(background="WhiteSmoke")
-        self.rowconfigure(0, weight=1)  # Weight 1 = stretchable in parent row
-        self.columnconfigure(0, weight=1)  # Weight 1 = stretchable in parent column
+        self.rowconfigure(0, weight=1)  # Weight 1 = stretchable row
+        self.columnconfigure(0, weight=1)  # Weight 1 = stretchable column
+        self.xdo_os_window_id = os.popen("xdotool getactivewindow").read().strip()
+        # self.xdo_os_window_id: 92274698  # THIS CHANGES BELOW
         self.title("HomA - Home Automation")
 
-        ''' Tooltips '''
-        self.tt = toolkit.ToolTips()
+        ''' ChildWindows() moves children with toplevel and keeps children on top '''
+        self.win_grp = toolkit.ChildWindows(self, auto_raise=False)
+
+        ''' Tooltips() - if --silent argument, then suppress error printing '''
+        print_error = False if p_args.silent else True
+        self.tt = toolkit.ToolTips(print_error=print_error)
 
         ''' Set program icon in taskbar. '''
         img.taskbar_icon(self, 64, 'white', 'green', 'yellow', char='HA')
@@ -2036,8 +2042,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         ''' System Monitor '''
         sm = SystemMonitor(self)  # sm = This machines fan speed and CPU temperatures
 
-        ''' Big Number Calculator - same naming convention as mserve '''
-        self.calculator = self.calc_top = None
+        ''' Big Number Calculator and Delayed Textbox (dtb) '''
+        self.calculator = self.calc_top = self.dtb = None
 
         ''' File/Edit/View/Tools dropdown menu bars '''
         self.file_menu = self.edit_menu = self.view_menu = self.tools_menu = None
@@ -2057,6 +2063,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         # Experiments to delay rediscover when there is GUI activity
         self.have_focus = True  # Application always starts with focus
+        self.minimizing = False  # When minimizing, override FocusIn()
         self.bind("<FocusIn>", self.FocusIn)
         self.bind("<FocusOut>", self.FocusOut)
         self.bind("<Enter>", self.Enter)
@@ -2076,6 +2083,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             inst = instance['instance']
             if inst.type_code == LAPTOP_D:
                 inst.app = self
+
+        self.xdo_os_window_id = os.popen("xdotool getactivewindow").read().strip()
+        # self.xdo_os_window_id: 102760472  THIS CHANGED FROM ABOVE
 
         while self.Refresh():  # Run forever until quit
             self.update_idletasks()  # Get queued tasks
@@ -2188,6 +2198,16 @@ class Application(DeviceCommonSelf, tk.Toplevel):
     def CloseApp(self, *_args):
         """ <Escape>, X on window, 'Exit from dropdown menu or Close Button"""
 
+        # Close Delayed Textbox if open:
+        #if self.dtb and self.dtb.mounted is True:
+        #    v0_print("Closing Timer Countdown. self.dtb.mounted:", self.dtb.mounted)
+        #    self.dtb.close()
+
+        # Close Big Number Calculator if open:
+        #if self.calculator and self.calc_top:
+        #    v0_print("Closing Big Number Calculator")
+        #    self.calc_top.destroy()
+
         # Need Devices treeview displayed to save ni.view_order
         if self.sensors_devices_btn['text'] == self.devices_btn_text:
             self.SensorsToggle()  # Toggle off Sensors Treeview
@@ -2199,17 +2219,18 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             cr.Get(item)
             order.append(cr.mac)
 
+        self.win_grp.destroy_all(tt=self.tt)  # Destroy Calculator and Countdown
         self.destroy()  # Destroy Toplevel window
 
         ''' Save files '''
         ni.view_order = order
         save_files()
 
-        ''' reset to original save_cwd (current working directory) '''
-        if save_cwd != g.PROGRAM_DIR:
+        ''' reset to original SAVE_CWD (saved current working directory) '''
+        if SAVE_CWD != g.PROGRAM_DIR:
             v1_print("Changing from g.PROGRAM_DIR:", g.PROGRAM_DIR,
-                     "to save_cwd:", save_cwd)
-            os.chdir(save_cwd)
+                     "to SAVE_CWD:", SAVE_CWD)
+            os.chdir(SAVE_CWD)
 
         ''' Print statistics - 9,999,999 right aligned. '''
         if sm.number_logs:
@@ -2224,9 +2245,18 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         exit()
 
     def MinimizeApp(self, *_args):
-        """ Minimize window using xdotool. """
+        """ Minimize GUI Application() window using xdotool.
+            2024-12-08 TODO: Minimize child windows (Countdown and Big Number Calc.)
+        """
+
+        #_xdo_os_window_id = os.popen("xdotool getactivewindow").read().strip()
+        #_tcl_os_window_id = self.winfo_id()
+        #print("xdo_os_window_id:", _xdo_os_window_id)           # 102760472
+        #print("tcl_os_window_id:", _tcl_os_window_id)           # 102760470
+        #print("self.xdo_os_window_id:", self.xdo_os_window_id)  # 102760472
+
         # noinspection SpellCheckingInspection
-        f = os.popen("xdotool getactivewindow windowminimize")
+        f = os.popen("xdotool windowminimize " + self.xdo_os_window_id)
         text = f.read().splitlines()
         returncode = f.close()  # https://stackoverflow.com/a/70693068/6929343
         if text:
@@ -2245,17 +2275,25 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         cp.TurnOff()  # suspend the computer
 
     def FocusIn(self, *_args):
-        """ Window or menu in focus, disable rediscovery.
-            NOTE: triggered two times so test current state for first time.
-            NOTE: When menu closed it registers FocusOut and
+        """ Window or menu in focus, disable rediscovery. Raise child windows above.
+            NOTE: triggered two times so test current state for first time status.
+            NOTE: When the right-click menu is closed it registers FocusOut and
                   toplevel registers FocusIn again.
         """
         if self.have_focus is False:
             self.have_focus = True
             #print("\nFocus In")
         else:
-            #print("Focus In SPAM")
+            #print("Focus In SPAM")  # FocusIn() is called twice
             pass
+
+        if self.calculator and self.calc_top:
+            self.calc_top.focus_force()
+            self.calc_top.lift()
+
+        if self.dtb and self.dtb.mounted is True:
+            self.dtb.msg_top.focus_force()
+            self.dtb.msg_top.lift()
 
     def FocusOut(self, *_args):
         """ Window or menu lost focus, enable rediscovery.
@@ -2726,6 +2764,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
     def ResumeWait(self, timer=None):
         """ Wait x seconds for devices to come online.
+            self.dtb (Delayed Text Box) if active then raise above other windows.
+            
             :param timer: When time passed it's a countdown timer
         """
 
@@ -2743,20 +2783,22 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         tf = (None, 96)  # default font family with 96 point size for countdown
         # 2 digits needs 300px width, 3 digits needs 450px width
         width = len(str(countdown_sec)) * 150
-        dtb = message.DelayedTextBox(title=title, toplevel=self,
-                                     width=width, height=250, startup_delay=0,
-                                     abort=True, tf=tf, ta="center")
+        self.dtb = message.DelayedTextBox(title=title, toplevel=self, width=width, 
+                                          height=250, startup_delay=0, abort=True, 
+                                          tf=tf, ta="center", win_grp=self.win_grp)
         # Loop until delay start countdown finished
-        now = time.time()
-        while time.time() < now + countdown_sec:
-            if dtb.forced_abort:
+        start = time.time()
+        while time.time() < start + countdown_sec:
+            if self.dtb.forced_abort:
                 break
-            dtb.update(str(int(now + countdown_sec - time.time())))
-            time.sleep(1.0)  # Sleep a second
-            # During countdown timer, don't let ResumeFromSuspend() to run
+            if not self.winfo_exists():
+                break  # self.CloseApp() has destroyed window
+            self.dtb.update(str(int(start + countdown_sec - time.time())))
+            self.after(100)
+            # During countdown timer, don't let ResumeFromSuspend() run
             self.last_refresh_time = time.time() + 1.0  # If abort, don't call again
 
-        dtb.close()
+        self.dtb.close()
 
     def SetAllPower(self, state):
         """ Loop through instances and set power state to "ON" or "OFF".
@@ -3072,12 +3114,15 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         ''' Create calculator class instance '''
         self.calculator = Calculator(self.calc_top, g.BIG_FONT, geom,
                                      btn_fg=ti['text'], btn_bg=ti['fill'])
+        self.win_grp.register_child('Calculator', self.calc_top)
+        # Do not auto raise children. homa.py will take care of that with FocusIn()
 
         def calculator_close(*_args):
             """ Save last geometry for next Calculator startup """
             last_geom = monitor.get_window_geom_string(
                 self.calc_top, leave_visible=False)  # Leave toplevel invisible
             monitor.save_window_geom('calculator', last_geom)
+            self.win_grp.unregister_child(self.calc_top)
             self.calc_top.destroy()
             self.calc_top = None  # Prevent lifting window
             self.calculator = None  # Prevent lifting window
@@ -3758,6 +3803,7 @@ v1_print(sys.argv[0], "- Home Automation", " | verbose1:", p_args.verbose1,
 
 ''' Global classes '''
 root = None  # Tkinter toplevel
+app = None  # Application GUI
 cfg = sql.Config()  # Colors configuration SQL records
 cp = Computer()  # cp = Computer Platform
 ni = NetworkInfo()  # ni = global class instance used everywhere
@@ -3765,7 +3811,7 @@ ni.adb_reset()  # When TCL TV is communicating this is necessary
 rd = NetworkInfo()  # rd = Rediscovery instance for app.Rediscover() & app.Discover()
 sm = None  # sm = System Monitor - fan speed and CPU temperatures
 
-save_cwd = ""  # Saved current working directory. Will change to program directory.
+SAVE_CWD = ""  # Saved current working directory. Will change to program directory.
 killer = ext.GracefulKiller()  # Class instance for shutdown or CTRL+C
 
 v0_print()
@@ -3867,12 +3913,12 @@ def main():
     global root  # named when main() called
     global app
     global ni  # NetworkInformation() class instance used everywhere
-    global save_cwd  # Saved current working directory to restore on exit
+    global SAVE_CWD  # Saved current working directory to restore on exit
 
     ''' Save current working directory '''
-    save_cwd = os.getcwd()  # Bad habit from old code in mserve.py
-    if save_cwd != g.PROGRAM_DIR:
-        v1_print("Changing from:", save_cwd, "to g.PROGRAM_DIR:", g.PROGRAM_DIR)
+    SAVE_CWD = os.getcwd()  # Bad habit from old code in mserve.py
+    if SAVE_CWD != g.PROGRAM_DIR:
+        v1_print("Changing from:", SAVE_CWD, "to g.PROGRAM_DIR:", g.PROGRAM_DIR)
         os.chdir(g.PROGRAM_DIR)
 
     ni = NetworkInfo()  # Generate Network Information for arp and hosts

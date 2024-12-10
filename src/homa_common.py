@@ -16,10 +16,12 @@ import warnings  # 'warnings' advises which commands aren't supported
 #       homa_common.py (Home Automation) - Common Python Functions Module
 #
 #       2024-11-24 - Creation date.
+#       2024-12-08 - Port GetMouseLocation() to monitor.py get_mouse_location()
 #
 # ==============================================================================
 
 #warnings.simplefilter('default')  # in future Python versions.
+import monitor
 
 ''' Usage:
     import homa_common as hc
@@ -163,7 +165,12 @@ Defaults	env_reset, timestamp_timeout=120
 def GetMouseLocation(coord_only=True):
     """ Get Mouse Location using xdotool
         Used by homa.py and homa-indicator.py
+        2024-12-08 Port GetMouseLocation() to monitor.py get_mouse_location()
     """
+
+    if True is True:
+        # 2024-12-08 Port GetMouseLocation() to monitor.py get_mouse_location()
+        return monitor.get_mouse_location(coord_only=coord_only)
 
     f = os.popen("xdotool getmouselocation")
     text = f.read().strip()
