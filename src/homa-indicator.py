@@ -58,7 +58,6 @@ except NameError:  # name 'reload' is not defined
 
 import global_variables as g
 g.init(appname="homa")
-import monitor  # Pippim monitor and window classes and functions
 import homa_common as hc  # hc.GetSudoPassword() and hc.GetMouseLocation()
 
 APP_ID = "homa-indicator"  # Unique application name used for app indicator id
@@ -67,7 +66,6 @@ SAVE_CWD = ""  # Saved current working directory. Will change to program directo
 HOMA_TITLE = "HomA - Home Automation"  # Window title must match program's title bar
 EYESOME_TITLE = "eyesome setup"  # Move by window title under application indicator
 SUDO_PASSWORD = None  # Sudo required for running eyesome
-MONITOR_INSTANCE = None  # Pippim instance of all monitors
 MOVE_WINDOW_RIGHT_ADJUST = -20  # Move Window Top Right Adjustment
 
 
@@ -123,7 +121,7 @@ def HomA(_):
     """
 
     # If not already running, start up homa.py
-    window = CheckRunning(HOMA_TITLE)
+    window = hc.CheckRunning(HOMA_TITLE)
     # window: 0x05c0000a  0 4354 72   1200 700    N/A HomA - Home Automation
     if len(window) < 4:  # Not running yet
         #print("homa-indicator.py HomA(): Starting HomA with '-f -s &'")
@@ -133,7 +131,8 @@ def HomA(_):
     else:
         new_window = False
 
-    MoveHere(HOMA_TITLE, new_window=new_window)  # Move opened window to current mouse location
+    # Move opened window to current mouse location
+    hc.MoveHere(HOMA_TITLE, new_window=new_window, adjust=MOVE_WINDOW_RIGHT_ADJUST)
 
 
 def Eyesome(_):
@@ -144,7 +143,7 @@ def Eyesome(_):
         Move Eyesome Window to current monitor at mouse location.
     """
 
-    window = CheckRunning(EYESOME_TITLE)
+    window = hc.CheckRunning(EYESOME_TITLE)
     # window: 0x06400007  0 3449 667  782  882  alien eyesome setup
 
     if len(window) < 4:  # Not running yet
@@ -170,7 +169,7 @@ def Eyesome(_):
         new_window = False
 
     # Move opened window to current mouse location under the app indicator
-    MoveHere(EYESOME_TITLE, new_window=new_window)
+    hc.MoveHere(EYESOME_TITLE, new_window=new_window, adjust=MOVE_WINDOW_RIGHT_ADJUST)
 
 
 def Quit(_):
@@ -183,102 +182,6 @@ def Quit(_):
         os.chdir(SAVE_CWD)
 
     Gtk.main_quit()
-
-
-def CheckRunning(title):
-    """ Check if program is running; homa.py or eyesome-cfg.sh, etc.
-        Match passed 'title' to window decoration application name.
-    """
-    global MONITOR_INSTANCE
-    MONITOR_INSTANCE = monitor.Monitors()
-    mon = MONITOR_INSTANCE  # Traditional Pippim abbreviation for Monitors() instance
-    #print("homa-indicator.py CheckRunning(): grep title:", title)
-    # wmctrl -lG | grep "$title"
-    cmd1 = sp.Popen(['wmctrl', "-lG"], stdout=sp.PIPE)
-    cmd2 = sp.Popen(['grep', title], stdin=cmd1.stdout, stdout=sp.PIPE)
-    output = cmd2.stdout.read().decode()  # Decode stdout stream to text
-    #print("homa-indicator.py CheckRunning(): output:", output)
-    # HomA   : 0x05c0000a  0 4354 72   1200 700    N/A HomA - Home Automation
-    # Eyesome: 0x06400007  0 3449 667  782  882  alien eyesome setup
-    _line = output.split()
-    #print("_line[0]:", _line[0])  # _line[0]: 0x06000018
-
-    _active_window = mon.get_active_window()
-    #print("mon.get_active_window():", _active_window)
-    # (number=92274698L, name='homa-indicator', x=2261, y=1225, width=1734, height=902)
-    _active_monitor = mon.get_active_monitor()
-    #print("mon.get_active_monitor():", _active_monitor)
-    # (number=1, name='DP-1-1', x=1920, y=0, width=3840, height=2160, primary=False)
-    _mouse_monitor = mon.get_mouse_monitor()
-    #print("mon.get_mouse_monitor():", _mouse_monitor)
-    # (number=2, name='eDP-1-1', x=3840, y=2160, width=1920, height=1080, primary=True)
-
-    # 2024-12-08 TODO: Create list of application geometries for every monitor
-    return output
-
-
-def MoveHere(title, new_window=True):
-    """ Move a running program's window below mouse cursor. Program may have been
-        started by homa-indicator or it may have already been running. When program
-        was already running and this is the same monitor, simply un-minimize and lift
-        window in the stacking order.
-
-        :param title: "HomA - Home Automation" / "eyesome setup"
-        :param new_window: Always move to app indicator position + offset
-        :returns True: if successful, else False
-
-    """
-    _who = "MoveHere():"
-
-    # Get program window's geometry
-    all_windows = sp.check_output(['wmctrl', '-lG']).splitlines()
-    for window in all_windows:
-        if title in window:
-            break
-    else:
-        return False
-
-    parts = window.split()
-    if len(parts) < 6:
-        return False
-
-    wId, _wStrange, _wX, _wY, wWidth, wHeight = parts[0:6]
-    #print(_who, "wId, wWidth, wHeight:", wId, wWidth, wHeight)
-
-    xPos, yPos = hc.GetMouseLocation()  # Get current mouse location
-    # Adjust x-offset using window's width
-    xPos2 = int(xPos) - int(wWidth) + MOVE_WINDOW_RIGHT_ADJUST
-
-    if not new_window:
-        # Use previously saved window position if on same monitor
-        pass
-
-    # Move program window to mouse position
-    # wmctrl -ir $window -e 1,$x2Pos,$yPos,$width,$height
-    command = 'wmctrl -ir ' + wId + ' -e 1,'
-    command += str(xPos2) + ',' + yPos + ',' + wWidth + ',' + wHeight
-    f = os.popen(command)
-    text = f.read().strip()
-    returncode = f.close()  # https://stackoverflow.com/a/70693068/6929343
-    if text:
-        print(_who, "text:", text)
-        return False
-    if returncode:
-        print(_who, "returncode:", returncode)
-        return False
-
-    # always un-minimize just in case
-    f = os.popen('wmctrl -ia ' + wId)
-    result = f.read().strip()
-    returncode = f.close()  # https://stackoverflow.com/a/70693068/6929343
-    if result:
-        print(_who, "result:", result)
-        return False
-    if returncode:
-        print(_who, "returncode:", returncode)
-        return False
-
-    return True
 
 
 if __name__ == "__main__":

@@ -144,7 +144,7 @@ REFRESH_MS = 16  # Refresh tooltip fades 60 frames per second
 REDISCOVER_SECONDS = 60  # Check devices changes every x seconds
 RESUME_TEST_SECONDS = 10  # > x seconds disappeared means system resumed
 RESUME_DELAY_RESTART = 3  # Pause x seconds after resuming from suspend
-TIMER_SEC = 420  # Tools Dropdown Menubar - Countdown Timer
+TIMER_SEC = 480  # Tools Dropdown Menubar - Countdown Timer default
 
 SENSOR_CHECK = 1.0  # Check `sensors` (CPU/GPU temp & fan speeds) every x seconds
 SENSOR_LOG = 3600.0  # Log `sensors` every x seconds. Log more if fan speed changes
@@ -181,6 +181,8 @@ class DeviceCommonSelf:
         self.passed_installed = []
         
         self.system_ctl = False  # Turning off TV shuts down / suspends system
+        self.remote_suspends_system = False  # If TV powered off suspend system
+
         self.suspendPowerOff = 0  # Did suspend power off the device?
         self.resumePowerOn = 0  # Did resume power on the device?
         self.menuPowerOff = 0  # Did user power off the device via menu option?
@@ -189,6 +191,17 @@ class DeviceCommonSelf:
         self.manualPowerOn = 0  # Was device physically powered on?
         self.dayPowerOff = 0  # Did daylight power off the device?
         self.nightPowerOn = 0  # Did nighttime power on the device?
+
+        self.cmdEvents = []  # Command events log
+        self.cmdEvent = {}  # Single command event
+        self.cmdStart = 0.0  # When command started
+        self.cmdDuration = 0.0  # Command duration
+        self.cmdList = []  # Command list to execute. Can contain "|" pipes
+        self.cmdText = ""  # text string returned by command
+        self.cmdErr = ""  # stderr from command
+        self.cmdReturncode = ""  # return code from command
+        # time: 999.99 duration: 9.999 who: <_who> command: <command str>
+        # text: <text> err: <text> return: <return code>
 
     def CheckDependencies(self, dependencies, installed):
         """ :param dependencies: list of dependencies.
@@ -240,6 +253,19 @@ class DeviceCommonSelf:
                     return exe_file
 
         return None
+
+    def LogEvent(self):
+        """ Append event{} (defaults to self.event{}) to self.events []
+
+        # Copy and paste JSON strings from Sony website:
+        # https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/getPowerStatus/index.html
+        JSON_str = \
+            '{"method": "getPowerStatus", "id": 50, "params": [], "version": "1.0"}'
+        reply_dict = ni.curl(JSON_str, "system", self.ip, forgive=forgive)
+
+        """
+
+        self.events.append(self.event)
 
 
 class Config(DeviceCommonSelf):
@@ -1353,6 +1379,7 @@ https://stackoverflow.com/questions/2829613/how-do-you-tell-if-a-string-contains
         self.power_status = "?"  # Can be "ON", "OFF" or "?"
         self.power_saving_mode = "?"  # set with PowerSavingMode()
         self.volume = "?"  # Set with getVolume()
+
         self.requires = ['curl']
         self.installed = []
         self.CheckDependencies(self.requires, self.installed)
@@ -2025,8 +2052,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.configure(background="WhiteSmoke")
         self.rowconfigure(0, weight=1)  # Weight 1 = stretchable row
         self.columnconfigure(0, weight=1)  # Weight 1 = stretchable column
-        self.xdo_os_window_id = os.popen("xdotool getactivewindow").read().strip()
-        # self.xdo_os_window_id: 92274698  # THIS CHANGES BELOW
+        # self.xdo_os_window_id = os.popen("xdotool getactivewindow").read().strip()
+        # self.xdo_os_window_id: 92274698  # THIS CHANGES BELOW TO 102760472
         self.title("HomA - Home Automation")
 
         ''' ChildWindows() moves children with toplevel and keeps children on top '''
@@ -2084,8 +2111,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             if inst.type_code == LAPTOP_D:
                 inst.app = self
 
+        ''' Save Toplevel OS window ID for minimizing window '''
         self.xdo_os_window_id = os.popen("xdotool getactivewindow").read().strip()
-        # self.xdo_os_window_id: 102760472  THIS CHANGED FROM ABOVE
+        # self.xdo_os_window_id: 102760472  THIS CHANGED FROM ABOVE 92274698
 
         while self.Refresh():  # Run forever until quit
             self.update_idletasks()  # Get queued tasks
@@ -2097,7 +2125,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             """ Clear sudo password for extreme caution """
             global SUDO_PASSWORD
             SUDO_PASSWORD = None  # clear global password in homa
-            sp.call(["sudo", "-K"])  # clear Linux short-term memory of password
+            sp.call(["sudo", "-K"])  # clear Linux sudo password timestamp
 
         mb = tk.Menu(self)
         self.config(menu=mb)
@@ -2137,10 +2165,10 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         # View Dropdown Menu
         self.view_menu = tk.Menu(mb, tearoff=0)
         self.view_menu.add_command(label="Sensors", font=g.FONT, underline=0, 
-                                   command=self.SensorsToggle, state=tk.DISABLED)
+                                   command=self.SensorsDevicesToggle, state=tk.DISABLED)
         self.view_menu.add_separator()
         self.view_menu.add_command(label="Network devices", font=g.FONT, underline=0,
-                                   command=self.SensorsToggle, state=tk.DISABLED)
+                                   command=self.SensorsDevicesToggle, state=tk.DISABLED)
 
         mb.add_cascade(label="View", font=g.FONT, underline=0, menu=self.view_menu)
 
@@ -2198,19 +2226,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
     def CloseApp(self, *_args):
         """ <Escape>, X on window, 'Exit from dropdown menu or Close Button"""
 
-        # Close Delayed Textbox if open:
-        #if self.dtb and self.dtb.mounted is True:
-        #    v0_print("Closing Timer Countdown. self.dtb.mounted:", self.dtb.mounted)
-        #    self.dtb.close()
-
-        # Close Big Number Calculator if open:
-        #if self.calculator and self.calc_top:
-        #    v0_print("Closing Big Number Calculator")
-        #    self.calc_top.destroy()
-
         # Need Devices treeview displayed to save ni.view_order
         if self.sensors_devices_btn['text'] == self.devices_btn_text:
-            self.SensorsToggle()  # Toggle off Sensors Treeview
+            self.SensorsDevicesToggle()  # Toggle off Sensors Treeview
 
         # Generate new ni.view_order list of MAC addresses
         order = []
@@ -2267,9 +2285,27 @@ class Application(DeviceCommonSelf, tk.Toplevel):
     def Suspend(self, *_args):
         """ Suspend system. """
 
-        # Cannot suspend when sensors treeview is displayed:
-        #if self.sensors_devices_btn['text'] == self.devices_btn_text:
-        #    self.SensorsToggle()  # Display devices treeview for proper save
+        _who = self.who + "Suspend():"
+        v0_print(_who, "Suspending system...")
+
+        ''' Is countdown already running? '''
+        # Cannot suspend when countdown timer is running. It resets last refresh
+        # time which tricks refresh into thinking it's not a resume from suspend
+        # when system comes back up.
+        if self.dtb:
+            if True is True:
+                # 2024-12-13: Safe method of suspending. However countdown timer
+                #   disappears until message acknowledged
+                message.ShowInfo(self, thread=self.Refresh,
+                                 icon='warning', title="Cannot Suspend now.",
+                                 text="Countdown timer must be closed.")
+                v0_print(_who, "Aborting suspend. Countdown timer active.")
+                return
+            v0_print(_who, "Aborting countdown timer.")
+            self.dtb.close()
+            self.after(300)  # Give time for countdown window to close
+            # Countdown timer (ResumeWait) uses: 'self.after(100)'
+            # 2024-12-13 - self.after(150ms not enough time.
 
         self.SetAllPower("OFF")  # Turn off all devices except computer
         cp.TurnOff()  # suspend the computer
@@ -2461,7 +2497,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             text = "Show Network Devices."
 
         self.sensors_devices_btn = device_button(
-            0, 0, toggle_text, self.SensorsToggle,
+            0, 0, toggle_text, self.SensorsDevicesToggle,
             text, "nw")
 
         ''' Suspend Button U+1F5F2  🗲 '''
@@ -2486,13 +2522,13 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         device_button(0, 4, "✘ Close", self.CloseApp,
                       "Close HomA and all windows HomA opened.", "ne")
 
-    def SensorsToggle(self):
+    def SensorsDevicesToggle(self):
         """ Sensors / Devices toggle button clicked.
             If button text == "Sensors" then active sm.tree.
             If button text == "Devices" then active Applications.tree.
 
         """
-        _who = self.who + "SensorsToggle()"
+        _who = self.who + "SensorsDevicesToggle()"
         show_devices = show_sensors = False
 
         # Get current button state and toggle it for next time.
@@ -2708,6 +2744,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             now = time.time()  # can be 15 seconds or more later
             APP_RESTART_TIME = now  # Reset app started time to resume time
 
+        ''' Is there a TV to be monitored for power off to suspend system? '''
+
         ''' Always give time slice to tooltips - requires sql.py color config '''
         self.tt.poll_tips()  # Tooltips fade in and out. self.info piggy backing
         self.update()  # process events in queue. E.G. message.ShowInfo()
@@ -2763,13 +2801,22 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.last_refresh_time = now + 1.0  # If abort, don't come back here
 
     def ResumeWait(self, timer=None):
-        """ Wait x seconds for devices to come online.
-            self.dtb (Delayed Text Box) if active then raise above other windows.
-            
+        """ Wait x seconds for devices to come online. If 'timer' passed do a
+            simple countdown.
+
             :param timer: When time passed it's a countdown timer
         """
 
         _who = self.who + "ResumeWait():"
+
+        ''' Is countdown already running? '''
+        if self.dtb:
+            if self.dtb.mounted:  # Is textbox mounted yet?
+                v0_print(_who, "Countdown already running.")
+                self.dtb.msg_top.focus_force()
+                self.dtb.msg_top.lift()
+            return
+
         if timer is None:
             countdown_sec = RESUME_DELAY_RESTART
             title = "Waiting after resume to check devices"
@@ -2786,7 +2833,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.dtb = message.DelayedTextBox(title=title, toplevel=self, width=width, 
                                           height=250, startup_delay=0, abort=True, 
                                           tf=tf, ta="center", win_grp=self.win_grp)
-        # Loop until delay start countdown finished
+        # Loop until delay resume countdown finished or menu countdown finishes
         start = time.time()
         while time.time() < start + countdown_sec:
             if self.dtb.forced_abort:
@@ -2794,11 +2841,13 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             if not self.winfo_exists():
                 break  # self.CloseApp() has destroyed window
             self.dtb.update(str(int(start + countdown_sec - time.time())))
+            # Suspend uses: 'self.after(150)'
             self.after(100)
-            # During countdown timer, don't let ResumeFromSuspend() run
-            self.last_refresh_time = time.time() + 1.0  # If abort, don't call again
+            # During countdown timer, don't trigger ResumeFromSuspend()
+            self.last_refresh_time = time.time() + 1.0
 
         self.dtb.close()
+        self.dtb = None
 
     def SetAllPower(self, state):
         """ Loop through instances and set power state to "ON" or "OFF".
@@ -2820,16 +2869,25 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 continue
 
             # Don't turn on bias light during daytime
+            night_power_on = False
             if inst.type_code == HS1_SP:
                 # 2024-11-26 - 'type_code' s/b 'BIAS_LIGHT' and
                 #   'sub_type_code' s/b 'HS1_SP`
                 if state == "ON" and night == "OFF":
-                    continue
+                    self.dayPowerOff += 1
+                    self.nightPowerOn = 0
+                    self.menuPowerOff = 0
+                    self.manualPowerOff = 0
+                    self.suspendPowerOff = 0
+                    continue  # Do not turn on light during daytime
+                else:
+                    night_power_on = True
 
             if state == "ON":
                 inst.TurnOn()
                 self.resumePowerOn += 1  # Resume powered on the device
                 self.menuPowerOn = 0  # User didn't power on the device via menu
+                self.nightPowerOn += 1 if night_power_on else 0
             elif state == "OFF":
                 inst.TurnOff()
                 self.suspendPowerOff += 1  # Suspend powered off the device
@@ -2862,6 +2920,38 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             # MAC address stored in treeview row hidden values[-1]
             v2_print("\n" + _who, "i:", i, "cr.mac:", cr.mac)
             v2_print("cr.inst:", cr.inst)
+
+        v2_print()  # Blank line to separate debugging output
+
+    def RefreshPowerStatus(self, start, end):
+        """ 2024-11-27 - No longer used. Was always full range of devices treeview.
+                Today replaced by RefreshAllPowerStatuses()
+
+            Read range of treeview rows and reset power status.
+            Device mac is stored in treeview row hidden column.
+            TreeviewRow.Get() creates a device instance.
+            Use device instance to get Power Status.
+        """
+        _who = self.who + "RefreshPowerStatus():"
+
+        # MAC address stored in treeview row hidden values[-1]
+        for i in range(start, end):  # loop rows
+            cr = TreeviewRow(self)  # Setup treeview row processing instance
+            cr.Get(i)  # Get existing row
+            old_text = cr.text
+            power_status = cr.inst.PowerStatus()
+            cr.text = "  " + power_status
+            if cr.text != old_text:
+                v1_print(_who, cr.mac, "Power status changed from: '"
+                         + old_text.strip() + "' to: '" + cr.text.strip() + "'.")
+            cr.Update(i)  # Update row with new ['text']
+
+            # Display row by row when there is processing lag
+            self.tree.update_idletasks()  # Slow mode display each row.
+
+            v2_print("\n" + _who, "i:", i, "cr.mac:", cr.mac)
+            v2_print("cr.inst:", cr.inst)
+            v2_print("power_status:", power_status)
 
         v2_print()  # Blank line to separate debugging output
 
@@ -2919,38 +3009,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             # MAC address stored in treeview row hidden values[-1]
             v2_print("\n" + _who, "i:", i, "cr.mac:", cr.mac)
             v2_print("cr.inst:", cr.inst)
-
-        v2_print()  # Blank line to separate debugging output
-
-    def RefreshPowerStatus(self, start, end):
-        """ 2024-11-27 - No longer used. Was always full range of devices treeview.
-                Today replaced by RefreshAllPowerStatuses()
-
-            Read range of treeview rows and reset power status.
-            Device mac is stored in treeview row hidden column.
-            TreeviewRow.Get() creates a device instance.
-            Use device instance to get Power Status.
-        """
-        _who = self.who + "RefreshPowerStatus():"
-
-        # MAC address stored in treeview row hidden values[-1]
-        for i in range(start, end):  # loop rows
-            cr = TreeviewRow(self)  # Setup treeview row processing instance
-            cr.Get(i)  # Get existing row
-            old_text = cr.text
-            power_status = cr.inst.PowerStatus()
-            cr.text = "  " + power_status
-            if cr.text != old_text:
-                v1_print(_who, cr.mac, "Power status changed from: '"
-                         + old_text.strip() + "' to: '" + cr.text.strip() + "'.")
-            cr.Update(i)  # Update row with new ['text']
-
-            # Display row by row when there is processing lag
-            self.tree.update_idletasks()  # Slow mode display each row.
-
-            v2_print("\n" + _who, "i:", i, "cr.mac:", cr.mac)
-            v2_print("cr.inst:", cr.inst)
-            v2_print("power_status:", power_status)
 
         v2_print()  # Blank line to separate debugging output
 
@@ -3131,6 +3189,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.calc_top.bind("<Escape>", calculator_close)
         self.calc_top.protocol("WM_DELETE_WINDOW", calculator_close)
         self.calc_top.update_idletasks()
+
+        ''' Move Calculator to cursor position '''
+        hc.MoveHere("Big Number Calculator", 'top_left')
 
 
 class TreeviewRow(DeviceCommonSelf):

@@ -26,8 +26,8 @@ import monitor
 ''' Usage:
     import homa_common as hc
     
-    xPos, yPos = hc.GetMouseLocation()  # Default argument coord_only=True
-    xPos, yPos, Screen, Window = hc.GetMouseLocation(coord_only=False)
+    xPos, yPos = GetMouseLocation()  # Default argument coord_only=True
+    xPos, yPos, Screen, Window = GetMouseLocation(coord_only=False)
     
     if hc.SUDO_PASSWORD is None:
         SUDO_PASSWORD = hc.GetSudoPassword()
@@ -203,6 +203,106 @@ def GetMouseLocation(coord_only=True):
     Screen = get_value(2)
     Window = get_value(3)
     return xPos, yPos, Screen, Window
+
+
+def CheckRunning(title):
+    """ Check if program is running; homa.py or eyesome-cfg.sh, etc.
+        Match passed 'title' to window decoration application name.
+    """
+
+    mon = monitor.Monitors()  # Traditional Pippim abbreviation for Monitors() instance
+    #print("homa-indicator.py CheckRunning(): grep title:", title)
+    # wmctrl -lG | grep "$title"
+    cmd1 = sp.Popen(['wmctrl', "-lG"], stdout=sp.PIPE)
+    cmd2 = sp.Popen(['grep', title], stdin=cmd1.stdout, stdout=sp.PIPE)
+    output = cmd2.stdout.read().decode()  # Decode stdout stream to text
+    #print("homa-indicator.py CheckRunning(): output:", output)
+    # HomA   : 0x05c0000a  0 4354 72   1200 700    N/A HomA - Home Automation
+    # Eyesome: 0x06400007  0 3449 667  782  882  alien eyesome setup
+    _line = output.split()
+    #print("_line[0]:", _line[0])  # _line[0]: 0x06000018
+
+    _active_window = mon.get_active_window()
+    #print("mon.get_active_window():", _active_window)
+    # (number=92274698L, name='homa-indicator', x=2261, y=1225, width=1734, height=902)
+    _active_monitor = mon.get_active_monitor()
+    #print("mon.get_active_monitor():", _active_monitor)
+    # (number=1, name='DP-1-1', x=1920, y=0, width=3840, height=2160, primary=False)
+    _mouse_monitor = mon.get_mouse_monitor()
+    #print("mon.get_mouse_monitor():", _mouse_monitor)
+    # (number=2, name='eDP-1-1', x=3840, y=2160, width=1920, height=1080, primary=True)
+
+    # 2024-12-08 TODO: Create list of application geometries for every monitor
+    return output
+
+
+def MoveHere(title, pos='top_right', adjust=0, new_window=True):
+    """ Move a running program's window below mouse cursor. Program may have been
+        started by homa-indicator or it may have already been running. When program
+        was already running and this is the same monitor, simply un-minimize and lift
+        window in the stacking order.
+
+        :param title: "HomA - Home Automation" / "eyesome setup" / "Big Number Calculator"
+        :param pos: Position window's 'top_left' or 'top_right' to mouse position. 
+        :param adjust: adjustment value to add to position. Can be a negative integer.
+        :param new_window: Always move to app indicator position + offset
+        :returns True: if successful, else False
+
+    """
+    _who = "MoveHere():"
+
+    # Get program window's geometry
+    all_windows = sp.check_output(['wmctrl', '-lG']).splitlines()
+    for window in all_windows:
+        if title in window:
+            break
+    else:
+        return False
+
+    parts = window.split()
+    if len(parts) < 6:
+        return False
+
+    wId, _wStrange, _wX, _wY, wWidth, wHeight = parts[0:6]
+    #print(_who, "wId, wWidth, wHeight:", wId, wWidth, wHeight)
+
+    xPos, yPos = GetMouseLocation()  # Get current mouse location
+    # Adjust x-offset using window's width
+    if pos == 'top_right':
+        xPos2 = int(xPos) - int(wWidth) + adjust
+    else:
+        xPos2 = int(xPos) + adjust
+
+    if not new_window:
+        # Use previously saved window position if on same monitor
+        pass
+
+    # Move program window to mouse position
+    # wmctrl -ir $window -e 1,$x2Pos,$yPos,$width,$height
+    command = 'wmctrl -ir ' + wId + ' -e 1,'
+    command += str(xPos2) + ',' + yPos + ',' + wWidth + ',' + wHeight
+    f = os.popen(command)
+    text = f.read().strip()
+    returncode = f.close()  # https://stackoverflow.com/a/70693068/6929343
+    if text:
+        print(_who, "text:", text)
+        return False
+    if returncode:
+        print(_who, "returncode:", returncode)
+        return False
+
+    # always un-minimize just in case
+    f = os.popen('wmctrl -ia ' + wId)
+    result = f.read().strip()
+    returncode = f.close()  # https://stackoverflow.com/a/70693068/6929343
+    if result:
+        print(_who, "result:", result)
+        return False
+    if returncode:
+        print(_who, "returncode:", returncode)
+        return False
+
+    return True
 
 
 def display_edid():
