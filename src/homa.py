@@ -144,7 +144,7 @@ REFRESH_MS = 16  # Refresh tooltip fades 60 frames per second
 REDISCOVER_SECONDS = 60  # Check devices changes every x seconds
 RESUME_TEST_SECONDS = 10  # > x seconds disappeared means system resumed
 RESUME_DELAY_RESTART = 3  # Pause x seconds after resuming from suspend
-TIMER_SEC = 480  # Tools Dropdown Menubar - Countdown Timer default
+TIMER_SEC = 540  # Tools Dropdown Menubar - Countdown Timer default
 
 SENSOR_CHECK = 1.0  # Check `sensors` (CPU/GPU temp & fan speeds) every x seconds
 SENSOR_LOG = 3600.0  # Log `sensors` every x seconds. Log more if fan speed changes
@@ -266,6 +266,36 @@ class DeviceCommonSelf:
         """
 
         self.events.append(self.event)
+        """
+
+        SIMPLE COMMAND (e.g. no pipe or redirection used):
+
+        _who = self.who + "isDevice():"
+        v2_print(_who, "Test if device is TCL Google Android TV:", self.ip)
+
+        command_line_list = ["timeout", timeout, "adb", "connect", self.ip]
+        command_line_str = ' '.join(command_line_list)
+        pipe = sp.Popen(command_line_list, stdout=sp.PIPE, stderr=sp.PIPE)
+        text, err = pipe.communicate()  # This performs .wait() too
+
+        v3_print(_who, "Results from '" + command_line_str + "':")
+        Reply = text.strip()
+        v3_print(_who, "Reply: '" + Reply + "' | type:", type(Reply), len(Reply))
+        v3_print(_who, "err: '" + err.strip() + "'  | pipe.returncode:",
+                 pipe.returncode)
+
+        if not pipe.returncode == 0:
+            if forgive is False:
+                v0_print(_who, "pipe.returncode:", pipe.returncode)
+            return False
+
+        # Reply = "connected to 192.168.0.17:5555"
+        # Reply = "already connected to 192.168.0.17:5555"
+        # Reply = "unable to connect to 192.168.0.17:5555"
+        # Reply = "error: device offline"
+        return "connected" in Reply
+
+        """
 
 
 class Config(DeviceCommonSelf):
@@ -408,7 +438,8 @@ class Computer(DeviceCommonSelf):
 
         v3_print(_who, "Results from '" + command_line_str + "':")
         v3_print(_who, "text: '" + text.strip() + "'")
-        v3_print(_who, "err: '" + err + "'  | pipe.returncode:", pipe.returncode)
+        v3_print(_who, "err: '" + err.strip() + "'  | pipe.returncode:",
+                 pipe.returncode)
 
         if not pipe.returncode == 0:
             if forgive is False:
@@ -544,7 +575,8 @@ class Computer(DeviceCommonSelf):
 
         v3_print(_who, "Results from '" + command_line_str + "':")
         v3_print(_who, "text: '" + text.strip() + "'")
-        v3_print(_who, "err: '" + err + "'  | pipe.returncode:", pipe.returncode)
+        v3_print(_who, "err: '" + err.strip() + "'  | pipe.returncode:",
+                 pipe.returncode)
 
         self.power_status = "OFF"  # Can be "ON", "OFF" or "?"
         return self.power_status  # Really it is "SLEEP"
@@ -587,7 +619,8 @@ class Computer(DeviceCommonSelf):
 
             v3_print(_who, "Results from '" + command_line_str + "':")
             v3_print(_who, "text: '" + text.strip() + "'")
-            v3_print(_who, "err: '" + err + "'  | pipe.returncode:", pipe.returncode)
+            v3_print(_who, "err: '" + err.strip() + "'  | pipe.returncode:",
+                     pipe.returncode)
 
             if pipe.returncode == 0:
                 night_light = text.strip()
@@ -819,7 +852,8 @@ class NetworkInfo(DeviceCommonSelf):
 
         v3_print(_who, "Results from '" + command_line_str + "':")
         v3_print(_who, "text: '" + text.strip() + "'")
-        v3_print(_who, "err: '" + err + "'  | pipe.returncode:", pipe.returncode)
+        v3_print(_who, "err: '" + err.strip() + "'  | pipe.returncode:",
+                 pipe.returncode)
 
         if not pipe.returncode == 0:
             v2_print(_who, "pipe.returncode:", pipe.returncode)
@@ -853,7 +887,8 @@ class NetworkInfo(DeviceCommonSelf):
 
         v3_print(_who, "Results from '" + command_line_str + "':")
         v3_print(_who, "text: '" + text.strip() + "'")
-        v3_print(_who, "err: '" + err + "'  | pipe.returncode:", pipe.returncode)
+        v3_print(_who, "err: '" + err.strip() + "'  | pipe.returncode:",
+                 pipe.returncode)
 
         if not pipe.returncode == 0:
             v2_print(_who, "pipe.returncode:", pipe.returncode)
@@ -903,7 +938,8 @@ class NetworkInfo(DeviceCommonSelf):
 
         v3_print(_who, "Results from '" + command_line_str + "':")
         v3_print(_who, "text: '" + text.strip() + "'")
-        v3_print(_who, "err: '" + err + "'  | pipe.returncode:", pipe.returncode)
+        v3_print(_who, "err: '" + err.strip() + "'  | pipe.returncode:",
+                 pipe.returncode)
 
         if not pipe.returncode == 0:
             if forgive is False:
@@ -1299,7 +1335,8 @@ class SmartPlugHS100(DeviceCommonSelf):
 
         v3_print(_who, "Results from '" + command_line_str + "':")
         v3_print(_who, "text: '" + text.strip() + "'")
-        v3_print(_who, "err: '" + err + "'  | pipe.returncode:", pipe.returncode)
+        v3_print(_who, "err: '" + err.strip() + "'  | pipe.returncode:",
+                 pipe.returncode)
 
         if not pipe.returncode == 0:
             if forgive is False:
@@ -1338,7 +1375,8 @@ class SmartPlugHS100(DeviceCommonSelf):
 
         v3_print(_who, "Results from '" + command_line_str + "':")
         v3_print(_who, "text: '" + text.strip() + "'")
-        v3_print(_who, "err: '" + err + "'  | pipe.returncode:", pipe.returncode)
+        v3_print(_who, "err: '" + err.strip() + "'  | pipe.returncode:",
+                 pipe.returncode)
 
         self.power_status = status  # Can be "ON", "OFF" or "?"
 
@@ -1813,7 +1851,8 @@ class TclGoogleAndroidTV(DeviceCommonSelf):
 
             v3_print(_who, "Results from '" + command_line_str + "':")
             v3_print(_who, "text: '" + text.strip() + "'")
-            v3_print(_who, "err: '" + err + "'  | pipe.returncode:", pipe.returncode)
+            v3_print(_who, "err: '" + err.strip() + "'  | pipe.returncode:",
+                     pipe.returncode)
 
             if not pipe.returncode == 0:
                 if forgive is False:
@@ -1847,7 +1886,8 @@ class TclGoogleAndroidTV(DeviceCommonSelf):
 
         v3_print(_who, "Results from '" + command_line_str + "':")
         v3_print(_who, "text: '" + text.strip() + "'")
-        v3_print(_who, "err: '" + err + "'  | pipe.returncode:", pipe.returncode)
+        v3_print(_who, "err: '" + err.strip() + "'  | pipe.returncode:",
+                 pipe.returncode)
         v2_print(_who, "reply from grep 'screenOn':", text, err)
 
         if not pipe.returncode == 0:
@@ -1908,7 +1948,8 @@ class TclGoogleAndroidTV(DeviceCommonSelf):
 
             v3_print(_who, "Results from '" + command_line_str + "':")
             v3_print(_who, "text: '" + text.strip() + "'")
-            v3_print(_who, "err: '" + err + "'  | pipe.returncode:", pipe.returncode)
+            v3_print(_who, "err: '" + err.strip() + "'  | pipe.returncode:",
+                     pipe.returncode)
             # TclGoogleAndroidTV().TurnOn(): err: error: device unauthorized.
             # This adb d's $ADB_VENDOR_KEYS is not set; try 'adb kill-server' if that seems wrong.
             # Otherwise check for a confirmation dialog on your device.
@@ -1953,7 +1994,8 @@ class TclGoogleAndroidTV(DeviceCommonSelf):
 
         v3_print(_who, "Results from '" + command_line_str + "':")
         v3_print(_who, "text: '" + text.strip() + "'")
-        v3_print(_who, "err: '" + err + "'  | pipe.returncode:", pipe.returncode)
+        v3_print(_who, "err: '" + err.strip() + "'  | pipe.returncode:",
+                 pipe.returncode)
         v2_print(_who, "reply from KEYCODE_SLEEP:", text, err)
 
         if not pipe.returncode == 0:
@@ -1969,10 +2011,8 @@ class TclGoogleAndroidTV(DeviceCommonSelf):
         return self.power_status
 
     def isDevice(self, forgive=False, timeout=ADB_CON_TIME):
-        """ Return True if active or standby, False if power off or no communication
+        """ Return True if adb connection for Android device (using IP address).
             If forgive=True then don't report pipe.returncode != 0
-
-            Consider generic call to PowerStatus using isDevice, TestSonyOn and TestSonyOff
         """
 
         _who = self.who + "isDevice():"
@@ -1986,7 +2026,8 @@ class TclGoogleAndroidTV(DeviceCommonSelf):
         v3_print(_who, "Results from '" + command_line_str + "':")
         Reply = text.strip()
         v3_print(_who, "Reply: '" + Reply + "' | type:", type(Reply), len(Reply))
-        v3_print(_who, "err: '" + err + "'  | pipe.returncode:", pipe.returncode)
+        v3_print(_who, "err: '" + err.strip() + "'  | pipe.returncode:",
+                 pipe.returncode)
 
         if not pipe.returncode == 0:
             if forgive is False:
@@ -2307,6 +2348,16 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             # Countdown timer (ResumeWait) uses: 'self.after(100)'
             # 2024-12-13 - self.after(150ms not enough time.
 
+        ''' Is rediscovery in progress? '''
+        if not self.rediscover_done:
+            # 2024-12-14: Safe method of suspending. Last night during suspend the
+            #   system rebooted. TODO: Disable suspend button during rediscovery.
+            message.ShowInfo(self, thread=self.Refresh,
+                             icon='warning', title="Cannot Suspend now.",
+                             text="Device rediscovery is in progress for a few seconds.")
+            v0_print(_who, "Aborting suspend. Device rediscovery in progress.")
+            return
+
         self.SetAllPower("OFF")  # Turn off all devices except computer
         cp.TurnOff()  # suspend the computer
 
@@ -2449,9 +2500,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
     def BuildButtonBar(self, toggle_text):
         """ Paint button bar below treeview.
-            Toggle - Button toggles between show Sensors or show Devices.
-            Suspend - Power off all devices and suspend system.
             Minimize - Minimize window.
+            Tree Toggle - Button toggles between show Sensors or show Devices.
+            Suspend - Power off all devices and suspend system.
             Help - www.pippim.com/HomA.
             Close - Close HomA. 
         """
@@ -2489,6 +2540,10 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 self.tt.add_tip(widget, tt_text, anchor=tt_anchor)
             return widget
 
+        ''' Minimize Button - U+1F847 🡇  -OR-  U+25BC ▼ '''
+        device_button(0, 0, "▼  Minimize", self.MinimizeApp,
+                      "Quickly and easily minimize HomA.", "nw")
+
         # noinspection SpellCheckingInspection
         ''' 🌡 (U+1F321) Sensors Button  -OR-  🗲 (U+1F5F2) Devices Button '''
         if toggle_text == self.sensors_btn_text:
@@ -2497,16 +2552,12 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             text = "Show Network Devices."
 
         self.sensors_devices_btn = device_button(
-            0, 0, toggle_text, self.SensorsDevicesToggle,
+            0, 1, toggle_text, self.SensorsDevicesToggle,
             text, "nw")
 
         ''' Suspend Button U+1F5F2  🗲 '''
-        device_button(0, 1, "🗲 Suspend", self.Suspend,
-                      "Power off all devices except suspend computer.", "nw")
-
-        ''' Minimize Button - U+1F847 🡇  -OR-  U+25BC ▼ '''
-        device_button(0, 2, "▼  Minimize", self.MinimizeApp,
-                      "Quickly and easily minimize HomA.", "ne")
+        device_button(0, 2, "🗲 Suspend", self.Suspend,
+                      "Power off all devices except suspend computer.", "ne")
 
         ''' Help Button - ⧉ Help - Videos and explanations on pippim.com
             https://www.pippim.com/programs/HomA.html#HelpMusicLocationTree '''
@@ -2856,6 +2907,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         """
         _who = self.who + "SetAllPower():"
         night = cp.NightLightStatus()
+        v1_print(_who, "Nightlight status: '" + night + "'")
 
         usingDevicesTreeview = \
             self.sensors_devices_btn['text'] != self.devices_btn_text
@@ -2869,25 +2921,29 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 continue
 
             # Don't turn on bias light during daytime
-            night_power_on = False
+            night_powered_on = False
             if inst.type_code == HS1_SP:
                 # 2024-11-26 - 'type_code' s/b 'BIAS_LIGHT' and
                 #   'sub_type_code' s/b 'HS1_SP`
+                v1_print("\n" + _who, "Bias light device: '" + inst.type + "'",
+                         " | IP: '" + inst.ip + "'")
                 if state == "ON" and night == "OFF":
                     self.dayPowerOff += 1
                     self.nightPowerOn = 0
                     self.menuPowerOff = 0
                     self.manualPowerOff = 0
                     self.suspendPowerOff = 0
+                    v1_print(_who, "Do not turn on Bias light in daytime.")
                     continue  # Do not turn on light during daytime
                 else:
-                    night_power_on = True
+                    v1_print(_who, "Turn on Bias light at night.")
+                    night_powered_on = True
 
             if state == "ON":
                 inst.TurnOn()
                 self.resumePowerOn += 1  # Resume powered on the device
                 self.menuPowerOn = 0  # User didn't power on the device via menu
-                self.nightPowerOn += 1 if night_power_on else 0
+                self.nightPowerOn += 1 if night_powered_on else 0
             elif state == "OFF":
                 inst.TurnOff()
                 self.suspendPowerOff += 1  # Suspend powered off the device
