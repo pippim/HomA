@@ -9,7 +9,7 @@ Description: HomA - Home Automation - Main **homa** Python Module
 
 from __future__ import print_function  # Must be first import
 from __future__ import with_statement  # Error handling for file opens
-import warnings  # 'warnings' advises which commands aren't supported
+import warnings  # 'warnings' advises which methods aren't supported
 
 # ==============================================================================
 #
@@ -109,7 +109,7 @@ import time  # For now = time.time()
 import datetime as dt  # For dt.datetime.now().strftime('%I:%M %p')
 
 try:
-    reload(sys)  # June 25, 2023 - Without these commands, os.popen() fails on OS
+    reload(sys)  # June 25, 2023 - Without utf8 sys reload, os.popen() fails on OS
     sys.setdefaultencoding('utf8')  # filenames that contain unicode characters
 except NameError:  # name 'reload' is not defined
     pass  # Python 3 already in unicode by default
@@ -131,13 +131,13 @@ CONFIG_FNAME = "config.json"  # Future configuration file.
 DEVICES_FNAME = "devices.json"  # mirrors ni.arp_dicts[{}, {}, ... {}]
 VIEW_ORDER_FNAME = "view_order.json"  # Read into ni.view_order[mac1, mac2, ... mac9]
 
-# Timeouts to improve TV interface performance
+# Timeouts improve device interface performance
+PLUG_TIME = "2.0"  # Smart plug timeout to turn power on/off
 CURL_TIME = "0.2"  # Anything longer means not a Sony TV or disconnected
 ADB_CON_TIME = "0.3"  # Android TV Test if connected timeout
 ADB_PWR_TIME = "2.0"  # Android TV Test if power state is on. Test increment .5 sec
 ADB_KEY_TIME = "5.0"  # Android keyevent KEYCODE_SLEEP or KEYCODE_WAKEUP timeout
 ADB_MAGIC_TIME = "0.2"  # Android TV Magic Packet wait time.
-PLUG_TIME = "2"  # Smart plug timeout to turn power on/off
 
 APP_RESTART_TIME = time.time()  # Time started or resumed. Use for elapsed time print
 REFRESH_MS = 16  # Refresh tooltip fades 60 frames per second
@@ -145,6 +145,8 @@ REDISCOVER_SECONDS = 60  # Check devices changes every x seconds
 RESUME_TEST_SECONDS = 10  # > x seconds disappeared means system resumed
 RESUME_DELAY_RESTART = 3  # Pause x seconds after resuming from suspend
 TIMER_SEC = 540  # Tools Dropdown Menubar - Countdown Timer default
+LOG_EVENTS = True  # Override runCommand event logging / --verbose3 printing
+EVENT_ERROR_COUNT = 0  # To enable/disable View Dropdown menu "Discovery errors"
 
 SENSOR_CHECK = 1.0  # Check `sensors` (CPU/GPU temp & fan speeds) every x seconds
 SENSOR_LOG = 3600.0  # Log `sensors` every x seconds. Log more if fan speed changes
@@ -160,7 +162,7 @@ LAPTOP_D = 120  # Laptop display (Can be turned on/off separate from base)
 SUDO_PASSWORD = None  # Sudo password required for laptop backlight
 BACKLIGHT_NAME = os.popen("ls /sys/class/backlight").read().strip()  # intel_backlight
 BACKLIGHT_ON = "0"  # Sudo echo to "/sys/class/backlight/intel_backlight/bl_power"
-BACKLIGHT_OFF = "4"  # Ditto
+BACKLIGHT_OFF = "4"  # ... will control laptop display backlight power On/Off.
 
 POWER_OFF_CMD_LIST = ["systemctl", "suspend"]  # When calling "Turn Off" for Computer()
 POWER_ALL_EXCL_LIST = [DESKTOP, LAPTOP_B, LAPTOP_D]  # Exclude when powering "All"
@@ -168,7 +170,7 @@ POWER_ALL_EXCL_LIST = [DESKTOP, LAPTOP_B, LAPTOP_D]  # Exclude when powering "Al
 
 class DeviceCommonSelf:
     """ Common Variables used by NetworkInfo, SmartPlugHS100, SonyBraviaKdlTV,
-        and TclGoogleTV classes
+        and TclGoogleTV device classes. Also used by Application() class.
     """
 
     def __init__(self, who):
@@ -183,6 +185,7 @@ class DeviceCommonSelf:
         self.system_ctl = False  # Turning off TV shuts down / suspends system
         self.remote_suspends_system = False  # If TV powered off suspend system
 
+        # 2024-12-17 TODO: Use inst.suspendPowerOff, instead of self.suspendPowerOff
         self.suspendPowerOff = 0  # Did suspend power off the device?
         self.resumePowerOn = 0  # Did resume power on the device?
         self.menuPowerOff = 0  # Did user power off the device via menu option?
@@ -192,14 +195,21 @@ class DeviceCommonSelf:
         self.dayPowerOff = 0  # Did daylight power off the device?
         self.nightPowerOn = 0  # Did nighttime power on the device?
 
+        # self.overrideLog = None  # Set True during auto rediscovery for no logging
+        # self.overrideLog won't work because it is defined at instance level as well
+        # as the Application() summary level
+
+        # Separate self.cmdEvents for every instance.
         self.cmdEvents = []  # Command events log
         self.cmdEvent = {}  # Single command event
-        self.cmdStart = 0.0  # When command started
-        self.cmdDuration = 0.0  # Command duration
-        self.cmdList = []  # Command list to execute. Can contain "|" pipes
-        self.cmdText = ""  # text string returned by command
-        self.cmdErr = ""  # stderr from command
-        self.cmdReturncode = ""  # return code from command
+        self.cmdCaller = ""  # Command caller (self.who) {caller: ""}
+        self.cmdCommand = []  # Command list to execute. {command: []}
+        self.cmdString = ""  # Command list as string. {command_string: ""}
+        self.cmdStart = 0.0  # When command started {start_time: 9.99}
+        self.cmdDuration = 0.0  # Command duration {duration: 9.99}
+        self.cmdOutput = ""  # stdout.strip() from command {output: Xxx}
+        self.cmdError = ""  # stderr.strip() from command {error: Xxx}
+        self.cmdReturncode = ""  # return code from command {returncode: 9}
         # time: 999.99 duration: 9.999 who: <_who> command: <command str>
         # text: <text> err: <text> return: <return code>
 
@@ -254,48 +264,54 @@ class DeviceCommonSelf:
 
         return None
 
-    def LogEvent(self):
-        """ Append event{} (defaults to self.event{}) to self.events []
-
-        # Copy and paste JSON strings from Sony website:
-        # https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/getPowerStatus/index.html
-        JSON_str = \
-            '{"method": "getPowerStatus", "id": 50, "params": [], "version": "1.0"}'
-        reply_dict = ni.curl(JSON_str, "system", self.ip, forgive=forgive)
-
+    def runCommand(self, command_line_list, who=None, forgive=False, log=True):
+        """ Run command and return dictionary of results. Print to console
+            when -vvv (verbose3) debug printing is used.
         """
 
-        self.events.append(self.event)
-        """
+        self.cmdCaller = who if who is not None else self.who
+        _who = self.cmdCaller + " runCommand():"
+        self.cmdCommand = command_line_list
+        self.cmdString = ' '.join(command_line_list)
+        self.cmdStart = time.time()
 
-        SIMPLE COMMAND (e.g. no pipe or redirection used):
-
-        _who = self.who + "isDevice():"
-        v2_print(_who, "Test if device is TCL Google Android TV:", self.ip)
-
-        command_line_list = ["timeout", timeout, "adb", "connect", self.ip]
-        command_line_str = ' '.join(command_line_list)
-        pipe = sp.Popen(command_line_list, stdout=sp.PIPE, stderr=sp.PIPE)
+        pipe = sp.Popen(self.cmdCommand, stdout=sp.PIPE, stderr=sp.PIPE)
         text, err = pipe.communicate()  # This performs .wait() too
+        self.cmdDuration = time.time() - self.cmdStart
 
-        v3_print(_who, "Results from '" + command_line_str + "':")
-        Reply = text.strip()
-        v3_print(_who, "Reply: '" + Reply + "' | type:", type(Reply), len(Reply))
-        v3_print(_who, "err: '" + err.strip() + "'  | pipe.returncode:",
-                 pipe.returncode)
+        self.cmdOutput = text.strip()
+        self.cmdError = err.strip()
+        self.cmdReturncode = pipe.returncode
+        if LOG_EVENTS is False:
+            log = False  # Auto rediscovery has turned off logging
+        if log:
+            v3_print("\n" + _who, "'" + self.cmdString + "'")
+            v3_print("  cmdOutput: '" + self.cmdOutput + "'")
+            v3_print("  cmdError : '" + self.cmdError  + "'  | cmdReturncode: ",
+                     self.cmdReturncode, "  | cmdDuration:", self.cmdDuration)
 
-        if not pipe.returncode == 0:
+        if not self.cmdReturncode == 0:
             if forgive is False:
-                v0_print(_who, "pipe.returncode:", pipe.returncode)
-            return False
+                v0_print(_who, "cmdReturncode:", self.cmdReturncode)
 
-        # Reply = "connected to 192.168.0.17:5555"
-        # Reply = "already connected to 192.168.0.17:5555"
-        # Reply = "unable to connect to 192.168.0.17:5555"
-        # Reply = "error: device offline"
-        return "connected" in Reply
+        # Log event
+        self.cmdEvent = {
+            'caller': self.cmdCaller,  # Command caller (self.who)
+            'command': self.cmdCommand,  # Command list to executed
+            'command_string': self.cmdString,  # Command list as string
+            'start_time': self.cmdStart,  # When command started
+            'duration': self.cmdDuration,  # Command duration
+            'output': self.cmdOutput,  # stdout.strip() from command
+            'error': self.cmdError,  # stderr.strip() from command
+            'returncode': self.cmdReturncode  # return code from command
+        }
 
-        """
+        if log:
+            self.cmdEvents.append(self.cmdEvent)
+            if self.cmdError or self.cmdReturncode:
+                global EVENT_ERROR_COUNT
+                EVENT_ERROR_COUNT += 1
+        return self.cmdEvent
 
 
 class Config(DeviceCommonSelf):
@@ -379,6 +395,8 @@ class Computer(DeviceCommonSelf):
         # "tablet", "handset", "watch", "embedded", "vm" and "container"
 
         if self.CheckInstalled('hostnamectl'):
+            # 2024-12-16 TODO: convert to self.runCommand()
+            #   universal_newlines: https://stackoverflow.com/a/38182530/6929343
             machine_info = sp.check_output(["hostnamectl", "status"], universal_newlines=True)
             m = re.search('Chassis: (.+?)\n', machine_info)
             self.chassis = m.group(1)  # TODO: Use this for Dell Virtual temp/fan driver
@@ -432,20 +450,23 @@ class Computer(DeviceCommonSelf):
             return
 
         command_line_list = ["ip", "addr"]
-        command_line_str = ' '.join(command_line_list)
-        pipe = sp.Popen(command_line_list, stdout=sp.PIPE, stderr=sp.PIPE)
-        text, err = pipe.communicate()  # This performs .wait() too
+        event = self.runCommand(command_line_list, _who, forgive=forgive)
+        #command_line_str = ' '.join(command_line_list)
+        #pipe = sp.Popen(command_line_list, stdout=sp.PIPE, stderr=sp.PIPE)
+        #text, err = pipe.communicate()  # This performs .wait() too
 
-        v3_print(_who, "Results from '" + command_line_str + "':")
-        v3_print(_who, "text: '" + text.strip() + "'")
-        v3_print(_who, "err: '" + err.strip() + "'  | pipe.returncode:",
-                 pipe.returncode)
+        #v3_print(_who, "Results from '" + command_line_str + "':")
+        #v3_print(_who, "text: '" + text.strip() + "'")
+        #v3_print(_who, "err: '" + err.strip() + "'  | pipe.returncode:",
+        #         pipe.returncode)
 
-        if not pipe.returncode == 0:
+        #if not pipe.returncode == 0:
+        if not event['returncode'] == 0:
             if forgive is False:
                 v0_print(_who, "pipe.returncode:", pipe.returncode)
             return ""  # Return null string = False
-        interface = text.strip().splitlines()
+        #interface = text.strip().splitlines()
+        interface = event['output'].splitlines()
         # noinspection SpellCheckingInspection
         ''' `ip addr` output:
 1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
@@ -559,8 +580,8 @@ class Computer(DeviceCommonSelf):
                 systemctl suspend
 
             Prior to calling cp.TurnOff(), Application().TurnOff() calls
-            SetAllPower("OFF") to turn off all devices. If rebooting rather than
-            suspending then devices are left powered up.
+            SetAllPower("OFF") to turn off all other devices. If rebooting, rather
+            than suspending, then devices are left powered up.
         """
         _who = self.who + "TurnOff():"
         v2_print(_who, "Turn Off Computer:", self.ip)
@@ -569,14 +590,16 @@ class Computer(DeviceCommonSelf):
             pass
 
         command_line_list = POWER_OFF_CMD_LIST  # systemctl suspend
-        command_line_str = ' '.join(command_line_list)
-        pipe = sp.Popen(command_line_list, stdout=sp.PIPE, stderr=sp.PIPE)
-        text, err = pipe.communicate()  # This performs .wait() too
+        _event = self.runCommand(command_line_list, _who, forgive=forgive)
 
-        v3_print(_who, "Results from '" + command_line_str + "':")
-        v3_print(_who, "text: '" + text.strip() + "'")
-        v3_print(_who, "err: '" + err.strip() + "'  | pipe.returncode:",
-                 pipe.returncode)
+        #command_line_str = ' '.join(command_line_list)
+        #pipe = sp.Popen(command_line_list, stdout=sp.PIPE, stderr=sp.PIPE)
+        #text, err = pipe.communicate()  # This performs .wait() too
+
+        #v3_print(_who, "Results from '" + command_line_str + "':")
+        #v3_print(_who, "text: '" + text.strip() + "'")
+        #v3_print(_who, "err: '" + err.strip() + "'  | pipe.returncode:",
+        #         pipe.returncode)
 
         self.power_status = "OFF"  # Can be "ON", "OFF" or "?"
         return self.power_status  # Really it is "SLEEP"
@@ -632,6 +655,7 @@ class Computer(DeviceCommonSelf):
             pass  # if no `gsettings` then no GNOME Nightlight
 
         if self.CheckInstalled('cut'):
+            # 2024-12-16 TODO: Read file directly. Use EYESOME_PERCENT_FNAME
             command_line_str = 'cut -d" " -f1 < /usr/local/bin/.eyesome-percent'
             v3_print("\n" + _who, "command_line_str:", command_line_str, "\n")
             f = os.popen(command_line_str)
@@ -845,18 +869,20 @@ class NetworkInfo(DeviceCommonSelf):
             v1_print(_who, "Running: '" + command_line_str + "'")
         else:
             v1_print(_who, "adb is not installed. Skipping")
+            return
 
         # Subprocess run external command
-        pipe = sp.Popen(command_line_list, stdout=sp.PIPE, stderr=sp.PIPE)
-        text, err = pipe.communicate()  # This performs .wait() too
+        self.runCommand(command_line_list, _who)
+        #pipe = sp.Popen(command_line_list, stdout=sp.PIPE, stderr=sp.PIPE)
+        #text, err = pipe.communicate()  # This performs .wait() too
 
-        v3_print(_who, "Results from '" + command_line_str + "':")
-        v3_print(_who, "text: '" + text.strip() + "'")
-        v3_print(_who, "err: '" + err.strip() + "'  | pipe.returncode:",
-                 pipe.returncode)
+        #v3_print(_who, "Results from '" + command_line_str + "':")
+        #v3_print(_who, "text: '" + text.strip() + "'")
+        #v3_print(_who, "err: '" + err.strip() + "'  | pipe.returncode:",
+        #         pipe.returncode)
 
-        if not pipe.returncode == 0:
-            v2_print(_who, "pipe.returncode:", pipe.returncode)
+        #if not pipe.returncode == 0:
+        #    v2_print(_who, "pipe.returncode:", pipe.returncode)
 
     def get_alias(self, mac):
         """ Get Alias from self.hosts matching mac address
@@ -880,21 +906,24 @@ class NetworkInfo(DeviceCommonSelf):
         # Create temporary file in RAM for curl command
         # TODO: check dir /run/user/1000, if not use /tmp
         command_line_list = ["mktemp", "--tmpdir=/run/user/1000", "homa.XXXXXXXX"]
-        command_line_str = ' '.join(command_line_list)
+        event = self.runCommand(command_line_list, _who)
 
-        pipe = sp.Popen(command_line_list, stdout=sp.PIPE, stderr=sp.PIPE)
-        text, err = pipe.communicate()  # This performs .wait() too
+        # 2024-12-15 - Code has never been tested
 
-        v3_print(_who, "Results from '" + command_line_str + "':")
-        v3_print(_who, "text: '" + text.strip() + "'")
-        v3_print(_who, "err: '" + err.strip() + "'  | pipe.returncode:",
-                 pipe.returncode)
+        #command_line_str = ' '.join(command_line_list)
 
-        if not pipe.returncode == 0:
-            v2_print(_who, "pipe.returncode:", pipe.returncode)
+        #pipe = sp.Popen(command_line_list, stdout=sp.PIPE, stderr=sp.PIPE)
+        #text, err = pipe.communicate()  # This performs .wait() too
+
+        #v3_print(_who, "Results from '" + command_line_str + "':")
+        #v3_print(_who, "text: '" + text.strip() + "'")
+        #v3_print(_who, "err: '" + err.strip() + "'  | pipe.returncode:",
+        #         pipe.returncode)
+
+        if event['returncode'] > 0:
             return
 
-        temp_fname = text.strip()  # Remove unprintable at end ("?" in filename)
+        temp_fname = event['output']
 
         if stuff is None:
             return temp_fname
@@ -929,44 +958,28 @@ class NetworkInfo(DeviceCommonSelf):
                              "-H", '"X-Auth-PSK: ' + SONY_PWD + '"',
                              "--data", JSON_str,  # err: is unknown
                              "http://" + ip + "/sony/" + subsystem]
-        command_line_str = ' '.join(command_line_list)
 
-        v3_print("\n" + _who, "command_line_list:", command_line_list, "\n")
+        event = self.runCommand(command_line_list, _who, forgive=forgive)
 
-        pipe = sp.Popen(command_line_list, stdout=sp.PIPE, stderr=sp.PIPE)
-        text, err = pipe.communicate()  # This performs .wait() too
-
-        v3_print(_who, "Results from '" + command_line_str + "':")
-        v3_print(_who, "text: '" + text.strip() + "'")
-        v3_print(_who, "err: '" + err.strip() + "'  | pipe.returncode:",
-                 pipe.returncode)
-
-        if not pipe.returncode == 0:
-            if forgive is False:
-                v0_print(_who, "pipe.returncode:", pipe.returncode)
-            return {"result": [{"status": pipe.returncode}]}
+        if event['returncode'] > 0:
+            return {"result": [{"status": event['returncode']}]}
 
         try:
-            reply_dict = json.loads(str(text))
-            #   File "./homa.py", line 451, in curl
-            #     reply_dict = json.loads(text)
-            #   File "/usr/lib/python3.5/json/__init__.py", line 312, in loads
-            #     s.__class__.__name__))
-            # TypeError: the JSON object must be str, not 'bytes'
+            reply_dict = json.loads(str(event['output']))  # str to convert from bytes
         except ValueError:
-            v2_print(_who, "Invalid 'text':", text)  # Sample below on 2024-10-08
+            v2_print(_who, "Invalid 'output':", event['output'])  # Sample below on 2024-10-08
             # NetworkInfo().curl() Invalid 'text': <html><head></head><body>
             # 		This document has moved to a new <a href="http://192.168.0.1/login.htm">location</a>.
             # 		Please update your documents to reflect the new location.
             # 		</body></html>
-            reply_dict = {"result": [{"status": _who + "json.loads(text) failed!"}]}
+            reply_dict = {"result": [{"status": _who + "json.loads(event['output']) failed!"}]}
 
         v3_print(_who, "reply_dict:", reply_dict)
         return reply_dict
 
     def os_curl(self, JSON_str, subsystem, ip, forgive=False):
         """ Use os.popen curl to communicate with REST API
-            2024-10-21 - os_curl supports Sony Picture On/Off and Sony On/Off
+            2024-10-21 - os_curl supports Sony Picture On/Off using os.popen()
         """
         _who = self.who + "os_curl()"
 
@@ -1067,6 +1080,8 @@ class LaptopDisplay(DeviceCommonSelf):
         # "tablet", "handset", "watch", "embedded", "vm" and "container"
 
         if self.CheckInstalled('hostnamectl'):
+            # 2024-12-16 TODO: convert to self.runCommand()
+            #   universal_newlines: https://stackoverflow.com/a/38182530/6929343
             machine_info = sp.check_output(["hostnamectl", "status"], universal_newlines=True)
             m = re.search('Chassis: (.+?)\n', machine_info)
             self.chassis = m.group(1)  # TODO: Use this for Dell Virtual temp/fan driver
@@ -1132,7 +1147,7 @@ class LaptopDisplay(DeviceCommonSelf):
         if forgive:
             pass  # Dummy argument for uniform instance parameter list
 
-        self.SetPower("ON")
+        self.SetPower("ON", forgive=forgive)
         return self.power_status
 
     def TurnOff(self, forgive=False):
@@ -1155,7 +1170,7 @@ class LaptopDisplay(DeviceCommonSelf):
         if forgive:
             pass  # Dummy argument for uniform instance parameter list
 
-        self.SetPower("OFF")
+        self.SetPower("OFF", forgive=forgive)
         return self.power_status
 
     def PowerStatus(self, forgive=False):
@@ -1180,7 +1195,7 @@ class LaptopDisplay(DeviceCommonSelf):
 
         return self.power_status
 
-    def SetPower(self, status):
+    def SetPower(self, status, forgive=False):
         """ Set Power to status to 'OFF' or 'ON'
             If forgive=True then don't report pipe.returncode != 0
         """
@@ -1210,10 +1225,19 @@ class LaptopDisplay(DeviceCommonSelf):
 
         cmd1 = sp.Popen(['echo', SUDO_PASSWORD], stdout=sp.PIPE)
         cmd2 = sp.Popen(['sudo', '-S', 'echo', echo], stdin=cmd1.stdout, stdout=sp.PIPE)
-        _out = sp.Popen(['sudo', 'tee', power], stdin=cmd2.stdout, stdout=sp.PIPE)
+        pipe = sp.Popen(['sudo', 'tee', power], stdin=cmd2.stdout, stdout=sp.PIPE,
+                        stderr=sp.PIPE)
 
         v3_print(_who, "Results from '" + command_line_str + "':")
-        v3_print(_who, "_out.stdout:", _out.stdout.read().decode())
+        v3_print(_who, "pipe.stdout: '" + pipe.stdout.read().decode().strip() + "'")
+        v3_print(_who, "pipe.stderr: '" + pipe.stderr.read().decode().strip() +
+                 "'  | pipe.returncode:", pipe.returncode)
+
+        # pipe.returncode can be <None>
+        if pipe.returncode and pipe.returncode != 0:
+            if forgive is False:
+                v0_print(_who, "pipe.returncode:", pipe.returncode)
+            return "ERROR"
         self.power_status = status
 
 
@@ -1329,21 +1353,14 @@ class SmartPlugHS100(DeviceCommonSelf):
         v2_print(_who, "Test TP-Link Kasa HS100 Smart Plug Power Status:", self.ip)
 
         command_line_list = ["hs100.sh", "check", "-i", self.ip]
-        command_line_str = ' '.join(command_line_list)
-        pipe = sp.Popen(command_line_list, stdout=sp.PIPE, stderr=sp.PIPE)
-        text, err = pipe.communicate()  # This performs .wait() too
 
-        v3_print(_who, "Results from '" + command_line_str + "':")
-        v3_print(_who, "text: '" + text.strip() + "'")
-        v3_print(_who, "err: '" + err.strip() + "'  | pipe.returncode:",
-                 pipe.returncode)
+        event = self.runCommand(command_line_list, _who, forgive=forgive)
+        # event = self.event which could also be referenced
 
-        if not pipe.returncode == 0:
-            if forgive is False:
-                v0_print(_who, "pipe.returncode:", pipe.returncode)
+        if not event['returncode'] == 0:
             return "ERROR"
 
-        Reply = text.strip()
+        Reply = event['output']
         parts = Reply.split()
         if len(parts) != 2:
             v2_print(_who, self.ip, "- Not a Smart Plug!", parts)
@@ -1369,22 +1386,12 @@ class SmartPlugHS100(DeviceCommonSelf):
 
         command_line_list = \
             ["timeout", PLUG_TIME, "hs100.sh", status.lower(), "-i", self.ip]
-        command_line_str = ' '.join(command_line_list)
-        pipe = sp.Popen(command_line_list, stdout=sp.PIPE, stderr=sp.PIPE)
-        text, err = pipe.communicate()  # This performs .wait() too
 
-        v3_print(_who, "Results from '" + command_line_str + "':")
-        v3_print(_who, "text: '" + text.strip() + "'")
-        v3_print(_who, "err: '" + err.strip() + "'  | pipe.returncode:",
-                 pipe.returncode)
+        _event = self.runCommand(command_line_list, _who)
+        # _event = self.event which could also be referenced
+        # Return code is always 0, even if plug doesn't exist. No text returned
 
         self.power_status = status  # Can be "ON", "OFF" or "?"
-
-        # Return code is always 0, even if plug doesn't exist. No text returned
-        #if not pipe.returncode == 0:
-        #    if forgive is False:
-        #        v0_print(_who, "pipe.returncode:", pipe.returncode)
-        #    return False
 
 
 class SonyBraviaKdlTV(DeviceCommonSelf):
@@ -1838,25 +1845,30 @@ class TclGoogleAndroidTV(DeviceCommonSelf):
         # real	0m3.010s
         # user	0m0.001s
         # sys	0m0.005s
-        os.popen("adb devices -l")  # Will force daemon to run on port 5037
+        command_line_list = ["adb", "devices", "-l"]
+        self.runCommand(command_line_list, _who)  # Will force 'adb' daemon to run
 
         cnt = 1
         while not self.isDevice(forgive=True, timeout=ADB_MAGIC_TIME):
 
             v2_print(_who, "Attempt #:", cnt, "Call 'wakeonlan' for MAC:", self.mac)
             command_line_list = ["wakeonlan", self.mac]
-            command_line_str = ' '.join(command_line_list)
-            pipe = sp.Popen(command_line_list, stdout=sp.PIPE, stderr=sp.PIPE)
-            text, err = pipe.communicate()  # This performs .wait() too
 
-            v3_print(_who, "Results from '" + command_line_str + "':")
-            v3_print(_who, "text: '" + text.strip() + "'")
-            v3_print(_who, "err: '" + err.strip() + "'  | pipe.returncode:",
-                     pipe.returncode)
+            event = self.runCommand(command_line_list, _who, forgive=forgive)
+            #command_line_str = ' '.join(command_line_list)
+            #pipe = sp.Popen(command_line_list, stdout=sp.PIPE, stderr=sp.PIPE)
+            #text, err = pipe.communicate()  # This performs .wait() too
 
-            if not pipe.returncode == 0:
-                if forgive is False:
-                    v0_print(_who, "pipe.returncode:", pipe.returncode)
+            #v3_print(_who, "Results from '" + command_line_str + "':")
+            #v3_print(_who, "text: '" + text.strip() + "'")
+            #v3_print(_who, "err: '" + err.strip() + "'  | pipe.returncode:",
+            #         pipe.returncode)
+
+            #if not pipe.returncode == 0:
+            #    if forgive is False:
+            #        v0_print(_who, "pipe.returncode:", pipe.returncode)
+            #    return False
+            if event['returncode'] > 0:
                 return False
 
             cnt += 1
@@ -1880,27 +1892,33 @@ class TclGoogleAndroidTV(DeviceCommonSelf):
         command_line_list = ["timeout", ADB_PWR_TIME, "adb",
                              "shell", "dumpsys", "input_method",
                              "|", "grep", "-i", "screenOn"]
-        command_line_str = ' '.join(command_line_list)
-        pipe = sp.Popen(command_line_list, stdout=sp.PIPE, stderr=sp.PIPE)
-        text, err = pipe.communicate()  # This performs .wait() too
+        #command_line_str = ' '.join(command_line_list)
+        #pipe = sp.Popen(command_line_list, stdout=sp.PIPE, stderr=sp.PIPE)
+        #text, err = pipe.communicate()  # This performs .wait() too
 
-        v3_print(_who, "Results from '" + command_line_str + "':")
-        v3_print(_who, "text: '" + text.strip() + "'")
-        v3_print(_who, "err: '" + err.strip() + "'  | pipe.returncode:",
-                 pipe.returncode)
-        v2_print(_who, "reply from grep 'screenOn':", text, err)
+        #v3_print(_who, "Results from '" + command_line_str + "':")
+        #v3_print(_who, "text: '" + text.strip() + "'")
+        #v3_print(_who, "err: '" + err.strip() + "'  | pipe.returncode:",
+        #         pipe.returncode)
+        event = self.runCommand(command_line_list, _who, forgive=forgive)
+        #v2_print(_who, "reply from grep 'screenOn':", text, err)
+        v2_print(_who, "reply from grep 'screenOn':", event['output'], event['error'])
 
-        if not pipe.returncode == 0:
+        #if not pipe.returncode == 0:
+        if event['returncode'] > 0:
             if forgive is False:
-                v1_print(_who, "pipe.returncode:", pipe.returncode)
-                if pipe.returncode == 124:
+                #v1_print(_who, "pipe.returncode:", pipe.returncode)
+                #if pipe.returncode == 124:
+                if event['returncode'] == 124:
                     v1_print(_who, self.ip, "timeout after:", ADB_PWR_TIME)
                     self.power_status = "?"  # Can be "ON", "OFF" or "?"
                     return self.power_status
-            self.power_status = "? " + str(pipe.returncode)
+            #self.power_status = "? " + str(pipe.returncode)
+            self.power_status = "? " + str(event['returncode'])
             return self.power_status
 
-        Reply = text.strip()
+        #Reply = text.strip()
+        Reply = event['output']
         # Reply = "connected to 192.168.0.17:5555"
         # Reply = "already connected to 192.168.0.17:5555"
         # Reply = "unable to connect to 192.168.0.17:5555"
@@ -1934,38 +1952,46 @@ class TclGoogleAndroidTV(DeviceCommonSelf):
             v1_print(_who, "Attempt #:", cnt, "Send 'KEYCODE_WAKEUP' to IP:", self.ip)
 
             # timeout 1 adb shell input keyevent KEYCODE_WAKEUP  # Turn Google TV off
-            ext.t_init(_who + "time for 'adb shell input keyevent KEYCODE_WAKEUP'")
+            #ext.t_init(_who + "time for 'adb shell input keyevent KEYCODE_WAKEUP'")
             command_line_list = ["timeout", ADB_KEY_TIME, "adb", "shell", "input",
                                  "keyevent", "KEYCODE_WAKEUP"]
-            command_line_str = ' '.join(command_line_list)
-            pipe = sp.Popen(command_line_list, stdout=sp.PIPE, stderr=sp.PIPE)
-            text, err = pipe.communicate()  # This performs .wait() too
+            event = self.runCommand(command_line_list, _who, forgive=forgive)
+            #command_line_str = ' '.join(command_line_list)
+            #pipe = sp.Popen(command_line_list, stdout=sp.PIPE, stderr=sp.PIPE)
+            #text, err = pipe.communicate()  # This performs .wait() too
 
-            if p_args.verbose2 or p_args.verbose3:
-                ext.t_end('print')  # TclGoogleAndroidTV().TurnOff():: 1.8827719688
-            else:
-                ext.t_end('no_print')
+            #if p_args.verbose2 or p_args.verbose3:
+            #    ext.t_end('print')  # TclGoogleAndroidTV().TurnOff():: 1.8827719688
+            #else:
+            #    ext.t_end('no_print')
 
-            v3_print(_who, "Results from '" + command_line_str + "':")
-            v3_print(_who, "text: '" + text.strip() + "'")
-            v3_print(_who, "err: '" + err.strip() + "'  | pipe.returncode:",
-                     pipe.returncode)
+            #v3_print(_who, "Results from '" + command_line_str + "':")
+            #v3_print(_who, "text: '" + text.strip() + "'")
+            #v3_print(_who, "err: '" + err.strip() + "'  | pipe.returncode:",
+            #         pipe.returncode)
             # TclGoogleAndroidTV().TurnOn(): err: error: device unauthorized.
             # This adb d's $ADB_VENDOR_KEYS is not set; try 'adb kill-server' if that seems wrong.
             # Otherwise check for a confirmation dialog on your device.
 
             # 2024-12-01 TODO: Error message to revoke keys
 
-            v2_print(_who, "reply from KEYCODE_WAKEUP:", text, err)
-
-            if not pipe.returncode == 0:
+            #v2_print(_who, "reply from KEYCODE_WAKEUP:", text, err)
+            if event['returncode'] > 0:
                 # 2024-10-19 - Always returns '124' which is timeout exit code
                 #   https://stackoverflow.com/a/42615416/6929343
                 if forgive is False:
-                    v0_print(_who, "pipe.returncode:", pipe.returncode)
-                    if pipe.returncode == 124:
+                    # v0_print(_who, "pipe.returncode:", pipe.returncode)
+                    if event['returncode'] == 124:
                         v0_print(_who, self.ip, "timeout after:", ADB_KEY_TIME)
-                #return "?"
+                return "?"
+            #if not pipe.returncode == 0:
+                # 2024-10-19 - Always returns '124' which is timeout exit code
+                #   https://stackoverflow.com/a/42615416/6929343
+            #    if forgive is False:
+            #        v0_print(_who, "pipe.returncode:", pipe.returncode)
+            #        if pipe.returncode == 124:
+            #            v0_print(_who, self.ip, "timeout after:", ADB_KEY_TIME)
+            #    #return "?"
                 # pipe.returncode == 255 is sometimes returned.
 
             self.PowerStatus()
@@ -1980,30 +2006,32 @@ class TclGoogleAndroidTV(DeviceCommonSelf):
         v2_print(_who, "Send KEYCODE_SLEEP to:", self.ip)
 
         # timeout 1 adb shell input keyevent KEYCODE_SLEEP  # Turn Google TV off
-        ext.t_init(_who + " time for 'adb shell input keyevent KEYCODE_SLEEP'")
+        #ext.t_init(_who + " time for 'adb shell input keyevent KEYCODE_SLEEP'")
         command_line_list = ["timeout", ADB_KEY_TIME, "adb", "shell", "input",
                              "keyevent", "KEYCODE_SLEEP"]
-        command_line_str = ' '.join(command_line_list)
-        pipe = sp.Popen(command_line_list, stdout=sp.PIPE, stderr=sp.PIPE)
-        text, err = pipe.communicate()  # This performs .wait() too
+        event = self.runCommand(command_line_list, _who, forgive=forgive)
+        #command_line_str = ' '.join(command_line_list)
+        #pipe = sp.Popen(command_line_list, stdout=sp.PIPE, stderr=sp.PIPE)
+        #text, err = pipe.communicate()  # This performs .wait() too
 
-        if p_args.verbose2 or p_args.verbose3:
-            ext.t_end('print')  # TclGoogleAndroidTV().TurnOff():: 1.8827719688
-        else:
-            ext.t_end('no_print')
+        #if p_args.verbose2 or p_args.verbose3:
+        #    ext.t_end('print')  # TclGoogleAndroidTV().TurnOff():: 1.8827719688
+        #else:
+        #    ext.t_end('no_print')
 
-        v3_print(_who, "Results from '" + command_line_str + "':")
-        v3_print(_who, "text: '" + text.strip() + "'")
-        v3_print(_who, "err: '" + err.strip() + "'  | pipe.returncode:",
-                 pipe.returncode)
-        v2_print(_who, "reply from KEYCODE_SLEEP:", text, err)
+        #v3_print(_who, "Results from '" + command_line_str + "':")
+        #v3_print(_who, "text: '" + text.strip() + "'")
+        #v3_print(_who, "err: '" + err.strip() + "'  | pipe.returncode:",
+        #         pipe.returncode)
+        #v2_print(_who, "reply from KEYCODE_SLEEP:", text, err)
 
-        if not pipe.returncode == 0:
+        #if not pipe.returncode == 0:
+        if event['returncode'] > 0:
             # 2024-10-19 - Always returns '124' which is timeout exit code
             #   https://stackoverflow.com/a/42615416/6929343
             if forgive is False:
-                v0_print(_who, "pipe.returncode:", pipe.returncode)
-                if pipe.returncode == 124:
+                #v0_print(_who, "pipe.returncode:", pipe.returncode)
+                if event['returncode'] == 124:
                     v0_print(_who, self.ip, "timeout after:", ADB_KEY_TIME)
             return "?"
 
@@ -2089,7 +2117,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         tk.Toplevel.__init__(self, master)  # https://stackoverflow.com/a/24743235/6929343
         self.minsize(width=120, height=63)
         self.geometry('1200x700')
-        #monitor.center(self)  # Temporary until saved geometry coded
         self.configure(background="WhiteSmoke")
         self.rowconfigure(0, weight=1)  # Weight 1 = stretchable row
         self.columnconfigure(0, weight=1)  # Weight 1 = stretchable column
@@ -2153,7 +2180,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 inst.app = self
 
         ''' Save Toplevel OS window ID for minimizing window '''
-        self.xdo_os_window_id = os.popen("xdotool getactivewindow").read().strip()
+        command_line_list = ["xdotool", "getactivewindow"]
+        event = self.runCommand(command_line_list, forgive=False)
+        self.xdo_os_window_id = event['output']
         # self.xdo_os_window_id: 102760472  THIS CHANGED FROM ABOVE 92274698
 
         while self.Refresh():  # Run forever until quit
@@ -2166,7 +2195,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             """ Clear sudo password for extreme caution """
             global SUDO_PASSWORD
             SUDO_PASSWORD = None  # clear global password in homa
-            sp.call(["sudo", "-K"])  # clear Linux sudo password timestamp
+            command_line_list = ["sudo", "-K"]
+            #sp.call(["sudo", "-K"])  # clear Linux sudo password timestamp
+            self.runCommand(command_line_list)
 
         mb = tk.Menu(self)
         self.config(menu=mb)
@@ -2210,6 +2241,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.view_menu.add_separator()
         self.view_menu.add_command(label="Network devices", font=g.FONT, underline=0,
                                    command=self.SensorsDevicesToggle, state=tk.DISABLED)
+        self.view_menu.add_separator()
+        self.view_menu.add_command(label="Discovery errors", font=g.FONT, underline=0,
+                                   command=self.DisplayErrors, state=tk.DISABLED)
 
         mb.add_cascade(label="View", font=g.FONT, underline=0, menu=self.view_menu)
 
@@ -2238,14 +2272,17 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             Also passed with lcs.register_menu(self.EnableMenu)
         :return: None """
 
+        ''' File Menu '''
         # During rediscovery, the "Rediscover now" dropdown menubar option disabled
         self.file_menu.entryconfig("Rediscover now", state=tk.NORMAL)
         self.file_menu.entryconfig("Exit", state=tk.NORMAL)
 
+        ''' Edit Menu '''
         # 2024-12-01 - Edit menu options not written yet
         self.edit_menu.entryconfig("Preferences", state=tk.DISABLED)
         self.edit_menu.entryconfig("Monitor volume", state=tk.DISABLED)
 
+        ''' View Menu '''
         # Enable options depending on Sensors Treeview or Devices Treeview mounted
         if self.sensors_devices_btn['text'] == self.devices_btn_text:
             # Sensors Treeview is displayed
@@ -2256,7 +2293,13 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.view_menu.entryconfig("Sensors", state=tk.NORMAL)
             self.view_menu.entryconfig("Network devices", state=tk.DISABLED)
 
-        # 2024-12-01 - Tools menu options not written yet
+        if EVENT_ERROR_COUNT > 0:
+            # 2024-12-17 - Working when called from command line, not from indicator
+            self.view_menu.entryconfig("Discovery errors", state=tk.NORMAL)
+        else:
+            self.view_menu.entryconfig("Discovery errors", state=tk.DISABLED)
+
+        ''' Tools Menu '''
         self.tools_menu.entryconfig("Big number calculator", state=tk.NORMAL)
         if SUDO_PASSWORD is None:
             self.tools_menu.entryconfig("Forget sudo password", state=tk.DISABLED)
@@ -2306,22 +2349,12 @@ class Application(DeviceCommonSelf, tk.Toplevel):
     def MinimizeApp(self, *_args):
         """ Minimize GUI Application() window using xdotool.
             2024-12-08 TODO: Minimize child windows (Countdown and Big Number Calc.)
+                However, when restoring windows it can be on another monitor.
         """
-
-        #_xdo_os_window_id = os.popen("xdotool getactivewindow").read().strip()
-        #_tcl_os_window_id = self.winfo_id()
-        #print("xdo_os_window_id:", _xdo_os_window_id)           # 102760472
-        #print("tcl_os_window_id:", _tcl_os_window_id)           # 102760470
-        #print("self.xdo_os_window_id:", self.xdo_os_window_id)  # 102760472
-
+        _who = self.who + "MinimizeApp():"
         # noinspection SpellCheckingInspection
-        f = os.popen("xdotool windowminimize " + self.xdo_os_window_id)
-        text = f.read().splitlines()
-        returncode = f.close()  # https://stackoverflow.com/a/70693068/6929343
-        if text:
-            v0_print(self.who, "MinimizeApp():", text)
-        if returncode:
-            v0_print(self.who, "MinimizeApp() returncode:", returncode)
+        command_line_list = ["xdotool", "windowminimize", self.xdo_os_window_id]
+        self.runCommand(command_line_list, _who)
 
     def Suspend(self, *_args):
         """ Suspend system. """
@@ -2847,9 +2880,11 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         # Set variables to force rediscovery
         now = time.time()
         rd = None  # Just in case rediscovery was in progress during suspend
+        self.rediscover_done = True
         # Force rediscovery immediately after resume from suspend
         self.last_rediscover_time = now - REDISCOVER_SECONDS * 10.0
         self.last_refresh_time = now + 1.0  # If abort, don't come back here
+        sm.last_sensor_log = now - SENSOR_LOG - 1.0  # Force initial sensor log
 
     def ResumeWait(self, timer=None):
         """ Wait x seconds for devices to come online. If 'timer' passed do a
@@ -3081,9 +3116,14 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         # Disable calling from File Dropdown Menubar
         self.file_menu.entryconfig("Rediscover now", state=tk.DISABLED)
 
+        # If APP_RESTART_TIME is within 1 minute (REDISCOVER_SECONDS) turn off
+        # auto rediscovery flags
+        if APP_RESTART_TIME > time.time() - REDISCOVER_SECONDS:
+            auto = False  # Override auto rediscovery during startup / resuming
+
         # If called from menu, reseed last rediscovery time:
         if auto is False:
-            self.last_rediscover_time = time.time() - REDISCOVER_SECONDS * 2
+            self.last_rediscover_time = time.time() - REDISCOVER_SECONDS * 1.5
 
         # Is Devices Treeview mounted? (Other option is Sensors Treeview)
         usingDevicesTreeview = \
@@ -3098,6 +3138,10 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         TCL.LAN (192.168.0.17) at <incomplete> on enp59s0               <- DISCARD
         SONY.light (192.168.0.15) at 50:d4:f7:eb:41:35 [ether] on enp59s0
         '''
+
+        # Override event logging and v3_print(...) during auto rediscovery
+        global LOG_EVENTS  # Don't log events when auto rediscovery in progress
+        LOG_EVENTS = True if auto is False else False
 
         # Start looping create rd
         global rd  # global variable that allows rentry to split job into slices
@@ -3115,6 +3159,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         # Refresh power status for all devices
         self.RefreshAllPowerStatuses(auto=auto)
+        LOG_EVENTS = True  # Reset to log events as required
 
         # TODO: process one row at a time to reduce chances of mouse-click lag
         #  OR:  Use splash message stating Refresh in progress
@@ -3175,6 +3220,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         #   a few times with 3 second countdown. Reset self.last_refresh_time.
         self.last_refresh_time = time.time()  # Prevent resume from suspend
         self.file_menu.entryconfig("Rediscover now", state=tk.NORMAL)
+        self.EnableMenu()
 
     @staticmethod
     def MouseWheel(event):
@@ -3210,6 +3256,46 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         return SUDO_PASSWORD
 
     def OpenCalculator(self):
+        """ Big Number Calculator allows K, M, G, T, etc. UoM """
+        if self.calculator and self.calc_top:
+            self.calc_top.focus_force()
+            self.calc_top.lift()
+            return
+
+        geom = monitor.get_window_geom('calculator')
+        self.calc_top = tk.Toplevel()
+
+        ''' Set Calculator program icon in taskbar '''
+        cfg_key = ['cfg_calculator', 'toplevel', 'taskbar_icon', 'height & colors']
+        ti = cfg.get_cfg(cfg_key)
+        img.taskbar_icon(self.calc_top, ti['height'], ti['outline'],
+                         ti['fill'], ti['text'], char=ti['char'])
+
+        ''' Create calculator class instance '''
+        self.calculator = Calculator(self.calc_top, g.BIG_FONT, geom,
+                                     btn_fg=ti['text'], btn_bg=ti['fill'])
+        self.win_grp.register_child('Calculator', self.calc_top)
+        # Do not auto raise children. homa.py will take care of that with FocusIn()
+
+        def calculator_close(*_args):
+            """ Save last geometry for next Calculator startup """
+            last_geom = monitor.get_window_geom_string(
+                self.calc_top, leave_visible=False)  # Leave toplevel invisible
+            monitor.save_window_geom('calculator', last_geom)
+            self.win_grp.unregister_child(self.calc_top)
+            self.calc_top.destroy()
+            self.calc_top = None  # Prevent lifting window
+            self.calculator = None  # Prevent lifting window
+
+        ''' Trap <Escape> key and  '✘' Window Close Button '''
+        self.calc_top.bind("<Escape>", calculator_close)
+        self.calc_top.protocol("WM_DELETE_WINDOW", calculator_close)
+        self.calc_top.update_idletasks()
+
+        ''' Move Calculator to cursor position '''
+        hc.MoveHere("Big Number Calculator", 'top_left')
+
+    def DisplayErrors(self):
         """ Big Number Calculator allows K, M, G, T, etc. UoM """
         if self.calculator and self.calc_top:
             self.calc_top.focus_force()
@@ -3581,19 +3667,13 @@ class SystemMonitor(DeviceCommonSelf):
             self.last_sensor_log = time.time() - SENSOR_LOG * 2
             return True
 
-        ''' $ sensors
-            dell_smm-virtual-0
-            Adapter: Virtual device
-            Processor Fan: 3000 RPM
-            fan3:          2900 RPM
-            CPU:            +62.0°C  
-            GPU:            +66.0°C  
-            SODIMM:         +52.0°C  
-         '''
         self.number_checks += 1
-        ext.t_init("sensors")
-        result = sp.check_output(['sensors'])
-        _time = ext.t_end("no_print")
+        #ext.t_init("sensors")
+        #result = sp.check_output(['sensors'])
+        log = True if len(self.sensors_log) == 0 else False
+        event = self.runCommand(['sensors'], _who, log=log)
+        result = event['output']
+        #_time = ext.t_end("no_print")
         self.last_sensor_check = now
 
         # Parse `sensors` output to dictionary key/value pairs
@@ -3924,7 +4004,7 @@ app = None  # Application GUI
 cfg = sql.Config()  # Colors configuration SQL records
 cp = Computer()  # cp = Computer Platform
 ni = NetworkInfo()  # ni = global class instance used everywhere
-ni.adb_reset()  # When TCL TV is communicating this is necessary
+ni.adb_reset(background=True)  # When TCL TV is communicating this is necessary
 rd = NetworkInfo()  # rd = Rediscovery instance for app.Rediscover() & app.Discover()
 sm = None  # sm = System Monitor - fan speed and CPU temperatures
 

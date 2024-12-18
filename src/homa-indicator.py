@@ -66,7 +66,7 @@ SAVE_CWD = ""  # Saved current working directory. Will change to program directo
 HOMA_TITLE = "HomA - Home Automation"  # Window title must match program's title bar
 EYESOME_TITLE = "eyesome setup"  # Move by window title under application indicator
 SUDO_PASSWORD = None  # Sudo required for running eyesome
-MOVE_WINDOW_RIGHT_ADJUST = -20  # Move Window Top Right Adjustment
+MOVE_WINDOW_RIGHT_ADJUST = -40  # Move Window Top Right Adjustment
 
 
 def Main():
