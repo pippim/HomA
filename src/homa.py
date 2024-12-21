@@ -267,6 +267,9 @@ class DeviceCommonSelf:
     def runCommand(self, command_line_list, who=None, forgive=False, log=True):
         """ Run command and return dictionary of results. Print to console
             when -vvv (verbose3) debug printing is used.
+
+            During automatic rediscovery, logging is turned off (log=False) to
+            reduce size of cmdEvents[list].
         """
 
         self.cmdCaller = who if who is not None else self.who
@@ -277,11 +280,12 @@ class DeviceCommonSelf:
 
         pipe = sp.Popen(self.cmdCommand, stdout=sp.PIPE, stderr=sp.PIPE)
         text, err = pipe.communicate()  # This performs .wait() too
-        self.cmdDuration = time.time() - self.cmdStart
 
         self.cmdOutput = text.strip()
         self.cmdError = err.strip()
         self.cmdReturncode = pipe.returncode
+        self.cmdDuration = time.time() - self.cmdStart
+
         if LOG_EVENTS is False:
             log = False  # Auto rediscovery has turned off logging
         if log:
@@ -290,9 +294,14 @@ class DeviceCommonSelf:
             v3_print("  cmdError : '" + self.cmdError  + "'  | cmdReturncode: ",
                      self.cmdReturncode, "  | cmdDuration:", self.cmdDuration)
 
-        if not self.cmdReturncode == 0:
+        if self.cmdReturncode > 0:
             if forgive is False:
                 v0_print(_who, "cmdReturncode:", self.cmdReturncode)
+
+            # 2024-12-21 `timeout` never returns error message
+            if self.cmdReturncode == 124 and self.cmdCommand[0] == "timeout":
+                self.cmdError = "Command timed out without replying after " +\
+                    self.cmdCommand[1] + " seconds."
 
         # Log event
         self.cmdEvent = {
@@ -451,22 +460,14 @@ class Computer(DeviceCommonSelf):
 
         command_line_list = ["ip", "addr"]
         event = self.runCommand(command_line_list, _who, forgive=forgive)
-        #command_line_str = ' '.join(command_line_list)
-        #pipe = sp.Popen(command_line_list, stdout=sp.PIPE, stderr=sp.PIPE)
-        #text, err = pipe.communicate()  # This performs .wait() too
 
-        #v3_print(_who, "Results from '" + command_line_str + "':")
-        #v3_print(_who, "text: '" + text.strip() + "'")
-        #v3_print(_who, "err: '" + err.strip() + "'  | pipe.returncode:",
-        #         pipe.returncode)
-
-        #if not pipe.returncode == 0:
         if not event['returncode'] == 0:
             if forgive is False:
                 v0_print(_who, "pipe.returncode:", pipe.returncode)
             return ""  # Return null string = False
-        #interface = text.strip().splitlines()
+
         interface = event['output'].splitlines()
+
         # noinspection SpellCheckingInspection
         ''' `ip addr` output:
 1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
@@ -591,15 +592,6 @@ class Computer(DeviceCommonSelf):
 
         command_line_list = POWER_OFF_CMD_LIST  # systemctl suspend
         _event = self.runCommand(command_line_list, _who, forgive=forgive)
-
-        #command_line_str = ' '.join(command_line_list)
-        #pipe = sp.Popen(command_line_list, stdout=sp.PIPE, stderr=sp.PIPE)
-        #text, err = pipe.communicate()  # This performs .wait() too
-
-        #v3_print(_who, "Results from '" + command_line_str + "':")
-        #v3_print(_who, "text: '" + text.strip() + "'")
-        #v3_print(_who, "err: '" + err.strip() + "'  | pipe.returncode:",
-        #         pipe.returncode)
 
         self.power_status = "OFF"  # Can be "ON", "OFF" or "?"
         return self.power_status  # Really it is "SLEEP"
@@ -873,16 +865,6 @@ class NetworkInfo(DeviceCommonSelf):
 
         # Subprocess run external command
         self.runCommand(command_line_list, _who)
-        #pipe = sp.Popen(command_line_list, stdout=sp.PIPE, stderr=sp.PIPE)
-        #text, err = pipe.communicate()  # This performs .wait() too
-
-        #v3_print(_who, "Results from '" + command_line_str + "':")
-        #v3_print(_who, "text: '" + text.strip() + "'")
-        #v3_print(_who, "err: '" + err.strip() + "'  | pipe.returncode:",
-        #         pipe.returncode)
-
-        #if not pipe.returncode == 0:
-        #    v2_print(_who, "pipe.returncode:", pipe.returncode)
 
     def get_alias(self, mac):
         """ Get Alias from self.hosts matching mac address
@@ -907,18 +889,6 @@ class NetworkInfo(DeviceCommonSelf):
         # TODO: check dir /run/user/1000, if not use /tmp
         command_line_list = ["mktemp", "--tmpdir=/run/user/1000", "homa.XXXXXXXX"]
         event = self.runCommand(command_line_list, _who)
-
-        # 2024-12-15 - Code has never been tested
-
-        #command_line_str = ' '.join(command_line_list)
-
-        #pipe = sp.Popen(command_line_list, stdout=sp.PIPE, stderr=sp.PIPE)
-        #text, err = pipe.communicate()  # This performs .wait() too
-
-        #v3_print(_who, "Results from '" + command_line_str + "':")
-        #v3_print(_who, "text: '" + text.strip() + "'")
-        #v3_print(_who, "err: '" + err.strip() + "'  | pipe.returncode:",
-        #         pipe.returncode)
 
         if event['returncode'] > 0:
             return
@@ -1353,10 +1323,7 @@ class SmartPlugHS100(DeviceCommonSelf):
         v2_print(_who, "Test TP-Link Kasa HS100 Smart Plug Power Status:", self.ip)
 
         command_line_list = ["hs100.sh", "check", "-i", self.ip]
-
         event = self.runCommand(command_line_list, _who, forgive=forgive)
-        # event = self.event which could also be referenced
-
         if not event['returncode'] == 0:
             return "ERROR"
 
@@ -1388,7 +1355,6 @@ class SmartPlugHS100(DeviceCommonSelf):
             ["timeout", PLUG_TIME, "hs100.sh", status.lower(), "-i", self.ip]
 
         _event = self.runCommand(command_line_list, _who)
-        # _event = self.event which could also be referenced
         # Return code is always 0, even if plug doesn't exist. No text returned
 
         self.power_status = status  # Can be "ON", "OFF" or "?"
@@ -1855,19 +1821,6 @@ class TclGoogleAndroidTV(DeviceCommonSelf):
             command_line_list = ["wakeonlan", self.mac]
 
             event = self.runCommand(command_line_list, _who, forgive=forgive)
-            #command_line_str = ' '.join(command_line_list)
-            #pipe = sp.Popen(command_line_list, stdout=sp.PIPE, stderr=sp.PIPE)
-            #text, err = pipe.communicate()  # This performs .wait() too
-
-            #v3_print(_who, "Results from '" + command_line_str + "':")
-            #v3_print(_who, "text: '" + text.strip() + "'")
-            #v3_print(_who, "err: '" + err.strip() + "'  | pipe.returncode:",
-            #         pipe.returncode)
-
-            #if not pipe.returncode == 0:
-            #    if forgive is False:
-            #        v0_print(_who, "pipe.returncode:", pipe.returncode)
-            #    return False
             if event['returncode'] > 0:
                 return False
 
@@ -1892,19 +1845,9 @@ class TclGoogleAndroidTV(DeviceCommonSelf):
         command_line_list = ["timeout", ADB_PWR_TIME, "adb",
                              "shell", "dumpsys", "input_method",
                              "|", "grep", "-i", "screenOn"]
-        #command_line_str = ' '.join(command_line_list)
-        #pipe = sp.Popen(command_line_list, stdout=sp.PIPE, stderr=sp.PIPE)
-        #text, err = pipe.communicate()  # This performs .wait() too
-
-        #v3_print(_who, "Results from '" + command_line_str + "':")
-        #v3_print(_who, "text: '" + text.strip() + "'")
-        #v3_print(_who, "err: '" + err.strip() + "'  | pipe.returncode:",
-        #         pipe.returncode)
         event = self.runCommand(command_line_list, _who, forgive=forgive)
-        #v2_print(_who, "reply from grep 'screenOn':", text, err)
         v2_print(_who, "reply from grep 'screenOn':", event['output'], event['error'])
 
-        #if not pipe.returncode == 0:
         if event['returncode'] > 0:
             if forgive is False:
                 #v1_print(_who, "pipe.returncode:", pipe.returncode)
@@ -1913,11 +1856,9 @@ class TclGoogleAndroidTV(DeviceCommonSelf):
                     v1_print(_who, self.ip, "timeout after:", ADB_PWR_TIME)
                     self.power_status = "?"  # Can be "ON", "OFF" or "?"
                     return self.power_status
-            #self.power_status = "? " + str(pipe.returncode)
             self.power_status = "? " + str(event['returncode'])
             return self.power_status
 
-        #Reply = text.strip()
         Reply = event['output']
         # Reply = "connected to 192.168.0.17:5555"
         # Reply = "already connected to 192.168.0.17:5555"
@@ -1956,26 +1897,6 @@ class TclGoogleAndroidTV(DeviceCommonSelf):
             command_line_list = ["timeout", ADB_KEY_TIME, "adb", "shell", "input",
                                  "keyevent", "KEYCODE_WAKEUP"]
             event = self.runCommand(command_line_list, _who, forgive=forgive)
-            #command_line_str = ' '.join(command_line_list)
-            #pipe = sp.Popen(command_line_list, stdout=sp.PIPE, stderr=sp.PIPE)
-            #text, err = pipe.communicate()  # This performs .wait() too
-
-            #if p_args.verbose2 or p_args.verbose3:
-            #    ext.t_end('print')  # TclGoogleAndroidTV().TurnOff():: 1.8827719688
-            #else:
-            #    ext.t_end('no_print')
-
-            #v3_print(_who, "Results from '" + command_line_str + "':")
-            #v3_print(_who, "text: '" + text.strip() + "'")
-            #v3_print(_who, "err: '" + err.strip() + "'  | pipe.returncode:",
-            #         pipe.returncode)
-            # TclGoogleAndroidTV().TurnOn(): err: error: device unauthorized.
-            # This adb d's $ADB_VENDOR_KEYS is not set; try 'adb kill-server' if that seems wrong.
-            # Otherwise check for a confirmation dialog on your device.
-
-            # 2024-12-01 TODO: Error message to revoke keys
-
-            #v2_print(_who, "reply from KEYCODE_WAKEUP:", text, err)
             if event['returncode'] > 0:
                 # 2024-10-19 - Always returns '124' which is timeout exit code
                 #   https://stackoverflow.com/a/42615416/6929343
@@ -1984,15 +1905,6 @@ class TclGoogleAndroidTV(DeviceCommonSelf):
                     if event['returncode'] == 124:
                         v0_print(_who, self.ip, "timeout after:", ADB_KEY_TIME)
                 return "?"
-            #if not pipe.returncode == 0:
-                # 2024-10-19 - Always returns '124' which is timeout exit code
-                #   https://stackoverflow.com/a/42615416/6929343
-            #    if forgive is False:
-            #        v0_print(_who, "pipe.returncode:", pipe.returncode)
-            #        if pipe.returncode == 124:
-            #            v0_print(_who, self.ip, "timeout after:", ADB_KEY_TIME)
-            #    #return "?"
-                # pipe.returncode == 255 is sometimes returned.
 
             self.PowerStatus()
             if self.power_status == "ON" or cnt >= 5:
@@ -2005,32 +1917,14 @@ class TclGoogleAndroidTV(DeviceCommonSelf):
         _who = self.who + "TurnOff():"
         v2_print(_who, "Send KEYCODE_SLEEP to:", self.ip)
 
-        # timeout 1 adb shell input keyevent KEYCODE_SLEEP  # Turn Google TV off
-        #ext.t_init(_who + " time for 'adb shell input keyevent KEYCODE_SLEEP'")
         command_line_list = ["timeout", ADB_KEY_TIME, "adb", "shell", "input",
                              "keyevent", "KEYCODE_SLEEP"]
         event = self.runCommand(command_line_list, _who, forgive=forgive)
-        #command_line_str = ' '.join(command_line_list)
-        #pipe = sp.Popen(command_line_list, stdout=sp.PIPE, stderr=sp.PIPE)
-        #text, err = pipe.communicate()  # This performs .wait() too
 
-        #if p_args.verbose2 or p_args.verbose3:
-        #    ext.t_end('print')  # TclGoogleAndroidTV().TurnOff():: 1.8827719688
-        #else:
-        #    ext.t_end('no_print')
-
-        #v3_print(_who, "Results from '" + command_line_str + "':")
-        #v3_print(_who, "text: '" + text.strip() + "'")
-        #v3_print(_who, "err: '" + err.strip() + "'  | pipe.returncode:",
-        #         pipe.returncode)
-        #v2_print(_who, "reply from KEYCODE_SLEEP:", text, err)
-
-        #if not pipe.returncode == 0:
         if event['returncode'] > 0:
-            # 2024-10-19 - Always returns '124' which is timeout exit code
+            # 2024-10-19 - When hitting timeout limit, returns '124'
             #   https://stackoverflow.com/a/42615416/6929343
             if forgive is False:
-                #v0_print(_who, "pipe.returncode:", pipe.returncode)
                 if event['returncode'] == 124:
                     v0_print(_who, self.ip, "timeout after:", ADB_KEY_TIME)
             return "?"
@@ -2140,6 +2034,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         ''' Big Number Calculator and Delayed Textbox (dtb) '''
         self.calculator = self.calc_top = self.dtb = None
 
+        ''' Scrollbox (toolkit.CustomScrolledText) to display cmdEvents '''
+        self.event_top = self.event_scroll_active = None
+        
         ''' File/Edit/View/Tools dropdown menu bars '''
         self.file_menu = self.edit_menu = self.view_menu = self.tools_menu = None
         self.BuildMenu()  # Dropdown Menu Bars after 'sm ='
@@ -2196,7 +2093,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             global SUDO_PASSWORD
             SUDO_PASSWORD = None  # clear global password in homa
             command_line_list = ["sudo", "-K"]
-            #sp.call(["sudo", "-K"])  # clear Linux sudo password timestamp
             self.runCommand(command_line_list)
 
         mb = tk.Menu(self)
@@ -2242,7 +2138,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.view_menu.add_command(label="Network devices", font=g.FONT, underline=0,
                                    command=self.SensorsDevicesToggle, state=tk.DISABLED)
         self.view_menu.add_separator()
-        self.view_menu.add_command(label="Discovery errors", font=g.FONT, underline=0,
+        self.view_menu.add_command(label="Discovery timings", font=g.FONT, underline=10,
+                                   command=self.DisplayTimings)
+        self.view_menu.add_command(label="Discovery errors", font=g.FONT, underline=10,
                                    command=self.DisplayErrors, state=tk.DISABLED)
 
         mb.add_cascade(label="View", font=g.FONT, underline=0, menu=self.view_menu)
@@ -2406,6 +2304,10 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         else:
             #print("Focus In SPAM")  # FocusIn() is called twice
             pass
+
+        if self.event_scroll_active and self.event_top:
+            self.event_top.focus_force()
+            self.event_top.lift()
 
         if self.calculator and self.calc_top:
             self.calc_top.focus_force()
@@ -3157,7 +3059,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         arp_count = len(rd.arp_dicts)
         v1_print(_who, "arp_count:", arp_count)
 
-        # Refresh power status for all devices
+        # Refresh power status for all device instances in ni.arp_dicts
         self.RefreshAllPowerStatuses(auto=auto)
         LOG_EVENTS = True  # Reset to log events as required
 
@@ -3296,44 +3198,179 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         hc.MoveHere("Big Number Calculator", 'top_left')
 
     def DisplayErrors(self):
-        """ Big Number Calculator allows K, M, G, T, etc. UoM """
-        if self.calculator and self.calc_top:
-            self.calc_top.focus_force()
-            self.calc_top.lift()
+        """ Loop through ni.instances and display cmdEvents errors
+            2024-12-18 - Initial version displays all errors in scrolled textbox.
+                Future versions treeview with tree parent by expandable instance.
+        """
+        _who = self.who + "DisplayErrors():"
+        title = "Discovery errors"
+        scrollbox = self.DisplayCommon(_who, title)
+        if scrollbox is None:
+            return  # Window already opened and method is running
+
+        # Loop through ni.instances
+        for i, instance in enumerate(ni.instances):
+            inst = instance['instance']
+            for event in inst.cmdEvents:
+                ''' self.cmdEvent = {
+                    'caller': self.cmdCaller,  # Command caller: 'who+method():'
+                    'command': self.cmdCommand,  # Command list to executed
+                    'command_string': self.cmdString,  # Command list as string
+                    'start_time': self.cmdStart,  # When command started
+                    'duration': self.cmdDuration,  # Command duration
+                    'output': self.cmdOutput,  # stdout.strip() from command
+                    'error': self.cmdError,  # stderr.strip() from command
+                    'returncode': self.cmdReturncode  # return code from command } '''
+
+                if event['error'] == "" and event['returncode'] == 0:
+                    continue  # Not an error
+
+                # mmm dd hh:mm:ss <- RED caller <- GREEN Duration: 9.999 <- RED
+                time_str = time.strftime('%b %d %H:%M:%S',
+                                         time.localtime(event['start_time']))
+                duration = '{0:.3f}'.format(event['duration'])
+                scrollbox.insert("end", "\n" + time_str + "  | " + event['caller'] +
+                                 "  | Time: " + duration +
+                                 "  | Return: '" + str(event['returncode']) + "'\n")
+                scrollbox.highlight_pattern(event['caller'], "blue")
+                scrollbox.highlight_pattern("Time:", "green")
+                scrollbox.highlight_pattern("Return:", "red")
+
+                scrollbox.insert("end", "\tCommand: " + event['command_string'] + "\n")
+                scrollbox.highlight_pattern("Command:", "blue")
+                scrollbox.highlight_pattern(event['command_string'], "yellow")
+
+                errors = event['error'].splitlines()  # Error lines split on "\n"
+                for error in errors:
+                    scrollbox.insert("end", "\t\t" + error + "\n")
+
+    def DisplayTimings(self):
+        """ Loop through ni.instances and display cmdEvents times:
+                Count: 9, Minimum: 9.99, Maximum: 9.99, Average 9.99.
+
+            2024-12-21 TODO: Merge common code with DisplayErrors() > DisplayCommon()
+        """
+        _who = self.who + "DisplayTimings():"
+        title = "Discovery timings"
+        scrollbox = self.DisplayCommon(_who, title)
+        if scrollbox is None:
+            return  # Window already opened and method is running
+
+        # Loop through ni.instances
+        for i, instance in enumerate(ni.instances):
+            inst = instance['instance']
+            timings = {}  # caller + command_string: [count, all_times, min, max, avg]
+            for event in inst.cmdEvents:
+                ''' self.cmdEvent = {
+                    'caller': self.cmdCaller,  # Command caller: 'who+method():'
+                    'command': self.cmdCommand,  # Command list to executed
+                    'command_string': self.cmdString,  # Command list as string
+                    'start_time': self.cmdStart,  # When command started
+                    'duration': self.cmdDuration,  # Command duration
+                    'output': self.cmdOutput,  # stdout.strip() from command
+                    'error': self.cmdError,  # stderr.strip() from command
+                    'returncode': self.cmdReturncode  # return code from command } '''
+
+                keyT = event['caller'] + " " + event['command_string']
+                val = timings.get(keyT, None)
+                if val is None:
+                    val = {'count': 0, 'all_times': 0.0, 'min': 999999999.9,
+                           'max': 0.0, 'avg': 9.9}
+                val['count'] += 1
+                val['all_times'] += event['duration']
+                val['min'] = event['duration'] if event['duration'] < val['min'] else val['min']
+                val['max'] = event['duration'] if event['duration'] > val['max'] else val['max']
+                val['avg'] = val['all_times'] / val['count']
+                timings[keyT] = val
+
+            if not timings:
+                # 192.168.0.19 - Sony.LAN (using ni.os_curl not logging)
+                # 192.168.0.10 - WiFi (laptop display echo | sudo tee)
+                continue  # No events for instance?
+
+            for keyT in timings:
+                scrollbox.insert("end", "\n" + keyT + "\n")
+
+                val = timings[keyT]
+                scrollbox.insert("end", "\tCnt:" + str(val['count']) +
+                                 "  | Tot: " + '{0:.3f}'.format(val['all_times']) +
+                                 "  | Min: " + '{0:.3f}'.format(val['min']) +
+                                 "  | Max: " + '{0:.3f}'.format(val['max']) +
+                                 "  | Avg: " + '{0:.3f}'.format(val['avg']) +
+                                 "\n")
+                scrollbox.highlight_pattern(keyT, "blue")
+
+        scrollbox.highlight_pattern("Min:", "green")
+        scrollbox.highlight_pattern("Max:", "red")
+        scrollbox.highlight_pattern("Avg:", "yellow")
+
+    def DisplayCommon(self, _who, title):
+        """ Common method for DisplayErrors() and DisplayTime() """
+
+        if self.event_scroll_active and self.event_top:
+            self.event_top.focus_force()
+            self.event_top.lift()
             return
 
-        geom = monitor.get_window_geom('calculator')
-        self.calc_top = tk.Toplevel()
+        self.event_top = scrollbox = self.event_scroll_active = None
 
-        ''' Set Calculator program icon in taskbar '''
-        cfg_key = ['cfg_calculator', 'toplevel', 'taskbar_icon', 'height & colors']
-        ti = cfg.get_cfg(cfg_key)
-        img.taskbar_icon(self.calc_top, ti['height'], ti['outline'],
-                         ti['fill'], ti['text'], char=ti['char'])
+        def close(*_args):
+            """ Close window painted by this pretty_column() method """
+            if not self.event_scroll_active:
+                return
+            scrollbox.unbind("<Button-1>")  # 2024-12-21 TODO: old code, use unknown
+            self.win_grp.unregister_child(self.event_top)
+            self.event_scroll_active = None
+            self.event_top.destroy()
+            self.event_top = None
 
-        ''' Create calculator class instance '''
-        self.calculator = Calculator(self.calc_top, g.BIG_FONT, geom,
-                                     btn_fg=ti['text'], btn_bg=ti['fill'])
-        self.win_grp.register_child('Calculator', self.calc_top)
-        # Do not auto raise children. homa.py will take care of that with FocusIn()
+        self.event_top = tk.Toplevel()
+        x, y = hc.GetMouseLocation()
+        self.event_top.geometry('%dx%d+%d+%d' % (1100, 500, int(x), int(y)))
+        self.event_top.minsize(width=120, height=63)
+        self.event_top.title(title)
 
-        def calculator_close(*_args):
-            """ Save last geometry for next Calculator startup """
-            last_geom = monitor.get_window_geom_string(
-                self.calc_top, leave_visible=False)  # Leave toplevel invisible
-            monitor.save_window_geom('calculator', last_geom)
-            self.win_grp.unregister_child(self.calc_top)
-            self.calc_top.destroy()
-            self.calc_top = None  # Prevent lifting window
-            self.calculator = None  # Prevent lifting window
+        self.event_top.columnconfigure(0, weight=1)
+        self.event_top.rowconfigure(0, weight=1)
+        self.event_top.configure(background="WhiteSmoke")  # Future user configuration
+        self.win_grp.register_child(title, self.event_top)  # Lifting & moving with parent
+        self.event_scroll_active = True
 
-        ''' Trap <Escape> key and  '✘' Window Close Button '''
-        self.calc_top.bind("<Escape>", calculator_close)
-        self.calc_top.protocol("WM_DELETE_WINDOW", calculator_close)
-        self.calc_top.update_idletasks()
+        ''' Bind <Escape> to close window '''
+        self.event_top.bind("<Escape>", close)
+        self.event_top.protocol("WM_DELETE_WINDOW", close)
 
-        ''' Move Calculator to cursor position '''
-        hc.MoveHere("Big Number Calculator", 'top_left')
+        ''' frame - Holds scrollable text entry and button(s) '''
+        frame = ttk.Frame(self.event_top, borderwidth=g.FRM_BRD_WID,
+                          padding=(2, 2, 2, 2), relief=tk.RIDGE)
+        frame.grid(column=0, row=0, sticky=tk.NSEW)
+        ha_font = (None, g.MON_FONT)  # ms_font = mserve, ha_font = HomA
+
+        close_btn = ttk.Button(
+            frame, width=7, text="✘ Close", style="C.TButton", command=close)
+        close_btn.grid(row=1, column=0, padx=10, pady=5, sticky=tk.E)
+
+        scrollbox = toolkit.CustomScrolledText(
+            frame, state="normal", font=ha_font, borderwidth=15, relief=tk.FLAT)
+        toolkit.scroll_defaults(scrollbox)  # Default tab stops are too wide
+        scrollbox.config(tabs=("5m", "10m", "15m"))
+        scrollbox.grid(row=0, column=0, padx=3, pady=3, sticky=tk.NSEW)
+        frame.rowconfigure(0, weight=1)
+        frame.columnconfigure(0, weight=1)  # 2024-07-13 - Was column 1
+
+        # Foreground colors
+        scrollbox.tag_config('red', foreground='red')
+        scrollbox.tag_config('blue', foreground='blue')
+        scrollbox.tag_config('green', foreground='green')
+        scrollbox.tag_config('black', foreground='black')
+        scrollbox.tag_config('gray', foreground='gray')
+
+        # Highlighting background colors
+        scrollbox.tag_config('yellow', background='yellow')
+        scrollbox.tag_config('cyan', background='cyan')
+        scrollbox.tag_config('magenta', background='magenta')
+
+        return scrollbox
 
 
 class TreeviewRow(DeviceCommonSelf):
@@ -3668,12 +3705,9 @@ class SystemMonitor(DeviceCommonSelf):
             return True
 
         self.number_checks += 1
-        #ext.t_init("sensors")
-        #result = sp.check_output(['sensors'])
         log = True if len(self.sensors_log) == 0 else False
         event = self.runCommand(['sensors'], _who, log=log)
         result = event['output']
-        #_time = ext.t_end("no_print")
         self.last_sensor_check = now
 
         # Parse `sensors` output to dictionary key/value pairs
