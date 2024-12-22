@@ -144,7 +144,7 @@ REFRESH_MS = 16  # Refresh tooltip fades 60 frames per second
 REDISCOVER_SECONDS = 60  # Check devices changes every x seconds
 RESUME_TEST_SECONDS = 10  # > x seconds disappeared means system resumed
 RESUME_DELAY_RESTART = 3  # Pause x seconds after resuming from suspend
-TIMER_SEC = 540  # Tools Dropdown Menubar - Countdown Timer default
+TIMER_SEC = 600  # Tools Dropdown Menubar - Countdown Timer default
 LOG_EVENTS = True  # Override runCommand event logging / --verbose3 printing
 EVENT_ERROR_COUNT = 0  # To enable/disable View Dropdown menu "Discovery errors"
 
@@ -285,18 +285,30 @@ class DeviceCommonSelf:
         self.cmdError = err.strip()
         self.cmdReturncode = pipe.returncode
         self.cmdDuration = time.time() - self.cmdStart
+        return self.logEvent(_who, forgive=forgive, log=log)
 
+    def logEvent(self, who, forgive=False, log=True):
+        """
+            who = self.cmdCaller + "runCommand():"
+            Build self.cmdEvent{} dictionary from self.cmdXxx variables.
+            During automatic rediscovery, logging is turned off (log=False) to
+            reduce size of cmdEvents[list].
+        """
+
+        # LOG_EVENTS is global variable to prevent logging during auto rediscovery
         if LOG_EVENTS is False:
             log = False  # Auto rediscovery has turned off logging
         if log:
-            v3_print("\n" + _who, "'" + self.cmdString + "'")
-            v3_print("  cmdOutput: '" + self.cmdOutput + "'")
-            v3_print("  cmdError : '" + self.cmdError  + "'  | cmdReturncode: ",
+            v3_print("\n" + who,  "'" + self.cmdString + "'")
+            o = self.cmdOutput if isinstance(self.cmdOutput, str) else '\n'.join(self.cmdOutput)
+            v3_print("  cmdOutput: '" + o + "'")
+            o = self.cmdError if isinstance(self.cmdError, str) else '\n'.join(self.cmdError)
+            v3_print("  cmdError : '" + o  + "'  | cmdReturncode: ",
                      self.cmdReturncode, "  | cmdDuration:", self.cmdDuration)
 
         if self.cmdReturncode > 0:
             if forgive is False:
-                v0_print(_who, "cmdReturncode:", self.cmdReturncode)
+                v0_print(who, "cmdReturncode:", self.cmdReturncode)
 
             # 2024-12-21 `timeout` never returns error message
             if self.cmdReturncode == 124 and self.cmdCommand[0] == "timeout":
@@ -915,7 +927,7 @@ class NetworkInfo(DeviceCommonSelf):
                 Use os_curl instead to prevent error message:
                      {'error': [403, 'Forbidden']}
         """
-        _who = self.who + "curl()"
+        _who = self.who + "curl():"
         # $1 = JSON String in pretty format converted to file for cURL --data.
         # $2 = Sony subsystem to talk to, eg accessControl, audio, system, etc.
         # 3  = variable name to receive reply from TV
@@ -951,19 +963,36 @@ class NetworkInfo(DeviceCommonSelf):
         """ Use os.popen curl to communicate with REST API
             2024-10-21 - os_curl supports Sony Picture On/Off using os.popen()
         """
-        _who = self.who + "os_curl()"
+        _who = self.who + "os_curl():"
 
-        command_line_str = 'timeout ' + str(CURL_TIME) + ' curl' +\
+        self.cmdCaller = _who  # self.cmdXxx vars in DeviceCommonSelf() class
+        self.cmdStart = time.time()
+        self.cmdCommand = [
+            'timeout', str(CURL_TIME), 'curl',
+            '-s', '-H', '"Content-Type: application/json; charset=UTF-8"',
+            '-H', '"X-Auth-PSK: ' + SONY_PWD + '"', '--data', "'" + JSON_str + "'",
+            'http://' + ip + '/sony/' + subsystem
+        ]
+        self.cmdString = 'timeout ' + str(CURL_TIME) + ' curl' +\
             ' -s -H "Content-Type: application/json; charset=UTF-8" ' +\
             ' -H "X-Auth-PSK: ' + SONY_PWD + '" --data ' + "'" + JSON_str + "'" +\
             ' http://' + ip + '/sony/' + subsystem
 
-        v3_print("\n" + _who, "command_line_str:", command_line_str, "\n")
+        #v3_print("\n" + _who, "self.cmdString:", self.cmdString, "\n")
 
-        f = os.popen(command_line_str)
+        ''' run command with os.popen() because sp.Popen() fails '''
+        f = os.popen(self.cmdString + " 2>&1")
         text = f.read().splitlines()
         returncode = f.close()  # https://stackoverflow.com/a/70693068/6929343
         v3_print(_who, "text:", text)
+
+        ''' log event and v3_print debug lines '''
+        self.cmdOutput = "" if returncode != 0 else text
+        self.cmdError = "" if returncode == 0 else text
+        self.cmdReturncode = returncode
+        self.cmdDuration = time.time() - self.cmdStart
+        who = self.cmdCaller + " logEvent():"
+        self.logEvent(who, forgive=forgive, log=True)
 
         if returncode is not None:
             if forgive is False:
@@ -1152,9 +1181,10 @@ class LaptopDisplay(DeviceCommonSelf):
             pass  # Dummy argument for uniform instance parameter list
 
         power = '/sys/class/backlight/' + BACKLIGHT_NAME + '/bl_power'
-        with open(power, "r") as f:
-            string = f.read().strip()
+        command_line_list = ['cat', power]
+        event = self.runCommand(command_line_list, _who)
 
+        string = event['output']
         if string == BACKLIGHT_ON:
             self.power_status = "ON"  # Can be "ON", "OFF" or "?"
         elif string == BACKLIGHT_OFF:
@@ -1166,11 +1196,11 @@ class LaptopDisplay(DeviceCommonSelf):
         return self.power_status
 
     def SetPower(self, status, forgive=False):
-        """ Set Power to status to 'OFF' or 'ON'
+        """ Set Laptop Display Backlight Power 'OFF' or 'ON'
             If forgive=True then don't report pipe.returncode != 0
         """
 
-        _who = self.who + "SetPower():"
+        _who = self.who + "SetPower(" + status + "):"
         v2_print(_who, "Set Laptop Display Power to:", status)
 
         global SUDO_PASSWORD
@@ -1191,23 +1221,24 @@ class LaptopDisplay(DeviceCommonSelf):
             V0_print(_who, "Invalid status (no 'ON' or 'OFF':", status)
             exit()
 
-        command_line_str = "echo PASSWORD | sudo -S echo X | sudo tee BL_POWER"
+        #command_line_str = "echo PASSWORD | sudo -S echo X | sudo tee BL_POWER"
 
+        self.cmdStart = time.time()
         cmd1 = sp.Popen(['echo', SUDO_PASSWORD], stdout=sp.PIPE)
         cmd2 = sp.Popen(['sudo', '-S', 'echo', echo], stdin=cmd1.stdout, stdout=sp.PIPE)
         pipe = sp.Popen(['sudo', 'tee', power], stdin=cmd2.stdout, stdout=sp.PIPE,
                         stderr=sp.PIPE)
 
-        v3_print(_who, "Results from '" + command_line_str + "':")
-        v3_print(_who, "pipe.stdout: '" + pipe.stdout.read().decode().strip() + "'")
-        v3_print(_who, "pipe.stderr: '" + pipe.stderr.read().decode().strip() +
-                 "'  | pipe.returncode:", pipe.returncode)
-
-        # pipe.returncode can be <None>
-        if pipe.returncode and pipe.returncode != 0:
-            if forgive is False:
-                v0_print(_who, "pipe.returncode:", pipe.returncode)
-            return "ERROR"
+        self.cmdCaller = _who
+        who = self.cmdCaller + " logEvent():"
+        self.cmdCommand = ["echo", "SUDO_PASSWORD", "|", "sudo", "-S", "echo",
+                           echo, "|", "sudo", "tee", power]
+        self.cmdString = ' '.join(self.cmdCommand)
+        self.cmdOutput = pipe.stdout.read().decode().strip()
+        self.cmdError = pipe.stdout.read().decode().strip()
+        self.cmdReturncode = pipe.returncode
+        self.cmdDuration = time.time() - self.cmdStart
+        self.logEvent(who, forgive=forgive, log=True)
         self.power_status = status
 
 
@@ -1348,7 +1379,7 @@ class SmartPlugHS100(DeviceCommonSelf):
             If forgive=True then don't report pipe.returncode != 0
         """
 
-        _who = self.who + "SetPower():"
+        _who = self.who + "SetPower(" + status + "):"
         v2_print(_who, "Turn TP-Link Kasa HS100 Smart Plug '" + status + "'")
 
         command_line_list = \
@@ -1606,7 +1637,6 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/audio/v1_1/g
 
         reply_dict = ni.curl(JSON_str, "audio", self.ip, forgive=forgive)
         v2_print(_who, "curl reply_dict:", reply_dict)
-        print(_who, "curl reply_dict:", reply_dict)
         # SonyBraviaKdlTV().getSoundSettings(): curl reply_dict: {'result': [[
         # {'currentValue': 'speaker', 'target': 'outputTerminal'}]], 'id': 73}
         #print(_who, "curl reply_dict:", reply_dict)
@@ -1624,7 +1654,6 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/audio/v1_1/g
         except (KeyError, IndexError):
             reply = reply_dict  # Probably "7" for not a Sony TV
         v2_print(_who, "curl reply:", reply)
-        print(_who, "curl reply:", reply)
         # SonyBraviaKdlTV().getSoundSettings(): curl reply: speaker
 
         if True is True:
@@ -1654,7 +1683,6 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/audio/v1_0/g
 
         reply_dict = ni.curl(JSON_str, "audio", self.ip, forgive=forgive)
         v2_print(_who, "curl reply_dict:", reply_dict)
-        print(_who, "curl reply_dict:", reply_dict)
         # SonyBraviaKdlTV().getSoundSettings(): curl reply_dict: {'result': [[
         # {'currentValue': 'speaker', 'target': 'outputTerminal'}]], 'id': 73}
         #print(_who, "curl reply_dict:", reply_dict)
@@ -1672,7 +1700,6 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/audio/v1_0/g
         except (KeyError, IndexError):
             reply = reply_dict  # Probably "7" for not a Sony TV
         v2_print(_who, "curl reply:", reply)
-        print(_who, "curl reply:", reply)
         # SonyBraviaKdlTV().getSoundSettings(): curl reply: speaker
 
         if True is True:
@@ -1691,11 +1718,8 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/audio/v1_0/g
         JSON_str = \
             '{"method": "getVolumeInformation", "id": 33, "params": [], "version": "1.0"}'
 
-        ext.t_init(_who)
         reply_dict = ni.curl(JSON_str, "audio", self.ip, forgive=forgive)
-        ext.t_end('print')  # SonyBraviaKdlTV().getVolume(): 0.0106749535
         v2_print(_who, "curl reply_dict:", reply_dict)
-        print(_who, "curl reply_dict:", reply_dict)
         # SonyBraviaKdlTV().getVolume(): curl reply_dict: {'result': [[
         # {'volume': 28, 'maxVolume': 100, 'minVolume': 0, 'target': 'speaker', 'mute': False},
         # {'volume': 15, 'maxVolume': 100, 'minVolume': 0, 'target': 'headphone', 'mute': False}
@@ -1713,7 +1737,6 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/audio/v1_0/g
         except (KeyError, IndexError):
             reply = reply_dict  # Probably "7" for not a Sony TV
         v2_print(_who, "curl reply:", reply)
-        print(_who, "curl reply:", reply)
         # SonyBraviaKdlTV().getVolume(): curl reply: 28
 
         if True is True:
@@ -1893,7 +1916,6 @@ class TclGoogleAndroidTV(DeviceCommonSelf):
             v1_print(_who, "Attempt #:", cnt, "Send 'KEYCODE_WAKEUP' to IP:", self.ip)
 
             # timeout 1 adb shell input keyevent KEYCODE_WAKEUP  # Turn Google TV off
-            #ext.t_init(_who + "time for 'adb shell input keyevent KEYCODE_WAKEUP'")
             command_line_list = ["timeout", ADB_KEY_TIME, "adb", "shell", "input",
                                  "keyevent", "KEYCODE_WAKEUP"]
             event = self.runCommand(command_line_list, _who, forgive=forgive)
@@ -2630,6 +2652,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         resp = cr.inst.PictureOn()
         text = "  " + str(resp)
         cr.tree.item(cr.item, text=text)
+        cr.tree.update_idletasks()
 
     def PictureOff(self, cr):
         """ Mouse right button click selected "Turn Picture Off". """
@@ -2637,6 +2660,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         resp = cr.inst.PictureOff()
         text = "  " + str(resp)
         cr.tree.item(cr.item, text=text)
+        cr.tree.update_idletasks()
 
     def TurnOn(self, cr):
         """ Mouse right button click selected "Turn On".
@@ -2646,6 +2670,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         resp = cr.inst.TurnOn()
         text = "  " + str(resp)
         cr.tree.item(cr.item, text=text)
+        cr.tree.update_idletasks()
         self.resumePowerOn = 0  # Resume didn't power on the device
         self.manualPowerOn = 0  # Was device physically powered on?
         self.nightPowerOn = 0  # Did nighttime power on the device?
@@ -2664,6 +2689,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         resp = cr.inst.TurnOff()
         text = "  " + str(resp)
         cr.tree.item(cr.item, text=text)
+        cr.tree.update_idletasks()
         self.suspendPowerOff = 0  # Suspend didn't power off the device
         self.manualPowerOff = 0  # Was device physically powered off?
         self.dayPowerOff = 0  # Did daylight power off the device?
@@ -2842,7 +2868,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             Called by Suspend ("OFF") and Resume ("ON")
             If devices treeview is mounted, update power status in each row
         """
-        _who = self.who + "SetAllPower():"
+        _who = self.who + "SetAllPower(" + state + "):"
         night = cp.NightLightStatus()
         v1_print(_who, "Nightlight status: '" + night + "'")
 
@@ -3115,6 +3141,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 pass  # TODO: 2024-11-28 - Check rd.arp changes from ni.arp
 
         # All steps done: Wait for next rediscovery period
+        ni.cmdEvents.extend(rd.cmdEvents)  # For auto-rediscover, rd.cmdEvents[] empty
         rd = None
         self.rediscover_done = True
         self.last_rediscover_time = time.time()
@@ -3208,10 +3235,12 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         if scrollbox is None:
             return  # Window already opened and method is running
 
-        # Loop through ni.instances
-        for i, instance in enumerate(ni.instances):
-            inst = instance['instance']
-            for event in inst.cmdEvents:
+        def insertEvents(events):
+            """
+            :param events: self.cmdEvents from DeviceCommonSelf() class
+            :return:
+            """
+            for event in events:
                 ''' self.cmdEvent = {
                     'caller': self.cmdCaller,  # Command caller: 'who+method():'
                     'command': self.cmdCommand,  # Command list to executed
@@ -3244,6 +3273,14 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 for error in errors:
                     scrollbox.insert("end", "\t\t" + error + "\n")
 
+        # Loop through ni.instances
+        for i, instance in enumerate(ni.instances):
+            inst = instance['instance']
+            insertEvents(inst.cmdEvents)
+
+        # ni has cmdEvents too!
+        insertEvents(ni.cmdEvents)
+
     def DisplayTimings(self):
         """ Loop through ni.instances and display cmdEvents times:
                 Count: 9, Minimum: 9.99, Maximum: 9.99, Average 9.99.
@@ -3256,11 +3293,13 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         if scrollbox is None:
             return  # Window already opened and method is running
 
-        # Loop through ni.instances
-        for i, instance in enumerate(ni.instances):
-            inst = instance['instance']
+        def insertEvents(events):
+            """ cmdEvents from ni.instances or from ni itself
+            :param events: cmdEvents
+            :return: None
+            """
             timings = {}  # caller + command_string: [count, all_times, min, max, avg]
-            for event in inst.cmdEvents:
+            for event in events:
                 ''' self.cmdEvent = {
                     'caller': self.cmdCaller,  # Command caller: 'who+method():'
                     'command': self.cmdCommand,  # Command list to executed
@@ -3286,7 +3325,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             if not timings:
                 # 192.168.0.19 - Sony.LAN (using ni.os_curl not logging)
                 # 192.168.0.10 - WiFi (laptop display echo | sudo tee)
-                continue  # No events for instance?
+                return  # No events for instance?
 
             for keyT in timings:
                 scrollbox.insert("end", "\n" + keyT + "\n")
@@ -3299,6 +3338,14 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                                  "  | Avg: " + '{0:.3f}'.format(val['avg']) +
                                  "\n")
                 scrollbox.highlight_pattern(keyT, "blue")
+
+        # Loop through ni.instances
+        for i, instance in enumerate(ni.instances):
+            inst = instance['instance']
+            insertEvents(inst.cmdEvents)
+
+        # ni has cmdEvents too!
+        insertEvents(ni.cmdEvents)
 
         scrollbox.highlight_pattern("Min:", "green")
         scrollbox.highlight_pattern("Max:", "red")
@@ -3326,7 +3373,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         self.event_top = tk.Toplevel()
         x, y = hc.GetMouseLocation()
-        self.event_top.geometry('%dx%d+%d+%d' % (1100, 500, int(x), int(y)))
+        self.event_top.geometry('%dx%d+%d+%d' % (1200, 500, int(x), int(y)))
         self.event_top.minsize(width=120, height=63)
         self.event_top.title(title)
 
