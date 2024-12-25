@@ -126,46 +126,47 @@ from calc import Calculator  # Big Number calculator
 
 import homa_common as hc  # hc.ValidateSudoPassword()
 
-SONY_PWD = "123"  # Sony TV REST API password
-CONFIG_FNAME = "config.json"  # Future configuration file.
-DEVICES_FNAME = "devices.json"  # mirrors ni.arp_dicts[{}, {}, ... {}]
-VIEW_ORDER_FNAME = "view_order.json"  # Read into ni.view_order[mac1, mac2, ... mac9]
+#SONY_PWD = "123"  # Sony TV REST API password
+#CONFIG_FNAME = "config.json"  # Future configuration file.
+#DEVICES_FNAME = "devices.json"  # mirrors ni.arp_dicts[{}, {}, ... {}]
+#VIEW_ORDER_FNAME = "view_order.json"  # Read into ni.view_order[mac1, mac2, ... mac9]
 
 # Timeouts improve device interface performance
-PLUG_TIME = "2.0"  # Smart plug timeout to turn power on/off
-CURL_TIME = "0.2"  # Anything longer means not a Sony TV or disconnected
-ADB_CON_TIME = "0.3"  # Android TV Test if connected timeout
-ADB_PWR_TIME = "2.0"  # Android TV Test if power state is on. Test increment .5 sec
-ADB_KEY_TIME = "5.0"  # Android keyevent KEYCODE_SLEEP or KEYCODE_WAKEUP timeout
-ADB_MAGIC_TIME = "0.2"  # Android TV Magic Packet wait time.
+#PLUG_TIME = "2.0"  # Smart plug timeout to turn power on/off
+#CURL_TIME = "0.2"  # Anything longer means not a Sony TV or disconnected
+#ADB_CON_TIME = "0.3"  # Android TV Test if connected timeout
+#ADB_PWR_TIME = "2.0"  # Android TV Test if power state is on. Test increment .5 sec
+#ADB_KEY_TIME = "5.0"  # Android keyevent KEYCODE_SLEEP or KEYCODE_WAKEUP timeout
+#ADB_MAGIC_TIME = "0.2"  # Android TV Magic Packet wait time.
 
-APP_RESTART_TIME = time.time()  # Time started or resumed. Use for elapsed time print
-REFRESH_MS = 16  # Refresh tooltip fades 60 frames per second
-REDISCOVER_SECONDS = 60  # Check devices changes every x seconds
-RESUME_TEST_SECONDS = 10  # > x seconds disappeared means system resumed
-RESUME_DELAY_RESTART = 3  # Pause x seconds after resuming from suspend
-TIMER_SEC = 600  # Tools Dropdown Menubar - Countdown Timer default
-LOG_EVENTS = True  # Override runCommand event logging / --verbose3 printing
-EVENT_ERROR_COUNT = 0  # To enable/disable View Dropdown menu "Discovery errors"
+#APP_RESTART_TIME = time.time()  # Time started or resumed. Use for elapsed time print
+#REFRESH_MS = 16  # Refresh tooltip fades 60 frames per second
+#REDISCOVER_SECONDS = 60  # Check devices changes every x seconds
+#RESUME_TEST_SECONDS = 10  # > x seconds disappeared means system resumed
+#RESUME_DELAY_RESTART = 3  # Pause x seconds after resuming from suspend
+#TIMER_SEC = 600  # Tools Dropdown Menubar - Countdown Timer default
+#TIMER_ALARM = "Alarm_01.wav"  # From: https://www.pippim.com/programs/tim-ta.html
+#LOG_EVENTS = True  # Override runCommand event logging / --verbose3 printing
+#EVENT_ERROR_COUNT = 0  # To enable/disable View Dropdown menu "Discovery errors"
 
-SENSOR_CHECK = 1.0  # Check `sensors` (CPU/GPU temp & fan speeds) every x seconds
-SENSOR_LOG = 3600.0  # Log `sensors` every x seconds. Log more if fan speed changes
-FAN_GRANULAR = 200  # Skip logging when fan changes <= FAN_GRANULAR
+#SENSOR_CHECK = 1.0  # Check `sensors` (CPU/GPU temp & fan speeds) every x seconds
+#SENSOR_LOG = 3600.0  # Log `sensors` every x seconds. Log more if fan speed changes
+#FAN_GRANULAR = 200  # Skip logging when fan changes <= FAN_GRANULAR
 
-# Device type global identifier variables stored in "inst.type_code"
-HS1_SP = 10  # TP-Link Kasa WiFi Smart Plug HS100, HS103 or HS110 using hs100.sh
-KDL_TV = 20  # Sony Bravia KDL Android TV using REST API (curl)
-TCL_TV = 30  # TCL Google Android TV using adb (after wakeonlan)
-DESKTOP = 100  # Desktop Computer, Tower, NUC, Raspberry Pi, etc.
-LAPTOP_B = 110  # Laptop base (CPU, GPU, Keyboard, Fans, Ports, etc.)
-LAPTOP_D = 120  # Laptop display (Can be turned on/off separate from base)
-SUDO_PASSWORD = None  # Sudo password required for laptop backlight
-BACKLIGHT_NAME = os.popen("ls /sys/class/backlight").read().strip()  # intel_backlight
-BACKLIGHT_ON = "0"  # Sudo echo to "/sys/class/backlight/intel_backlight/bl_power"
-BACKLIGHT_OFF = "4"  # ... will control laptop display backlight power On/Off.
+# Device type global identifier hard-coded in "inst.type_code"
+#HS1_SP = 10  # TP-Link Kasa WiFi Smart Plug HS100, HS103 or HS110 using hs100.sh
+#KDL_TV = 20  # Sony Bravia KDL Android TV using REST API (curl)
+#TCL_TV = 30  # TCL Google Android TV using adb (after wakeonlan)
+#DESKTOP = 100  # Desktop Computer, Tower, NUC, Raspberry Pi, etc.
+#LAPTOP_B = 110  # Laptop base (CPU, GPU, Keyboard, Fans, Ports, etc.)
+#LAPTOP_D = 120  # Laptop display (Can be turned on/off separate from base)
+#SUDO_PASSWORD = None  # Sudo password required for laptop backlight
+#BACKLIGHT_NAME = os.popen("ls /sys/class/backlight").read().strip()  # intel_backlight
+#BACKLIGHT_ON = "0"  # Sudo echo to "/sys/class/backlight/intel_backlight/bl_power"
+#BACKLIGHT_OFF = "4"  # ... will control laptop display backlight power On/Off.
 
-POWER_OFF_CMD_LIST = ["systemctl", "suspend"]  # When calling "Turn Off" for Computer()
-POWER_ALL_EXCL_LIST = [DESKTOP, LAPTOP_B, LAPTOP_D]  # Exclude when powering "All"
+#POWER_OFF_CMD_LIST = ["systemctl", "suspend"]  # When calling "Turn Off" for Computer()
+#POWER_ALL_EXCL_LIST = [DESKTOP, LAPTOP_B, LAPTOP_D]  # Exclude when powering "All"
 
 
 class DeviceCommonSelf:
@@ -209,7 +210,7 @@ class DeviceCommonSelf:
         self.cmdDuration = 0.0  # Command duration {duration: 9.99}
         self.cmdOutput = ""  # stdout.strip() from command {output: Xxx}
         self.cmdError = ""  # stderr.strip() from command {error: Xxx}
-        self.cmdReturncode = ""  # return code from command {returncode: 9}
+        self.cmdReturncode = 0  # return code from command {returncode: 9}
         # time: 999.99 duration: 9.999 who: <_who> command: <command str>
         # text: <text> err: <text> return: <return code>
 
@@ -295,8 +296,8 @@ class DeviceCommonSelf:
             reduce size of cmdEvents[list].
         """
 
-        # LOG_EVENTS is global variable to prevent logging during auto rediscovery
-        if LOG_EVENTS is False:
+        # GLO['LOG_EVENTS'] global variable is set during auto rediscovery
+        if GLO['LOG_EVENTS'] is False:
             log = False  # Auto rediscovery has turned off logging
         if log:
             v3_print("\n" + who,  "'" + self.cmdString + "'")
@@ -306,7 +307,7 @@ class DeviceCommonSelf:
             v3_print("  cmdError : '" + o  + "'  | cmdReturncode: ",
                      self.cmdReturncode, "  | cmdDuration:", self.cmdDuration)
 
-        if self.cmdReturncode > 0:
+        if self.cmdReturncode != 0:
             if forgive is False:
                 v0_print(who, "cmdReturncode:", self.cmdReturncode)
 
@@ -330,40 +331,212 @@ class DeviceCommonSelf:
         if log:
             self.cmdEvents.append(self.cmdEvent)
             if self.cmdError or self.cmdReturncode:
-                global EVENT_ERROR_COUNT
-                EVENT_ERROR_COUNT += 1
+                # When one or more errors, menu is enabled.
+                GLO['EVENT_ERROR_COUNT'] += 1
         return self.cmdEvent
 
 
-class Config(DeviceCommonSelf):
-    """ Configuration
+class Globals(DeviceCommonSelf):
+    """ Globals
 
-        What should be in sql.py too complicated to document due to mserve.py
+        What could be in sql.py too complicated to document due to mserve.py
 
-        self.monitors: monitor names, dimensions and offsets
-        self.windows:  saved top geometry restored on startup
-        self.resizes:  top and child window sizes for resize (configure) event
-        self.timings:  timeouts for adb, REST, resume, rediscover
-        self.colors:   colors for toplevel, taskbar icon, treeview, scrollbars
-        self.actions:  instance actions during suspend/resume, reboot, shutdown,
-                       sunrise/set, movie dimming, music playing
-        self.win_grp:  group of child windows moved/resized with Toplevel
+        - timeouts for adb, REST, resume, rediscover
+        - colors for toplevel, taskbar icon, treeview, scrollbars
 
     """
 
     def __init__(self):
         """ DeviceCommonSelf(): Variables used by all classes """
-        DeviceCommonSelf.__init__(self, "NetworkInfo().")  # Define self.who
+        DeviceCommonSelf.__init__(self, "Globals().")  # Define self.who
 
-        self.requires = ['arp', 'getent', 'timeout', 'curl', 'adb']
+        self.requires = ['ls']
+
+        # Next four lines can be defined in DeviceCommonSelf.__init__()
         self.installed = []
         self.CheckDependencies(self.requires, self.installed)
         v2_print(self.who, "Dependencies:", self.requires)
         v2_print(self.who, "Installed?  :", self.installed)
 
-    def Something(self, _background=False):
-        """ Kill and restart ADB server. Takes 3 seconds so run in background """
-        _who = self.who + "Something():"
+        # Defined globally with: glo = Globals()
+        #                        GLO = glo.dictGlobals
+        self.dictGlobals = {
+            "SONY_PWD": "123",  # Sony TV REST API password
+            "CONFIG_FNAME": "config.json",  # Future configuration file.
+            "DEVICES_FNAME": "devices.json",  # mirrors ni.arp_dicts[{}, {}, ... {}]
+            "VIEW_ORDER_FNAME": "view_order.json",  # Read into ni.view_order[mac1, mac2, ... mac9]
+            # Timeouts improve device interface performance
+            "PLUG_TIME": "2.0",  # Smart plug timeout to turn power on/off
+            "CURL_TIME": "0.2",  # Anything longer means not a Sony TV or disconnected
+            "ADB_CON_TIME": "0.3",  # Android TV Test if connected timeout
+            "ADB_PWR_TIME": "2.0",  # Android TV Test if power state is on. Test increment .5 sec
+            "ADB_KEY_TIME": "5.0",  # Android keyevent KEYCODE_SLEEP or KEYCODE_WAKEUP timeout
+            "ADB_MAGIC_TIME": "0.2",  # Android TV Wake on Lan Magic Packet wait time.
+            # Application timings and global working variables
+            "APP_RESTART_TIME": time.time(),  # Time started or resumed. Use for elapsed time print
+            "REFRESH_MS": 16,  # Refresh tooltip fades 60 frames per second
+            "REDISCOVER_SECONDS": 60,  # Check devices changes every x seconds
+            "RESUME_TEST_SECONDS": 10,  # > x seconds disappeared means system resumed
+            "RESUME_DELAY_RESTART": 3,  # Pause x seconds after resuming from suspend
+            "TIMER_SEC": 600,  # Tools Dropdown Menubar - Countdown Timer default
+            "TIMER_ALARM": "Alarm_01.wav",  # From: https://www.pippim.com/programs/tim-ta.html
+            "LOG_EVENTS": True,  # Override runCommand event logging / --verbose3 printing
+            "EVENT_ERROR_COUNT": 0,  # To enable/disable View Dropdown menu "Discovery errors"
+            "SENSOR_CHECK": 1.0,  # Check `sensors` (CPU/GPU temp & fan speeds) every x seconds
+            "SENSOR_LOG": 3600.0,  # Log `sensors` every x seconds. Log more if fan speed changes
+            "FAN_GRANULAR": 200,  # Skip logging when fan changes <= FAN_GRANULAR
+            # Device type global identifier hard-coded in "inst.type_code"
+            "HS1_SP": 10,  # TP-Link Kasa WiFi Smart Plug HS100, HS103 or HS110 using hs100.sh
+            "KDL_TV": 20,  # Sony Bravia KDL Android TV using REST API (curl)
+            "TCL_TV": 30,  # TCL Google Android TV using adb (after wakeonlan)
+            "DESKTOP": 100,  # Desktop Computer, Tower, NUC, Raspberry Pi, etc.
+            "LAPTOP_B": 110,  # Laptop base (CPU, GPU, Keyboard, Fans, Ports, etc.)
+            "LAPTOP_D": 120,  # Laptop display (Can be turned on/off separate from base)
+            "SUDO_PASSWORD": None,  # Sudo password required for laptop backlight
+            "BACKLIGHT_NAME": os.popen("ls /sys/class/backlight").read().strip(),  # intel_backlight
+            "BACKLIGHT_ON": "0",  # Sudo echo to "/sys/class/backlight/intel_backlight/bl_power"
+            "BACKLIGHT_OFF": "4",  # ... will control laptop display backlight power On/Off.
+            # Power all On/Off controls
+            "POWER_OFF_CMD_LIST": ["systemctl", "suspend"],  # Run "Turn Off" for Computer()
+            "POWER_ALL_EXCL_LIST": [100, 110, 120],  # Exclude when powering "All" to "ON" / "OFF"
+                                                     # 100=DESKTOP, 110=LAPTOP_B, 120=LAPTOP_D
+        }
+
+    def openFile(self):
+        """ Read dictConfig from CONFIG_FNAME = "config.json" """
+        _who = self.who + "openFile():"
+
+        fname = g.USER_DATA_DIR + os.sep + GLO['CONFIG_FNAME']
+        if os.path.isfile(fname):
+            with open(fname, "r") as f:
+                v2_print("Opening configuration file:", fname)
+                self.dictGlobals = json.loads(f.read())
+
+    def saveFile(self):
+        """ Save dictConfig to CONFIG_FNAME = "config.json" """
+        _who = self.who + "saveFile():"
+
+        GLO['SUDO_PASSWORD'] = None  # NEVER store a password
+        GLO['LOG_EVENTS'] = True  # Don't want to store False value
+        GLO['EVENT_ERROR_COUNT'] = 0  # Don't want to store last error count
+        with open(g.USER_DATA_DIR + os.sep + GLO['CONFIG_FNAME'], "w") as f:
+            f.write(json.dumps(self.dictGlobals))
+
+    def dictNotebook(self):
+        """ Define dictNotebook
+            https://stackoverflow.com/questions/284234/notebook-widget-in-tkinter
+        """
+        _who = self.who + "dictNotebook():"
+
+        dictHeader = {
+            "name": "HomA Preferences",
+            "name_tip": "Click on tabs to set HomA preferences.\n"
+                        "When done, click 'Save' or 'Cancel' / 'Close'.",
+            "tab0": "Sony TV",
+            "tab0_tip": "Variables improving performance of HomA\n"
+                        "communicating with Sony Televisions on LAN.",
+            "tab1": "Google TV",
+            "tab1_tip": "Variables improving performance of HomA\n"
+                        "communicating with Google Televisions on LAN.",
+            "tab2": "Smart Plug",
+            "tab2_tip": "Variables improving performance of HomA\n"
+                        "communicating with TP-Link Smart Plugs.",
+            "tab3": "Power Off",
+            "tab3_tip": "Define how the computer is turned off or\n"
+                        "if it suspended/hibernated instead. ",
+            "tab4": "Power On",
+            "tab4_tip": "Define how the computer is turned on or\n"
+                        "it is resumed / woken up.",
+            "tab5": "Laptop",
+            "tab5_tip": "Define how the laptop display is controlled\n"
+                        "by HomA.",
+            "tab6": "TV Control",
+            "tab7": "TV Control",
+            "tab8": "TV Control",
+            "tab10": "TV Control"
+        }
+        RO = 1
+        RW = 2
+        STR = 3
+        INT = 4
+        FLOAT = 5
+        MIN = MAX = CB = None
+        dictFields = {
+            # name: [tab#, ro/rw, input mask, stored as, min, max, edit callback
+            "SONY_PWD": [1, RW, STR, STR, MIN, MAX, CB,
+                         "Password for Sony REST API"],
+            "CONFIG_FNAME": [1, RO, STR, STR, MIN, MAX, CB,
+                             "HomA Configuration filename"],
+            "DEVICES_FNAME": [1, MIN, MAX, CB,
+                              "HomA discovered network devices."],
+            "VIEW_ORDER_FNAME": [1, RW, STR, STR, MIN, MAX, CB,
+                                 "HomA Network Devices Treeview display order"],
+            # Timeouts improve device interface performance
+            "PLUG_TIME": [2, RW, FLOAT, STR, MIN, MAX, CB,
+                          "Smart plug timeout to turn power on/off"],  #
+            "CURL_TIME": [2, RW, STR, STR, MIN, MAX, CB,
+                          "Anything longer means not a Sony TV or disconnected"],  #
+            "ADB_CON_TIME": [2, RW, STR, STR, MIN, MAX, CB,
+                             "Android TV Test if connected timeout"],  # A
+            "ADB_PWR_TIME": [2, RW, STR, STR, MIN, MAX, CB,
+                             "Android TV Test if power state is on. Test increment .5 sec"],  #
+            "ADB_KEY_TIME": [2, RW, STR, STR, MIN, MAX, CB,
+                             "Android keyevent KEYCODE_SLEEP or KEYCODE_WAKEUP timeout"],  #
+            "ADB_MAGIC_TIME": [2, RW, STR, STR, MIN, MAX, CB,
+                               "Android TV Wake on Lan Magic Packet wait time."],  #
+            # Application timings and global working variables
+            "APP_RESTART_TIME": [3, RW, STR, STR, MIN, MAX, CB,
+                                 "Time started or resumed. Use for elapsed time print"],  #
+            "REFRESH_MS": [3, RW, STR, STR, MIN, MAX, CB,
+                           "Refresh tooltip fades 60 frames per second"],  #
+            "REDISCOVER_SECONDS": [3, RW, STR, STR, MIN, MAX, CB,
+                                   "Check devices changes every x seconds"],  #
+            "RESUME_TEST_SECONDS": [3, RW, STR, STR, MIN, MAX, CB,
+                                    "> x seconds disappeared means system resumed"],  #
+            "RESUME_DELAY_RESTART": [3, RW, STR, STR, MIN, MAX, CB,
+                                     "Pause x seconds after resuming from suspend"],  #
+            "TIMER_SEC": [3, RW, INT, INT, MIN, MAX, CB,
+                          "Tools Dropdown Menubar - Countdown Timer default"],  #
+            "TIMER_ALARM": [3, RW, INT, INT, 10, MAX, CB,
+                            ".wav sound file to play when timer ends."],
+            "LOG_EVENTS": [3, RW, STR, STR, MIN, MAX, CB,
+                           "Override runCommand event logging / --verbose3 printing"],  #
+            "EVENT_ERROR_COUNT": [3, RO, INT, INT, 0, MAX, CB,
+                                  "To enable/disable View Dropdown menu 'Discovery errors'"],  #
+            "SENSOR_CHECK": [3, RW, STR, STR, MIN, MAX, CB,
+                             "Check `sensors` (CPU/GPU temp & fan speeds) every x seconds"],  #
+            "SENSOR_LOG": [3, RW, STR, STR, MIN, MAX, CB,
+                           "Log `sensors` every x seconds. Log more if fan speed changes"],  #
+            "FAN_GRANULAR": [3, RW, STR, STR, MIN, MAX, CB,
+                             "Skip logging when fan changes <= FAN_GRANULAR"],  #
+            # Device type global identifier hard-coded in "inst.type_code"
+            "HS1_SP": [4, RW, STR, STR, MIN, MAX, CB,
+                       "TP-Link Kasa WiFi Smart Plug HS100, HS103 or HS110 using hs100.sh"],  #
+            "KDL_TV": [4, RW, STR, STR, MIN, MAX, CB,
+                       "Sony Bravia KDL Android TV using REST API (curl)"],  #
+            "TCL_TV": [4, RW, STR, STR, MIN, MAX, CB,
+                       "TCL Google Android TV using adb (after wakeonlan)"],  #
+            "DESKTOP": [4, RW, STR, STR, MIN, MAX, CB,
+                        "Desktop Computer, Tower, NUC, Raspberry Pi, etc."],  #
+            "LAPTOP_B": [4, RW, STR, STR, MIN, MAX, CB,
+                         "Laptop base (CPU, GPU, Keyboard, Fans, Ports, etc.)"],  #
+            "LAPTOP_D": [4, RW, STR, STR, MIN, MAX, CB,
+                         "Laptop display (Can be turned on/off separate from base)"],  #
+            "SUDO_PASSWORD": [4, RW, STR, STR, MIN, MAX, CB,
+                              "Sudo password required for laptop backlight"],  #
+            "BACKLIGHT_NAME": [4, RW, STR, STR, MIN, MAX, CB,
+                               "E.G. 'intel_backlight', 'nvidia_backlight', etc."],  #
+            "BACKLIGHT_ON": [4, RW, STR, STR, MIN, MAX, CB,
+                             "Sudo echo to '/sys/class/backlight/intel_backlight/bl_power'"],  #
+            "BACKLIGHT_OFF": [4, RW, STR, STR, MIN, MAX, CB,
+                              "... will control laptop display backlight power On/Off."],  #
+            # Power all On/Off controls
+            "POWER_OFF_CMD_LIST": [4, RW, STR, STR, MIN, MAX, CB,
+                                   'Run "Turn Off" for Computer()'],  #
+            "POWER_ALL_EXCL_LIST": [4, RW, STR, STR, MIN, MAX, CB,
+                                    'Exclude when powering "All" to "ON" / "OFF"']
+        }
+        return dictHeader, dictFields
 
 
 class Computer(DeviceCommonSelf):
@@ -429,10 +602,10 @@ class Computer(DeviceCommonSelf):
             if name:  # name can be None
                 self.name = name + " (Base)"  # There will be two rows, one 'Display'
             self.type = "Laptop Computer"
-            self.type_code = LAPTOP_B
+            self.type_code = GLO['LAPTOP_B']
         else:
             self.type = "Desktop Computer"
-            self.type_code = DESKTOP
+            self.type_code = GLO['DESKTOP']
         self.power_status = "?"  # Can be "ON", "OFF" or "?"
         v2_print(self.who, "chassis:", self.chassis, " | type:", self.type)
 
@@ -589,7 +762,7 @@ class Computer(DeviceCommonSelf):
         return self.power_status  # Really it is "AWAKE"
 
     def TurnOff(self, forgive=False):
-        """ Turn off computer with POWER_OFF_CMD_LIST which contains:
+        """ Turn off computer with GLO['POWER_OFF_CMD_LIST'] which contains:
                 systemctl suspend
 
             Prior to calling cp.TurnOff(), Application().TurnOff() calls
@@ -602,7 +775,7 @@ class Computer(DeviceCommonSelf):
         if forgive:
             pass
 
-        command_line_list = POWER_OFF_CMD_LIST  # systemctl suspend
+        command_line_list = GLO['POWER_OFF_CMD_LIST']  # systemctl suspend
         _event = self.runCommand(command_line_list, _who, forgive=forgive)
 
         self.power_status = "OFF"  # Can be "ON", "OFF" or "?"
@@ -865,7 +1038,7 @@ class NetworkInfo(DeviceCommonSelf):
         command_line_list = \
             ["adb", "kill-server", "&&", "adb", "start-server"]
         if background:
-            command_line_list.append("&")
+            command_line_list.append("&")  # Has no effect in runCommand()
 
         command_line_str = ' '.join(command_line_list)
 
@@ -902,7 +1075,7 @@ class NetworkInfo(DeviceCommonSelf):
         command_line_list = ["mktemp", "--tmpdir=/run/user/1000", "homa.XXXXXXXX"]
         event = self.runCommand(command_line_list, _who)
 
-        if event['returncode'] > 0:
+        if event['returncode'] != 0:
             return
 
         temp_fname = event['output']
@@ -935,15 +1108,15 @@ class NetworkInfo(DeviceCommonSelf):
             v1_print(_who, "curl dependencies are not installed. Aborting...")
             return None
 
-        command_line_list = ["timeout", CURL_TIME, "curl", "-s",  # -s=Silent
+        command_line_list = ["timeout", GLO['CURL_TIME'], "curl", "-s",  # -s=Silent
                              "-H", '"Content-Type: application/json; charset=UTF-8"',
-                             "-H", '"X-Auth-PSK: ' + SONY_PWD + '"',
+                             "-H", '"X-Auth-PSK: ' + GLO['SONY_PWD'] + '"',
                              "--data", JSON_str,  # err: is unknown
                              "http://" + ip + "/sony/" + subsystem]
 
         event = self.runCommand(command_line_list, _who, forgive=forgive)
 
-        if event['returncode'] > 0:
+        if event['returncode'] != 0:
             return {"result": [{"status": event['returncode']}]}
 
         try:
@@ -968,14 +1141,14 @@ class NetworkInfo(DeviceCommonSelf):
         self.cmdCaller = _who  # self.cmdXxx vars in DeviceCommonSelf() class
         self.cmdStart = time.time()
         self.cmdCommand = [
-            'timeout', str(CURL_TIME), 'curl',
+            'timeout', str(GLO['CURL_TIME']), 'curl',
             '-s', '-H', '"Content-Type: application/json; charset=UTF-8"',
-            '-H', '"X-Auth-PSK: ' + SONY_PWD + '"', '--data', "'" + JSON_str + "'",
+            '-H', '"X-Auth-PSK: ' + GLO['SONY_PWD'] + '"', '--data', "'" + JSON_str + "'",
             'http://' + ip + '/sony/' + subsystem
         ]
-        self.cmdString = 'timeout ' + str(CURL_TIME) + ' curl' +\
+        self.cmdString = 'timeout ' + str(GLO['CURL_TIME']) + ' curl' +\
             ' -s -H "Content-Type: application/json; charset=UTF-8" ' +\
-            ' -H "X-Auth-PSK: ' + SONY_PWD + '" --data ' + "'" + JSON_str + "'" +\
+            ' -H "X-Auth-PSK: ' + GLO['SONY_PWD'] + '" --data ' + "'" + JSON_str + "'" +\
             ' http://' + ip + '/sony/' + subsystem
 
         #v3_print("\n" + _who, "self.cmdString:", self.cmdString, "\n")
@@ -1046,7 +1219,7 @@ class NetworkInfo(DeviceCommonSelf):
 
 
 class LaptopDisplay(DeviceCommonSelf):
-    """ Laptop display: /sys/class/backlight/<BACKLIGHT_NAME>
+    """ Laptop display: /sys/class/backlight/<GLO['BACKLIGHT_NAME']>
 
         /sys/class/backlight/intel_backlight/brightness:1935
         /sys/class/backlight/intel_backlight/actual_brightness:1935
@@ -1089,7 +1262,7 @@ class LaptopDisplay(DeviceCommonSelf):
             # "tablet", "handset", "watch", "embedded", "vm" and "container"
 
         self.type = "Laptop Display"
-        self.type_code = LAPTOP_D
+        self.type_code = GLO['LAPTOP_D']
         self.power_status = "?"  # Can be "ON", "OFF" or "?"
         if name:  # name can be None
             self.name = name + " (Display)"  # There will be two rows, one 'Base'
@@ -1180,14 +1353,14 @@ class LaptopDisplay(DeviceCommonSelf):
         if forgive:
             pass  # Dummy argument for uniform instance parameter list
 
-        power = '/sys/class/backlight/' + BACKLIGHT_NAME + '/bl_power'
+        power = '/sys/class/backlight/' + GLO['BACKLIGHT_NAME'] + '/bl_power'
         command_line_list = ['cat', power]
         event = self.runCommand(command_line_list, _who)
 
         string = event['output']
-        if string == BACKLIGHT_ON:
+        if string == GLO['BACKLIGHT_ON']:
             self.power_status = "ON"  # Can be "ON", "OFF" or "?"
-        elif string == BACKLIGHT_OFF:
+        elif string == GLO['BACKLIGHT_OFF']:
             self.power_status = "OFF"  # Can be "ON", "OFF" or "?"
         else:
             v0_print(_who, "Invalid " + power + " value:", string)
@@ -1203,19 +1376,18 @@ class LaptopDisplay(DeviceCommonSelf):
         _who = self.who + "SetPower(" + status + "):"
         v2_print(_who, "Set Laptop Display Power to:", status)
 
-        global SUDO_PASSWORD
-
-        if SUDO_PASSWORD is None:
-            SUDO_PASSWORD = self.app.GetPassword()
+        # Sudo password required for powering laptop backlight on/off
+        if GLO['SUDO_PASSWORD'] is None:
+            GLO['SUDO_PASSWORD'] = self.app.GetPassword()
             self.app.EnableMenu()
-            if SUDO_PASSWORD is None:
+            if GLO['SUDO_PASSWORD'] is None:
                 return "?"  # Cancel button (256) or escape or 'X' on window decoration (64512)
 
-        power = '/sys/class/backlight/' + BACKLIGHT_NAME + '/bl_power'
+        power = '/sys/class/backlight/' + GLO['BACKLIGHT_NAME'] + '/bl_power'
         if status == "ON":
-            echo = BACKLIGHT_ON
+            echo = GLO['BACKLIGHT_ON']
         elif status == "OFF":
-            echo = BACKLIGHT_OFF
+            echo = GLO['BACKLIGHT_OFF']
         else:
             echo = "?"  # For pycharm reference checker
             V0_print(_who, "Invalid status (no 'ON' or 'OFF':", status)
@@ -1224,19 +1396,20 @@ class LaptopDisplay(DeviceCommonSelf):
         #command_line_str = "echo PASSWORD | sudo -S echo X | sudo tee BL_POWER"
 
         self.cmdStart = time.time()
-        cmd1 = sp.Popen(['echo', SUDO_PASSWORD], stdout=sp.PIPE)
+        cmd1 = sp.Popen(['echo', GLO['SUDO_PASSWORD']], stdout=sp.PIPE)
         cmd2 = sp.Popen(['sudo', '-S', 'echo', echo], stdin=cmd1.stdout, stdout=sp.PIPE)
         pipe = sp.Popen(['sudo', 'tee', power], stdin=cmd2.stdout, stdout=sp.PIPE,
                         stderr=sp.PIPE)
 
         self.cmdCaller = _who
         who = self.cmdCaller + " logEvent():"
-        self.cmdCommand = ["echo", "SUDO_PASSWORD", "|", "sudo", "-S", "echo",
+        self.cmdCommand = ["echo", "GLO['SUDO_PASSWORD']", "|", "sudo", "-S", "echo",
                            echo, "|", "sudo", "tee", power]
         self.cmdString = ' '.join(self.cmdCommand)
         self.cmdOutput = pipe.stdout.read().decode().strip()
         self.cmdError = pipe.stdout.read().decode().strip()
         self.cmdReturncode = pipe.returncode
+        self.cmdReturncode = 0 if self.cmdReturncode is None else self.cmdReturncode
         self.cmdDuration = time.time() - self.cmdStart
         self.logEvent(who, forgive=forgive, log=True)
         self.power_status = status
@@ -1260,7 +1433,7 @@ class SmartPlugHS100(DeviceCommonSelf):
         self.alias = alias  # hs100 Sony TV Bias Light
 
         self.type = "TP-Link HS100 Smart Plug"
-        self.type_code = HS1_SP
+        self.type_code = GLO['HS1_SP']
         self.power_status = "?"  # Can be "ON", "OFF" or "?"
         self.requires = ['hs100.sh', 'nc', 'base64', 'od', 'nmap', 'shasum', 'arp']
         self.installed = []
@@ -1383,7 +1556,7 @@ class SmartPlugHS100(DeviceCommonSelf):
         v2_print(_who, "Turn TP-Link Kasa HS100 Smart Plug '" + status + "'")
 
         command_line_list = \
-            ["timeout", PLUG_TIME, "hs100.sh", status.lower(), "-i", self.ip]
+            ["timeout", GLO['PLUG_TIME'], "hs100.sh", status.lower(), "-i", self.ip]
 
         _event = self.runCommand(command_line_list, _who)
         # Return code is always 0, even if plug doesn't exist. No text returned
@@ -1417,7 +1590,7 @@ https://stackoverflow.com/questions/2829613/how-do-you-tell-if-a-string-contains
         self.alias = alias  # Sony Bravia KDL TV Ethernet
 
         self.type = "SonyBraviaKdlTV"
-        self.type_code = KDL_TV
+        self.type_code = GLO['KDL_TV']
         self.power_status = "?"  # Can be "ON", "OFF" or "?"
         self.power_saving_mode = "?"  # set with PowerSavingMode()
         self.volume = "?"  # Set with getVolume()
@@ -1805,7 +1978,7 @@ class TclGoogleAndroidTV(DeviceCommonSelf):
         self.alias = alias  # TCL / Google TV Ethernet
 
         self.type = "TclGoogleAndroidTV"
-        self.type_code = TCL_TV
+        self.type_code = GLO['TCL_TV']
         self.power_status = "?"  # Can be "ON", "OFF" or "?"
         self.requires = ['wakeonlan', 'adb']
         self.installed = []
@@ -1838,13 +2011,13 @@ class TclGoogleAndroidTV(DeviceCommonSelf):
         self.runCommand(command_line_list, _who)  # Will force 'adb' daemon to run
 
         cnt = 1
-        while not self.isDevice(forgive=True, timeout=ADB_MAGIC_TIME):
+        while not self.isDevice(forgive=True, timeout=GLO['ADB_MAGIC_TIME']):
 
             v2_print(_who, "Attempt #:", cnt, "Call 'wakeonlan' for MAC:", self.mac)
             command_line_list = ["wakeonlan", self.mac]
 
             event = self.runCommand(command_line_list, _who, forgive=forgive)
-            if event['returncode'] > 0:
+            if event['returncode'] != 0:
                 return False
 
             cnt += 1
@@ -1865,18 +2038,18 @@ class TclGoogleAndroidTV(DeviceCommonSelf):
         v2_print("\n" + _who, "Get Power Status for:", self.ip)
         self.Connect()  # 2024-12-02 - constant connection seems to be required
 
-        command_line_list = ["timeout", ADB_PWR_TIME, "adb",
+        command_line_list = ["timeout", GLO['ADB_PWR_TIME'], "adb",
                              "shell", "dumpsys", "input_method",
                              "|", "grep", "-i", "screenOn"]
         event = self.runCommand(command_line_list, _who, forgive=forgive)
         v2_print(_who, "reply from grep 'screenOn':", event['output'], event['error'])
 
-        if event['returncode'] > 0:
+        if event['returncode'] != 0:
             if forgive is False:
                 #v1_print(_who, "pipe.returncode:", pipe.returncode)
                 #if pipe.returncode == 124:
                 if event['returncode'] == 124:
-                    v1_print(_who, self.ip, "timeout after:", ADB_PWR_TIME)
+                    v1_print(_who, self.ip, "timeout after:", GLO['ADB_PWR_TIME'])
                     self.power_status = "?"  # Can be "ON", "OFF" or "?"
                     return self.power_status
             self.power_status = "? " + str(event['returncode'])
@@ -1916,16 +2089,16 @@ class TclGoogleAndroidTV(DeviceCommonSelf):
             v1_print(_who, "Attempt #:", cnt, "Send 'KEYCODE_WAKEUP' to IP:", self.ip)
 
             # timeout 1 adb shell input keyevent KEYCODE_WAKEUP  # Turn Google TV off
-            command_line_list = ["timeout", ADB_KEY_TIME, "adb", "shell", "input",
-                                 "keyevent", "KEYCODE_WAKEUP"]
+            command_line_list = ["timeout", GLO['ADB_KEY_TIME'], "adb",
+                                 "shell", "input", "keyevent", "KEYCODE_WAKEUP"]
             event = self.runCommand(command_line_list, _who, forgive=forgive)
-            if event['returncode'] > 0:
+            if event['returncode'] != 0:
                 # 2024-10-19 - Always returns '124' which is timeout exit code
                 #   https://stackoverflow.com/a/42615416/6929343
                 if forgive is False:
                     # v0_print(_who, "pipe.returncode:", pipe.returncode)
                     if event['returncode'] == 124:
-                        v0_print(_who, self.ip, "timeout after:", ADB_KEY_TIME)
+                        v0_print(_who, self.ip, "timeout after:", GLO['ADB_KEY_TIME'])
                 return "?"
 
             self.PowerStatus()
@@ -1939,22 +2112,22 @@ class TclGoogleAndroidTV(DeviceCommonSelf):
         _who = self.who + "TurnOff():"
         v2_print(_who, "Send KEYCODE_SLEEP to:", self.ip)
 
-        command_line_list = ["timeout", ADB_KEY_TIME, "adb", "shell", "input",
-                             "keyevent", "KEYCODE_SLEEP"]
+        command_line_list = ["timeout", GLO['ADB_KEY_TIME'], "adb",
+                             "shell", "input", "keyevent", "KEYCODE_SLEEP"]
         event = self.runCommand(command_line_list, _who, forgive=forgive)
 
-        if event['returncode'] > 0:
+        if event['returncode'] != 0:
             # 2024-10-19 - When hitting timeout limit, returns '124'
             #   https://stackoverflow.com/a/42615416/6929343
             if forgive is False:
                 if event['returncode'] == 124:
-                    v0_print(_who, self.ip, "timeout after:", ADB_KEY_TIME)
+                    v0_print(_who, self.ip, "timeout after:", GLO['ADB_KEY_TIME'])
             return "?"
 
         self.power_status = "OFF"  # Can be "ON", "OFF" or "?"
         return self.power_status
 
-    def isDevice(self, forgive=False, timeout=ADB_CON_TIME):
+    def isDevice(self, forgive=False, timeout=None):
         """ Return True if adb connection for Android device (using IP address).
             If forgive=True then don't report pipe.returncode != 0
         """
@@ -1962,6 +2135,8 @@ class TclGoogleAndroidTV(DeviceCommonSelf):
         _who = self.who + "isDevice():"
         v2_print(_who, "Test if device is TCL Google Android TV:", self.ip)
 
+        if timeout is None:
+            timeout = GLO['ADB_CON_TIME']
         command_line_list = ["timeout", timeout, "adb", "connect", self.ip]
         command_line_str = ' '.join(command_line_list)
         pipe = sp.Popen(command_line_list, stdout=sp.PIPE, stderr=sp.PIPE)
@@ -2015,15 +2190,21 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         v0_print()
         '''
 
-        self.requires = ['arp', 'getent', 'timeout', 'curl', 'adb', 'hs100.sh']
+        self.requires = ['arp', 'getent', 'timeout', 'curl', 'adb', 'hs100.sh', 'aplay']
         self.installed = []
         self.CheckDependencies(self.requires, self.installed)
+
+        if not self.dependencies_installed:
+            v1_print(_who, "Some Application() dependencies are not installed.")
+            v1_print(self.requires)
+            v1_print(self.installed)
+
         self.last_refresh_time = time.time()  # Refresh idle loop last entered time
         # Normal 1 minute delay to rediscover is shortened at boot time if fast start
         self.last_rediscover_time = time.time()  # Last analysis of `arp -a`
         if p_args.fast:
             # Allow 3 seconds to move mouse else start rediscover
-            self.last_rediscover_time = time.time() - REDISCOVER_SECONDS + 3
+            self.last_rediscover_time = time.time() - GLO['REDISCOVER_SECONDS'] + 3
         self.rediscover_done = True  # 16ms time slices until done.
         self.rediscover_row = 0  # Current row processed in Treeview
         self.tree = None  # Painted in PopulateTree()
@@ -2052,6 +2233,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         ''' System Monitor '''
         sm = SystemMonitor(self)  # sm = This machines fan speed and CPU temperatures
+
+        ''' Edit Preferences '''
+        self.preferences_top = self.edit_preferences_active = None
 
         ''' Big Number Calculator and Delayed Textbox (dtb) '''
         self.calculator = self.calc_top = self.dtb = None
@@ -2084,9 +2268,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.bind("<Leave>", self.Leave)
         self.bind("<Motion>", self.Motion)  # On motion reset rediscovery timer
 
-        self.last_enter_time = APP_RESTART_TIME
-        self.last_leave_time = APP_RESTART_TIME
-        self.last_motion_time = APP_RESTART_TIME
+        self.last_enter_time = GLO['APP_RESTART_TIME']
+        self.last_leave_time = GLO['APP_RESTART_TIME']
+        self.last_motion_time = GLO['APP_RESTART_TIME']
 
         # Monitors and window positions when un-minimizing
         self.monitors = self.windows = []  # List of dictionaries
@@ -2095,7 +2279,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         # Assign this Application() instance to the LaptopDisplay() instance self.app
         for instance in ni.instances:
             inst = instance['instance']
-            if inst.type_code == LAPTOP_D:
+            if inst.type_code == GLO['LAPTOP_D']:
                 inst.app = self
 
         ''' Save Toplevel OS window ID for minimizing window '''
@@ -2112,8 +2296,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         def ForgetPassword():
             """ Clear sudo password for extreme caution """
-            global SUDO_PASSWORD
-            SUDO_PASSWORD = None  # clear global password in homa
+            GLO['SUDO_PASSWORD'] = None  # clear global password in homa
             command_line_list = ["sudo", "-K"]
             self.runCommand(command_line_list)
 
@@ -2144,7 +2327,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         # Edit Dropdown Menu
         self.edit_menu = tk.Menu(mb, tearoff=0)
         self.edit_menu.add_command(label="Preferences", font=g.FONT, underline=0,
-                                   command=self.CloseApp, state=tk.DISABLED)
+                                   command=self.Preferences, state=tk.NORMAL)
         self.edit_menu.add_separator()
         self.edit_menu.add_command(label="Monitor volume", underline=0,
                                    font=g.FONT, state=tk.DISABLED,
@@ -2172,9 +2355,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.tools_menu.add_command(label="Big number calculator", font=g.FONT,
                                     underline=0, command=self.OpenCalculator,
                                     state=tk.DISABLED)
-        self.tools_menu.add_command(label="Timer " + str(TIMER_SEC) + " seconds",
+        self.tools_menu.add_command(label="Timer " + str(GLO['TIMER_SEC']) + " seconds",
                                     font=g.FONT, underline=0,
-                                    command=lambda: self.ResumeWait(timer=TIMER_SEC))
+                                    command=lambda: self.ResumeWait(timer=GLO['TIMER_SEC']))
         # 2024-12-04 TODO: After timer ends, Resume from Suspend countdown starts with
         #   3 seconds to go.
         self.tools_menu.add_separator()
@@ -2199,7 +2382,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         ''' Edit Menu '''
         # 2024-12-01 - Edit menu options not written yet
-        self.edit_menu.entryconfig("Preferences", state=tk.DISABLED)
+        self.edit_menu.entryconfig("Preferences", state=tk.NORMAL)
         self.edit_menu.entryconfig("Monitor volume", state=tk.DISABLED)
 
         ''' View Menu '''
@@ -2213,7 +2396,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.view_menu.entryconfig("Sensors", state=tk.NORMAL)
             self.view_menu.entryconfig("Network devices", state=tk.DISABLED)
 
-        if EVENT_ERROR_COUNT > 0:
+        if GLO['EVENT_ERROR_COUNT'] != 0:
             # 2024-12-17 - Working when called from command line, not from indicator
             self.view_menu.entryconfig("Discovery errors", state=tk.NORMAL)
         else:
@@ -2221,7 +2404,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         ''' Tools Menu '''
         self.tools_menu.entryconfig("Big number calculator", state=tk.NORMAL)
-        if SUDO_PASSWORD is None:
+        if GLO['SUDO_PASSWORD'] is None:
             self.tools_menu.entryconfig("Forget sudo password", state=tk.DISABLED)
         else:
             self.tools_menu.entryconfig("Forget sudo password", state=tk.NORMAL)
@@ -2330,6 +2513,10 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         if self.event_scroll_active and self.event_top:
             self.event_top.focus_force()
             self.event_top.lift()
+
+        if self.edit_preferences_active and self.preferences_top:
+            self.preferences_top.focus_force()
+            self.preferences_top.lift()
 
         if self.calculator and self.calc_top:
             self.calc_top.focus_force()
@@ -2599,7 +2786,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         # 320 ms row highlighting fade in
         cr.FadeIn(item)
 
-        if cr.arp_dict['type_code'] == KDL_TV:
+        if cr.arp_dict['type_code'] == GLO['KDL_TV']:
             # Sony TV has power save mode to turn picture off and listen to music
             menu.add_command(label="Turn " + name + " Picture On ",
                              font=g.FONT, state=tk.DISABLED,
@@ -2627,7 +2814,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         menu.bind("<FocusOut>", ClosePopup)
 
         # Enable Turn On/Off menu options depending on current power status.
-        if cr.arp_dict['type_code'] == KDL_TV:
+        if cr.arp_dict['type_code'] == GLO['KDL_TV']:
             cr.inst.PowerSavingMode()
             if cr.inst.power_saving_mode != "ON":
                 menu.entryconfig("Turn " + name + " Picture Off ", state=tk.NORMAL)
@@ -2684,7 +2871,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             Also be called by SetAllPower("OFF").
         """
         _who = self.who + "TurnOff():"
-        if cr.inst.type_code == DESKTOP or cr.inst.type_code == LAPTOP_B:
+        if cr.inst.type_code == GLO['DESKTOP'] or cr.inst.type_code == GLO['LAPTOP_B']:
             self.SetAllPower("OFF")  # Turn all devices off
         resp = cr.inst.TurnOff()
         text = "  " + str(resp)
@@ -2736,7 +2923,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         """
 
         _who = self.who + "Refresh()"
-        global APP_RESTART_TIME
         if not self.winfo_exists():
             return False  # self.close() has destroyed window
 
@@ -2749,14 +2935,15 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         ''' Resuming from suspend? '''
         now = time.time()
         delta = now - self.last_refresh_time
-        if delta > RESUME_TEST_SECONDS:  # Assume > is resume from suspend
+        if delta > GLO['RESUME_TEST_SECONDS']:  # Assume > is resume from suspend
             v0_print("\n" + "= "*4, _who, "Resuming from suspend after:",
                      tmf.days(delta), " ="*4 + "\n")
             self.ResumeFromSuspend()  # Power on all devices
             now = time.time()  # can be 15 seconds or more later
-            APP_RESTART_TIME = now  # Reset app started time to resume time
+            GLO['APP_RESTART_TIME'] = now  # Reset app started time to resume time
 
         ''' Is there a TV to be monitored for power off to suspend system? '''
+        # 2024-12-23 TODO: SETUP FOR SONY TV REST API
 
         ''' Always give time slice to tooltips - requires sql.py color config '''
         self.tt.poll_tips()  # Tooltips fade in and out. self.info piggy backing
@@ -2769,17 +2956,17 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         if not tk_after:
             return self.winfo_exists()
 
-        ''' Check `sensors` (if installed) every SENSOR_CHECK seconds '''
+        ''' Check `sensors` (if installed) every GLO['SENSOR_CHECK'] seconds '''
         sm.Sensors()
 
-        ''' Rediscover devices every REDISCOVER_SECONDS '''
-        if int(now - self.last_rediscover_time) > REDISCOVER_SECONDS:
+        ''' Rediscover devices every GLO['REDISCOVER_SECONDS'] '''
+        if int(now - self.last_rediscover_time) > GLO['REDISCOVER_SECONDS']:
             self.Rediscover(auto=True)  # Check for changes in IP addresses, etc
             night = cp.NightLightStatus()
             v1_print(_who, "cp.NightLightStatus():", night)
 
-        ''' sleep remaining time until REFRESH_MS expires '''
-        sleep = REFRESH_MS - int(now - self.last_refresh_time)
+        ''' sleep remaining time until GLO['REFRESH_MS'] expires '''
+        sleep = GLO['REFRESH_MS'] - int(now - self.last_refresh_time)
         sleep = sleep if sleep > 0 else 1  # Sleep minimum 1 millisecond
         if sleep == 1:
             v0_print(_who, "Only sleeping 1 millisecond")
@@ -2794,7 +2981,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             known at time of suspend. Then set variables to trigger
             rediscovery for any new devices added.
             
-            Called when: now - self.last_refresh_time > RESUME_TEST_SECONDS
+            Called when: now - self.last_refresh_time > GLO['RESUME_TEST_SECONDS']
+            Consequently long running processes must reseed self.last_refresh_time
+            when they finish.
         """
         global rd
         _who = self.who + "ResumeFromSuspend():"
@@ -2810,9 +2999,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         rd = None  # Just in case rediscovery was in progress during suspend
         self.rediscover_done = True
         # Force rediscovery immediately after resume from suspend
-        self.last_rediscover_time = now - REDISCOVER_SECONDS * 10.0
+        self.last_rediscover_time = now - GLO['REDISCOVER_SECONDS'] * 10.0
         self.last_refresh_time = now + 1.0  # If abort, don't come back here
-        sm.last_sensor_log = now - SENSOR_LOG - 1.0  # Force initial sensor log
+        sm.last_sensor_log = now - GLO['SENSOR_LOG'] - 1.0  # Force initial sensor log
 
     def ResumeWait(self, timer=None):
         """ Wait x seconds for devices to come online. If 'timer' passed do a
@@ -2832,7 +3021,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             return
 
         if timer is None:
-            countdown_sec = RESUME_DELAY_RESTART
+            countdown_sec = GLO['RESUME_DELAY_RESTART']
             title = "Waiting after resume to check devices"
         else:
             countdown_sec = timer + 1  # 2024-12-01 - Losing 1 second on startup???
@@ -2860,6 +3049,10 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             # During countdown timer, don't trigger ResumeFromSuspend()
             self.last_refresh_time = time.time() + 1.0
 
+        if timer:  # Play sound when timer ends
+            if self.CheckInstalled("aplay"):
+                command_line_list = ["aplay", GLO['TIMER_ALARM']]
+                self.runCommand(command_line_list, _who)
         self.dtb.close()
         self.dtb = None
 
@@ -2880,14 +3073,14 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             inst = instance['instance']
 
             # Computer is excluded from being turned on or off.
-            if inst.type_code in POWER_ALL_EXCL_LIST:
+            if inst.type_code in GLO['POWER_ALL_EXCL_LIST']:
                 continue
 
             # Don't turn on bias light during daytime
             night_powered_on = False
-            if inst.type_code == HS1_SP:
+            if inst.type_code == GLO['HS1_SP']:
                 # 2024-11-26 - 'type_code' s/b 'BIAS_LIGHT' and
-                #   'sub_type_code' s/b 'HS1_SP`
+                #   'sub_type_code' s/b 'GLO['HS1_SP']`
                 v1_print("\n" + _who, "Bias light device: '" + inst.type + "'",
                          " | IP: '" + inst.ip + "'")
                 if state == "ON" and night == "OFF":
@@ -2922,16 +3115,16 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             # Get treeview row based on matching MAC address + type
             # Note that Laptop MAC address can have two types (Base and Display)
             cr = TreeviewRow(self)  # Setup treeview row processing instance
-            row = cr.GetByInstance(inst)  # Get row number and set instance
-            if row is None:
+            iid = cr.getInstanceIid(inst)  # Get iid number and set instance
+            if iid is None:
                 continue  # Instance not in Devices Treeview, perhaps a smartphone?
 
-            old_text = cr.text  # Treeview row's old power state "  ON", etc.
-            cr.text = "  " + state  # Display treeview row's new power state
+            old_text = cr.text  # Treeview row old power state "  ON", etc.
+            cr.text = "  " + state  # Display treeview row new power state
             if cr.text != old_text:
                 v1_print(_who, cr.mac, "Power status changed from: '"
                          + old_text.strip() + "' to: '" + cr.text.strip() + "'.")
-            cr.Update(row)  # Update row with new ['text']
+            cr.Update(iid)  # Update iid with new ['text']
 
             # Display row by row when there is processing lag
             self.tree.update_idletasks()  # Slow mode display each row.
@@ -2986,8 +3179,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         usingDevicesTreeview = \
             self.sensors_devices_btn['text'] != self.devices_btn_text
 
-        # If auto, called automatically at REDISCOVER_SECONDS
-        cr = row = None  # Assume Sensors Treeview is displayed
+        # If auto, called automatically at GLO['REDISCOVER_SECONDS']
+        cr = iid = None  # Assume Sensors Treeview is displayed
         if usingDevicesTreeview:
             cr = TreeviewRow(self)  # Setup treeview row processing instance
 
@@ -2996,11 +3189,11 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             inst = instance['instance']
             if usingDevicesTreeview:
                 # Get treeview row based on matching MAC address + device_type
-                row = cr.GetByInstance(inst)  # Get row number and set instance
-                if row is not None:
+                iid = cr.getInstanceIid(inst)  # Get iid number and set instance
+                if iid is not None:
                     if auto is False or cr.text == "Wait...":
-                        self.tree.see(row)
-                        cr.FadeIn(row)
+                        self.tree.see(iid)
+                        cr.FadeIn(iid)
 
             inst.PowerStatus()  # Get the power status for device
 
@@ -3008,7 +3201,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             if not usingDevicesTreeview:
                 continue  # No Devices Treeview to update
 
-            if row is None:
+            if iid is None:
                 continue  # Instance not in Devices Treeview, perhaps a smartphone?
 
             old_text = cr.text  # Treeview row's old power state "  ON", etc.
@@ -3016,11 +3209,11 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             if cr.text != old_text:
                 v1_print(_who, cr.mac, "Power status changed from: '"
                          + old_text.strip() + "' to: '" + cr.text.strip() + "'.")
-            cr.Update(row)  # Update row with new ['text']
+            cr.Update(iid)  # Update row with new ['text']
             if auto is False or old_text == "Wait...":
                 # Fade in/out performed when called from Dropdown Menu.
                 # Or on startup when status is "Wait...". Otherwise, too distracting.
-                cr.FadeOut(row)
+                cr.FadeOut(iid)
 
             # Display row by row when there is processing lag
             self.tree.update_idletasks()  # Slow mode display each row.
@@ -3034,7 +3227,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
     def Rediscover(self, auto=False):
         """ Automatically call 'arp -a' to check on network changes.
             Job split into many slices of 16ms until done.
-            Sleep time between calls set with REDISCOVER_SECONDS.
+            Sleep time between calls set with GLO['REDISCOVER_SECONDS'].
 
             2024-12-01 - TODO: Mouse motion resets last rediscovery time
         """
@@ -3044,14 +3237,15 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         # Disable calling from File Dropdown Menubar
         self.file_menu.entryconfig("Rediscover now", state=tk.DISABLED)
 
-        # If APP_RESTART_TIME is within 1 minute (REDISCOVER_SECONDS) turn off
-        # auto rediscovery flags
-        if APP_RESTART_TIME > time.time() - REDISCOVER_SECONDS:
+        # If GLO['APP_RESTART_TIME'] is within 1 minute (GLO['REDISCOVER_SECONDS']) turn off
+        # auto rediscovery flags so startup commands are logged to cmdEvents
+        if GLO['APP_RESTART_TIME'] > time.time() - GLO['REDISCOVER_SECONDS'] - \
+                GLO['RESUME_TEST_SECONDS'] - 10:
             auto = False  # Override auto rediscovery during startup / resuming
 
         # If called from menu, reseed last rediscovery time:
         if auto is False:
-            self.last_rediscover_time = time.time() - REDISCOVER_SECONDS * 1.5
+            self.last_rediscover_time = time.time() - GLO['REDISCOVER_SECONDS'] * 1.5
 
         # Is Devices Treeview mounted? (Other option is Sensors Treeview)
         usingDevicesTreeview = \
@@ -3068,8 +3262,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         '''
 
         # Override event logging and v3_print(...) during auto rediscovery
-        global LOG_EVENTS  # Don't log events when auto rediscovery in progress
-        LOG_EVENTS = True if auto is False else False
+        GLO['LOG_EVENTS'] = True if auto is False else False
 
         # Start looping create rd
         global rd  # global variable that allows rentry to split job into slices
@@ -3087,7 +3280,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         # Refresh power status for all device instances in ni.arp_dicts
         self.RefreshAllPowerStatuses(auto=auto)
-        LOG_EVENTS = True  # Reset to log events as required
+        GLO['LOG_EVENTS'] = True  # Reset to log events as required
 
         # TODO: process one row at a time to reduce chances of mouse-click lag
         #  OR:  Use splash message stating Refresh in progress
@@ -3173,16 +3366,58 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.last_refresh_time = time.time()  # Refresh idle loop last entered time
 
         if answer.result != "yes":
-            return None
+            return None  # Cancel button selected
 
-        if len(answer.string) == 8:
-            return None
+        # Validate password, error message if invalid
+        password = hc.ValidateSudoPassword(answer.string)
+        if password is None:
+            msg = "Invalid sudo password!\n\n"
+            message.ShowInfo(
+                self, text=msg, thread=self.Refresh,
+                title="Invalid sudo password", icon="error")
 
-        global SUDO_PASSWORD
-        SUDO_PASSWORD = answer.string
-        SUDO_PASSWORD = hc.ValidateSudoPassword(SUDO_PASSWORD)
         self.last_refresh_time = time.time()  # Refresh idle loop last entered time
-        return SUDO_PASSWORD
+        return password  # Will be <None> if invalid password entered
+
+    def Preferences(self):
+        """ Edit preferences """
+
+        if self.edit_preferences_active and self.preferences_top:
+            self.preferences_top.focus_force()
+            self.preferences_top.lift()
+            return
+
+        self.preferences_top = notebook = self.edit_preferences_active = None
+
+        def close(*_args):
+            """ Close window painted by this pretty_column() method """
+            if not self.edit_preferences_active:
+                return
+            #notebook.unbind("<Button-1>")  # 2024-12-21 TODO: old code, use unknown
+            #self.win_grp.unregister_child(self.preferences_top)
+            self.edit_preferences_active = None  # 2024-12-24 needed in homa?
+            self.preferences_top.destroy()
+            self.preferences_top = None
+
+        ha_font = (None, g.MON_FONT)  # ms_font = mserve, ha_font = HomA
+        # style: https://stackoverflow.com/a/54213658/6929343
+        style = ttk.Style()
+        style.configure('TNotebook.Tab', font=ha_font, padding=[10, 10])
+
+        self.preferences_top = ttk.Notebook(self)
+        self.edit_preferences_active = True
+
+        ''' frame - Notebook tab '''
+        frame = ttk.Frame(self.preferences_top, width=200, height=200)
+
+        close_btn = ttk.Button(
+            frame, width=7, text="✘ Close", style="C.TButton", command=close)
+        close_btn.grid(row=100, column=0, padx=10, pady=5, sticky=tk.E)
+
+        self.preferences_top.add(frame, text="Options", compound=tk.TOP)
+        self.preferences_top.grid(row=0, column=0, padx=3, pady=3, sticky=tk.NSEW)
+
+        return notebook
 
     def OpenCalculator(self):
         """ Big Number Calculator allows K, M, G, T, etc. UoM """
@@ -3254,13 +3489,12 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 if event['error'] == "" and event['returncode'] == 0:
                     continue  # Not an error
 
-                # mmm dd hh:mm:ss <- RED caller <- GREEN Duration: 9.999 <- RED
                 time_str = time.strftime('%b %d %H:%M:%S',
                                          time.localtime(event['start_time']))
                 duration = '{0:.3f}'.format(event['duration'])
                 scrollbox.insert("end", "\n" + time_str + "  | " + event['caller'] +
                                  "  | Time: " + duration +
-                                 "  | Return: '" + str(event['returncode']) + "'\n")
+                                 "  | Return: " + str(event['returncode']) + "\n")
                 scrollbox.highlight_pattern(event['caller'], "blue")
                 scrollbox.highlight_pattern("Time:", "green")
                 scrollbox.highlight_pattern("Return:", "red")
@@ -3278,8 +3512,11 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             inst = instance['instance']
             insertEvents(inst.cmdEvents)
 
-        # ni has cmdEvents too!
+        # NetworkInfo (ni) and SystemMonitor (sm) have cmdEvents too!
         insertEvents(ni.cmdEvents)
+        insertEvents(sm.cmdEvents)
+        insertEvents(cp.cmdEvents)  # cp = Computer() class
+        insertEvents(self.cmdEvents)  # This app = Application() class
 
     def DisplayTimings(self):
         """ Loop through ni.instances and display cmdEvents times:
@@ -3344,8 +3581,11 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             inst = instance['instance']
             insertEvents(inst.cmdEvents)
 
-        # ni has cmdEvents too!
+        # NetworkInfo (ni) and SystemMonitor (sm) have cmdEvents too!
         insertEvents(ni.cmdEvents)
+        insertEvents(sm.cmdEvents)
+        insertEvents(cp.cmdEvents)  # cp = Computer() class
+        insertEvents(self.cmdEvents)  # This app = Application() class
 
         scrollbox.highlight_pattern("Min:", "green")
         scrollbox.highlight_pattern("Max:", "red")
@@ -3471,7 +3711,7 @@ class TreeviewRow(DeviceCommonSelf):
         self.inst_dict = ni.inst_for_mac(self.mac)
         self.inst = self.inst_dict['instance']
 
-    def GetByInstance(self, inst):
+    def getInstanceIid(self, inst):
         """ Using passed instance, get the treeview row. """
         for iid in self.tree.get_children():
             self.Get(iid)
@@ -3519,17 +3759,17 @@ class TreeviewRow(DeviceCommonSelf):
             type_code = None
 
         # TV's are 16/9 = 1.8. Treeview uses 300/180 image = 1.7.
-        if type_code == HS1_SP:  # TP-Line Kasa Smart Plug HS100 image
+        if type_code == GLO['HS1_SP']:  # TP-Line Kasa Smart Plug HS100 image
             photo = ImageTk.PhotoImage(Image.open("bias.jpg").resize((300, 180), Image.ANTIALIAS))
-        elif type_code == KDL_TV:  # Sony Bravia KDL TV image
+        elif type_code == GLO['KDL_TV']:  # Sony Bravia KDL TV image
             photo = ImageTk.PhotoImage(Image.open("sony.jpg").resize((300, 180), Image.ANTIALIAS))
-        elif type_code == TCL_TV:  # TCL / Google Android TV image
+        elif type_code == GLO['TCL_TV']:  # TCL / Google Android TV image
             photo = ImageTk.PhotoImage(Image.open("tcl.jpg").resize((300, 180), Image.ANTIALIAS))
-        elif type_code == DESKTOP:  # Desktop computer image
+        elif type_code == GLO['DESKTOP']:  # Desktop computer image
             photo = ImageTk.PhotoImage(Image.open("computer.jpg").resize((300, 180), Image.ANTIALIAS))
-        elif type_code == LAPTOP_B:  # Laptop Base image
+        elif type_code == GLO['LAPTOP_B']:  # Laptop Base image
             photo = ImageTk.PhotoImage(Image.open("laptop_b.jpg").resize((300, 180), Image.ANTIALIAS))
-        elif type_code == LAPTOP_D:  # Laptop Display image
+        elif type_code == GLO['LAPTOP_D']:  # Laptop Display image
             photo = ImageTk.PhotoImage(Image.open("laptop_d.jpg").resize((300, 180), Image.ANTIALIAS))
         else:
             v0_print(_who, "Unknown 'type_code':", type_code)
@@ -3714,12 +3954,12 @@ class SystemMonitor(DeviceCommonSelf):
 
         '''
         now = time.time()
-        if now - self.last_sensor_check < SENSOR_CHECK:
+        if now - self.last_sensor_check < GLO['SENSOR_CHECK']:
             self.skipped_checks += 1
             return
 
         def CheckFanChange(key):
-            """ If fan speed changed by more than FAN_GRANULAR RPM, force logging.
+            """ If fan speed changed by more than GLO['FAN_GRANULAR'] RPM, force logging.
                 Called for "Processor Fan" and "Video Fan" A.K.A. "fan3".
             :param key: 'Processor Fan' or 'Video Fan', etc.
             :return: True of curr_sensor == last_sensor
@@ -3732,23 +3972,23 @@ class SystemMonitor(DeviceCommonSelf):
                     return False
             except (TypeError, IndexError):
                 # First time last log doesn't exist. Treat as fan speed change.
-                self.last_sensor_log = time.time() - SENSOR_LOG * 2
+                self.last_sensor_log = time.time() - GLO['SENSOR_LOG'] * 2
                 return True
 
             # Speed can fluctuate 2400 RPM, 2600 RPM, 2400 RPM...  18 times
             # over 200 seconds. To reduce excessive fan speed change logging,
-            # skip fluctuations <= FAN_GRANULAR RPM.
+            # skip fluctuations <= GLO['FAN_GRANULAR'] RPM.
             curr = float(curr.split(" ")[0])
             last = float(last.split(" ")[0])
             diff = abs(curr - last)
             # Only report fan speed differences > 200 RPM
-            if diff <= FAN_GRANULAR:
+            if diff <= GLO['FAN_GRANULAR']:
                 #print("skipping diff:", diff)
                 self.skipped_fan_200d += 1
                 return False  # Don't override last with current
 
             # Fan speed changed. Force logging by resetting last log time.
-            self.last_sensor_log = time.time() - SENSOR_LOG * 2
+            self.last_sensor_log = time.time() - GLO['SENSOR_LOG'] * 2
             return True
 
         self.number_checks += 1
@@ -3780,13 +4020,13 @@ class SystemMonitor(DeviceCommonSelf):
             return  # Not an Alienware 17R3 or similar DELL machine
 
         # Is it time to log data?
-        if now - self.last_sensor_log < SENSOR_LOG:
+        if now - self.last_sensor_log < GLO['SENSOR_LOG']:
             self.skipped_logs += 1
             return
 
         # Add dictionary to list
         self.last_sensor_log = now
-        log_delta = round(now - APP_RESTART_TIME, 2)
+        log_delta = round(now - GLO['APP_RESTART_TIME'], 2)
         self.curr_sensor['delta'] = log_delta
         self.curr_sensor['time'] = time.time()
         self.sensors_log.append(self.curr_sensor)
@@ -4083,6 +4323,8 @@ v1_print(sys.argv[0], "- Home Automation", " | verbose1:", p_args.verbose1,
 root = None  # Tkinter toplevel
 app = None  # Application GUI
 cfg = sql.Config()  # Colors configuration SQL records
+glo = Globals()  # Global variables
+GLO = glo.dictGlobals  # global dictionary
 cp = Computer()  # cp = Computer Platform
 ni = NetworkInfo()  # ni = global class instance used everywhere
 ni.adb_reset(background=True)  # When TCL TV is communicating this is necessary
@@ -4112,13 +4354,13 @@ def open_files():
     """
     _who = "homa.py open_files():"
 
-
+    glo.openFile()
     sql.open_homa_db()  # Open SQL History Table for saved configs
 
-    ni.discovered = []
+    ni.discovered = []  # NetworkInfo() lists
     ni.instances = []
     ni.view_order = []
-    fname = g.USER_DATA_DIR + os.sep + DEVICES_FNAME
+    fname = g.USER_DATA_DIR + os.sep + GLO['DEVICES_FNAME']
     if not os.path.isfile(fname):
         return ni.discovered, ni.instances, ni.view_order
 
@@ -4128,7 +4370,7 @@ def open_files():
         v2_print("Opening last arp dictionaries file:", fname)
         ni.arp_dicts = json.loads(f.read())
 
-    fname = g.USER_DATA_DIR + os.sep + VIEW_ORDER_FNAME
+    fname = g.USER_DATA_DIR + os.sep + GLO['VIEW_ORDER_FNAME']
     build_view_order = True
     if os.path.isfile(fname):
         with open(fname, "r") as f:
@@ -4145,17 +4387,17 @@ def open_files():
 
         ni.discovered.append(arp)  # Add discovered device that can be instantiated
 
-        if type_code == HS1_SP:  # TP-Link Kasa HS100 smart plug?
+        if type_code == GLO['HS1_SP']:  # TP-Link Kasa HS100 smart plug?
             inst = SmartPlugHS100(arp['mac'], arp['ip'], arp['name'], arp['alias'])
-        elif type_code == KDL_TV:  # Sony Bravia KDL TV supporting REST API?
+        elif type_code == GLO['KDL_TV']:  # Sony Bravia KDL TV supporting REST API?
             inst = SonyBraviaKdlTV(arp['mac'], arp['ip'], arp['name'], arp['alias'])
-        elif type_code == TCL_TV:  # TCL / Google Android TV supporting adb?
+        elif type_code == GLO['TCL_TV']:  # TCL / Google Android TV supporting adb?
             inst = TclGoogleAndroidTV(arp['mac'], arp['ip'], arp['name'], arp['alias'])
-        elif type_code == DESKTOP:  # Desktop computer image
+        elif type_code == GLO['DESKTOP']:  # Desktop computer image
             inst = Computer(arp['mac'], arp['ip'], arp['name'], arp['alias'])
-        elif type_code == LAPTOP_B:  # Laptop Base image
+        elif type_code == GLO['LAPTOP_B']:  # Laptop Base image
             inst = Computer(arp['mac'], arp['ip'], arp['name'], arp['alias'])
-        elif type_code == LAPTOP_D:  # Laptop Display image
+        elif type_code == GLO['LAPTOP_D']:  # Laptop Display image
             inst = LaptopDisplay(arp['mac'], arp['ip'], arp['name'], arp['alias'])
         else:
             inst = None  # Oops
@@ -4175,13 +4417,14 @@ def open_files():
 
 def save_files():
     """ Called when exiting and on demand. """
-    with open(g.USER_DATA_DIR + os.sep + DEVICES_FNAME, "w") as f:
+    with open(g.USER_DATA_DIR + os.sep + GLO['DEVICES_FNAME'], "w") as f:
         f.write(json.dumps(ni.arp_dicts))
-    with open(g.USER_DATA_DIR + os.sep + VIEW_ORDER_FNAME, "w") as f:
+    with open(g.USER_DATA_DIR + os.sep + GLO['VIEW_ORDER_FNAME'], "w") as f:
         f.write(json.dumps(ni.view_order))
 
     # Close SQL History Table for color configurations
     sql.close_homa_db()
+    glo.saveFile()
 
 
 def main():
