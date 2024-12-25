@@ -369,7 +369,7 @@ class Globals(DeviceCommonSelf):
             "PLUG_TIME": "2.0",  # Smart plug timeout to turn power on/off
             "CURL_TIME": "0.2",  # Anything longer means not a Sony TV or disconnected
             "ADB_CON_TIME": "0.3",  # Android TV Test if connected timeout
-            "ADB_PWR_TIME": "2.0",  # Android TV Test if power state is on. Test increment .5 sec
+            "ADB_PWR_TIME": "2.0",  # Android TV Test power state timeout
             "ADB_KEY_TIME": "5.0",  # Android keyevent KEYCODE_SLEEP or KEYCODE_WAKEUP timeout
             "ADB_MAGIC_TIME": "0.2",  # Android TV Wake on Lan Magic Packet wait time.
             # Application timings and global working variables
@@ -455,52 +455,54 @@ class Globals(DeviceCommonSelf):
             "tab8": "TV Control",
             "tab10": "TV Control"
         }
-        RO = 1
-        RW = 2
-        STR = 3
-        INT = 4
-        FLOAT = 5
-        MIN = MAX = CB = None
+
+        HD = 0  # Hidden
+        RO = 1  # Read-only
+        RW = 2  # Read-Write
+        STR = 3  # String
+        INT = 4  # Integer
+        FLOAT = 5  # Float
+        MIN = MAX = CB = None  # Minimum, Maximum, Callback - placeholders
         dictFields = {
             # name: [tab#, ro/rw, input mask, stored as, min, max, edit callback
             "SONY_PWD": [1, RW, STR, STR, MIN, MAX, CB,
                          "Password for Sony REST API"],
-            "CONFIG_FNAME": [1, RO, STR, STR, MIN, MAX, CB,
+            "CONFIG_FNAME": [1, HD, STR, STR, MIN, MAX, CB,
                              "HomA Configuration filename"],
-            "DEVICES_FNAME": [1, MIN, MAX, CB,
+            "DEVICES_FNAME": [1, HD, STR, STR, MIN, MAX, CB,
                               "HomA discovered network devices."],
-            "VIEW_ORDER_FNAME": [1, RW, STR, STR, MIN, MAX, CB,
+            "VIEW_ORDER_FNAME": [1, HD, STR, STR, MIN, MAX, CB,
                                  "HomA Network Devices Treeview display order"],
             # Timeouts improve device interface performance
             "PLUG_TIME": [2, RW, FLOAT, STR, MIN, MAX, CB,
-                          "Smart plug timeout to turn power on/off"],  #
+                          "Smart plug timeout to turn power on/off"],
             "CURL_TIME": [2, RW, STR, STR, MIN, MAX, CB,
-                          "Anything longer means not a Sony TV or disconnected"],  #
+                          "Anything longer means not a Sony TV or disconnected"],
             "ADB_CON_TIME": [2, RW, STR, STR, MIN, MAX, CB,
-                             "Android TV Test if connected timeout"],  # A
+                             "Android TV test if connected timeout"],
             "ADB_PWR_TIME": [2, RW, STR, STR, MIN, MAX, CB,
-                             "Android TV Test if power state is on. Test increment .5 sec"],  #
+                             "Android TV test power state timeout"],
             "ADB_KEY_TIME": [2, RW, STR, STR, MIN, MAX, CB,
-                             "Android keyevent KEYCODE_SLEEP or KEYCODE_WAKEUP timeout"],  #
+                             "Android keyevent KEYCODE_SLEEP or KEYCODE_WAKEUP timeout"],
             "ADB_MAGIC_TIME": [2, RW, STR, STR, MIN, MAX, CB,
-                               "Android TV Wake on Lan Magic Packet wait time."],  #
+                               "Android TV Wake on Lan Magic Packet wait time."],
             # Application timings and global working variables
             "APP_RESTART_TIME": [3, RW, STR, STR, MIN, MAX, CB,
-                                 "Time started or resumed. Use for elapsed time print"],  #
+                                 "Time started or resumed. Use for elapsed time print"],
             "REFRESH_MS": [3, RW, STR, STR, MIN, MAX, CB,
-                           "Refresh tooltip fades 60 frames per second"],  #
+                           "Refresh tooltip fades 60 frames per second"],
             "REDISCOVER_SECONDS": [3, RW, STR, STR, MIN, MAX, CB,
-                                   "Check devices changes every x seconds"],  #
+                                   "Check devices changes every x seconds"],
             "RESUME_TEST_SECONDS": [3, RW, STR, STR, MIN, MAX, CB,
-                                    "> x seconds disappeared means system resumed"],  #
+                                    "> x seconds disappeared means system resumed"],
             "RESUME_DELAY_RESTART": [3, RW, STR, STR, MIN, MAX, CB,
-                                     "Pause x seconds after resuming from suspend"],  #
+                                     "Pause x seconds after resuming from suspend"],
             "TIMER_SEC": [3, RW, INT, INT, MIN, MAX, CB,
-                          "Tools Dropdown Menubar - Countdown Timer default"],  #
+                          "Tools Dropdown Menubar - Countdown Timer default"],
             "TIMER_ALARM": [3, RW, INT, INT, 10, MAX, CB,
                             ".wav sound file to play when timer ends."],
             "LOG_EVENTS": [3, RW, STR, STR, MIN, MAX, CB,
-                           "Override runCommand event logging / --verbose3 printing"],  #
+                           "Override runCommand event logging / --verbose3 printing"],
             "EVENT_ERROR_COUNT": [3, RO, INT, INT, 0, MAX, CB,
                                   "To enable/disable View Dropdown menu 'Discovery errors'"],  #
             "SENSOR_CHECK": [3, RW, STR, STR, MIN, MAX, CB,
@@ -534,8 +536,9 @@ class Globals(DeviceCommonSelf):
             "POWER_OFF_CMD_LIST": [4, RW, STR, STR, MIN, MAX, CB,
                                    'Run "Turn Off" for Computer()'],  #
             "POWER_ALL_EXCL_LIST": [4, RW, STR, STR, MIN, MAX, CB,
-                                    'Exclude when powering "All" to "ON" / "OFF"']
+                                    'Exclude devices when powering all "ON" / "OFF"']
         }
+        
         return dictHeader, dictFields
 
 
