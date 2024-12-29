@@ -28,6 +28,7 @@ from __future__ import with_statement       # Error handling for file opens
 #       Apr. 30 2024 - New tool_type="splash" manually invoked
 #       May. 15 2024 - User configurable Tooltip colors and timings
 #       Sep. 03 2024 - Tooltips - Remove old splash window before new splash
+#       Dec. 29 2024 - Tooltips - ttk.Label, ttk.Frame & ttk.Entry fg/bg colors
 #
 #==============================================================================
 
@@ -1540,478 +1541,155 @@ class CustomScrolledText(scrolledtext.ScrolledText):
             self.tag_remove(tag, "matchStart", "matchEnd")
 
 
-class DictNotebook:
+# ==============================================================================
+#
+#       DictNotebook class - Data Dictionary Driven ttk.Notebook()
+#
+# ==============================================================================
+class makeNotebook:
     """ Data Dictionary controlled notebook. """
-    def __init__(self, toplevel, item_count, item_size):
+    def __init__(self, notebook, listTabs, listFields, dictData,
+                 tStyle=None, fStyle=None, bStyle=None, close=None, tt=None):
 
-        """ Duplicate entry_init() """
-        CommonBar.__init__(self)  # Recycled class like CommonTip
+        self.listTabs = listTabs  # Tuples List: (Tab Name, Tool Tip)
+        self.listFields = listFields
+        self.dictData = dictData
+        self.tStyle = tStyle  # Notebook Tab style "TNotebook.Tab
+        self.fStyle = fStyle  # Frame style "N.TFrame"
+        self.bStyle = bStyle  # Button style "C.TButton"
+        self.close = close  # Close callback
+        self.tt = tt
 
-        self.toplevel = toplevel  # Parent window
-        self.item_count = item_count
-        self.item_size = item_size
-        self.window = {}  # Child Window {key, widget, x, y, w, h
-        self.window_list = []  # list of window dictionaries
+        self.who = "toolkit.py DictNotebook()."  # For debug messages
 
-        self.who = "toolkit.py ProgressBars()."  # For debug messages
+        ''' Deep copy dictData to oldData and newData '''
+        self.oldData = copy.deepcopy(self.dictData)
+        self.newData = copy.deepcopy(self.dictData)
 
-        # All bars totals
-        self.ab_count = item_count  # Total item count. Backup when size is 'None'
-        self.ab_size = item_size  # Total bytes / characters. Preferred progress
-        self.ab_it = None  # initial start time
-        self.ab_pst = None  # Pause start time
-        self.ab_tpt = None  # Total pause time
+        ''' dv (data variables) list prevents garbage collection. '''
+        #self.dv = []
+        #self.entries = []
+        #self.frames = []
 
-        ''' Controls to drag child window of toplevel '''
-        # list of [width, height, x, y] returned by self.geometry(window)
-        self.curr_geom = [0, 0, 0, 0]  # Geometry when drag_window called
-        self.last_geom = [0, 0, 0, 0]  # Geometry when drag_window last called
-        self.move_geom = [0, 0, 0, 0]  # Difference between curr and last
-        self.toplevel.bind("<Configure>", self.drag_window)
-        self.toplevel.bind("<FocusIn>", self.raise_children)
+        def add_var(frm, row, atts, value):
+            """ Add tk Variable to Notebook Tab's frame """
+            _who = self.who + "add_rows(): add_var():"
+            '''
+            # (name, tab#, hide/ro/rw, input as, stored as, width, decimals, 
+                     min, max, edit callback, tooltip text)
+            # name: value
+            '''
 
-        ''' Event log '''
-        self.init_time = time.time()
-        self.mec = 0  # move children event count
-        self.rec = 0  # raise children event count
-        # times from init_time. Printed to three decimal places
-        self.mit_st = 0.0  # MOVE start time.time() - self.init_time
-        self.mit_en = 0.0
-        self.mit_el = 0.0  # elapsed milliseconds
-        self.rit_st = 0.0  # RAISE start time.time() - self.init_time
-        self.rit_en = 0.0  # Raise end time
-        self.rit_el = 0.0  # Raise elapsed time
+            entry_type = atts[2]  # 'hidden', 'read-only', 'read-write'
+            input_type = atts[3]  # "string", "integer", "float", "time", "list"
+            _store_type = atts[4]  # "string", "integer", "float", "time", "list"
+            width = atts[5]
+            _decimal = atts[6]
+            _minimum = atts[7]
+            _maximum = atts[8]
+            _edit_cb = atts[9]
+            tt_text = atts[10]
 
-        self.last_mit_st = 0.0
-        self.last_rit_st = 0.0
-
-        ''' Event log - one record for start, one record for end. '''
-        self.event_log = []
-        # Tuple (Event type, Event Count, Start IT, End IT, Elapsed MS)
-        #   Event type = "M" or "R"
-
-        ''' YouTube video progress and player controls '''
-        self.durationYouTube = 0.0  # Length of song (Duration)
-        self.progressYouTube = 0.0  # Progress (Duration) within playing song
-        self.progressLastYouTube = 0.0  # Last progress, if same then stuck
-        self.timeLastYouTube = 0.0  # Last System time playing video (33ms)
-        self.timeForwardYouTube = 0.0  # System time self.driver.forward()
-        self.isSongRepeating = None  # Fall out from .back() and .forward()
-        self.youProVar = None  # YouTube Video progress TK variable, percent float
-        self.youProBar = None  # YouTube Video TK Progress Bar element / instance
-        self.youPlayerButton = None  # Tkinter element mounted with .grid
-        self.youPlayerCurrText = None  # "None" / "Pause" / "Play" button
-        self.youPlayerNoneText = "?  None"  # Music Player Text options
-        self.youPlayerPlayText = "▶  Play"  # used when music player status
-        self.youPlayerPauseText = "❚❚ Pause"  # changes between 1 & 2
-        self.youPlayerSink = None  # Audio Sink (sink_no_str)
-        """ Shared by: displayYouTubePlaylist and displayMusicIds 
-            Column 1 has progress bar hidden until music playing.
-            Column 3 has None / Pause / Play button player button.
-            Column 4 has Close button. 
-        """
-
-        ''' button frame '''
-        self.you_btn_frm = tk.Frame(self.frame)
-        self.you_btn_frm.grid(row=4, columnspan=4, sticky=tk.NSEW)
-
-        ''' Player Button - NOTE: Starts as "None" '''
-        if player_button:
-            # self.youPlayerButton = None  # Tkinter element mounted with .grid
-            # self.youPlayerCurrText = None  # "None" / "Pause" / "Play" button
-            # self.youPlayerNoneText = "?  None"  # Music Player Text options
-            # self.youPlayerPlayText = "▶  Play"  # used when music player status
-            # self.youPlayerPauseText = "❚❚ Pause"  # changes between 1 & 2
-            self.youPlayerButton = tk.Button(self.you_btn_frm, text="None",
-                                             width=g.BTN_WID2 - 4,
-                                             command=self.youTogglePlayer)
-            self.youPlayerButton.grid(row=0, column=3, padx=(10, 5),
-                                      pady=5, sticky=tk.E)
-            self.tt.add_tip(self.youPlayerButton,
-                            "Music not playing", anchor="ne")
-
-        ''' Close Button - NOTE: This calls reset() function !!! '''
-        self.close_button = tk.Button(self.you_btn_frm, text="✘ Close",
-                                      width=g.BTN_WID2 - 4,
-                                      command=self.youClosePlayLrc)
-        self.close_button.grid(row=0, column=4, padx=(10, 5), pady=5,
-                               sticky=tk.E)
-        self.tt.add_tip(self.close_button, "Close YouTube Playlist", anchor="ne")
-
-        self.top.bind("<Escape>", self.youClosePlayLrc)
-        self.top.protocol("WM_DELETE_WINDOW", self.youClosePlayLrc)
-
-    def buildYouTubeDuration(self):
-        """ Build progress bar under self.you_tree  """
-        s = ttk.Style()
-        s.theme_use("default")
-        # https://stackoverflow.com/a/18140195/6929343
-        s.configure("TProgressbar", thickness=6)  # Thinner bar
-        self.youProVar = tk.DoubleVar()  # Close"
-        self.youProBar = ttk.Progressbar(
-            self.you_btn_frm, style="TProgressbar", variable=self.youProVar,
-            length=1000)
-        # https://stackoverflow.com/a/4027297/6929343
-        self.youProBar.grid(row=0, column=1, padx=20, pady=30, sticky=tk.NSEW)
-        self.you_btn_frm.pack_slaves()
-
-    def resetYouTubeDuration(self):
-        """ Set duration fields for a new song.
-            The variable self.durationYouTube is set by youCurrentIndex()
-        """
-
-        now = time.time()  # DRY - Four lines repeated
-        self.timeForwardYouTube = now
-        self.timeLastYouTube = now
-        self.progressYouTube = 0.0
-        self.youPlayerSink = None  # Force Audio Sink read
-        self.youPlayerCurrText = "?"  # Force button text & tooltip setup
-
-    def updateYouTubeDuration(self):
-        """ Query YouTube duration and update progress bar.
-            If self.isViewCountBoost active then click next video.
-
-            If errors occur, first step rebuild mserve playlists with:
-              cd ~/.local/share/mserve/YoutubePlaylists
-              rm <PLAYLIST NAME>.csv
-              rm <PLAYLIST NAME>.private
-              Start mserve, view <PLAYLIST NAME> and select "Smart Play All".
-              If playlist doesn't rebuild then also use:
-                  rm <PLAYLIST NAME>.pickle
-
-        """
-        '''
-            "How often does YouTube update view count?
-            Though YouTube doesn't publish this information,
-            we know that it updates views approximately every
-            24 to 48 hours. It does not update views instantly.
-            Apr 13, 2021"
-
-2024-01-23-05:01 - START Bombs 6:00-109, 17:29-219, 18:28-329, 19:26-439
-2024-01-23-19:19 - Chill 6,050+323 Rock 25,585+462 Bombs 160+0 Gangs 3,480+17
-2024-01-23-19:27 - START Gangs 6:00-339, 2024-01-24-19:37-681, 06:05-1,023
-2024-01-24-05:59 - self.you_tree.see(str(you_tree_iid_int)) tcl error: 355
-
-2024-01-25-05:00 - Chill 6,050+0 Rock 25,585+0 Bombs 601+441 Gangs 3,762+282
-2024-01-25-19:35 - Gangster Skipped: 1364 (The day the music died)
-2024-01-30-18:39 - Chill 5,849-201 Rock 25,594+9 Bombs 672+71 Gangs 3,641-121
-            Currently only subscriber to channel but just now told another.
-
-===============================================================================
-
-        '''
-        if self.durationYouTube == 0.0:
-            self.youPrint("updateYouTubeDuration() video duration is ZERO!")
-            return  # Can't divide by zero
-
-        try:
-            # CPU load = 0.00641703605652
-            time_video = self.driver.execute_script(
-                "return document.getElementsByTagName('video')[0].currentTime;")
-        except Exception as err:
-            print("updateYouTubeDuration() 'video[0].currentTime' not found!")
-            print(err)
-            time_video = 0.0
-
-        # Over 45 seconds and view count speed boost active?
-        if time_video >= 31.0 and self.isViewCountBoost:
-            self.youPlayNext()
-            # if not self.youPlayNext():
-            #    print("self.isViewCountBoost TURNED OFF!")
-            #    self.isViewCountBoost = None
-
-        if time_video > 0.0:
-            self.progressYouTube = time_video
-        percent = float(100.0 * self.progressYouTube / self.durationYouTube)
-        self.youProVar.set(percent)
-        self.youProBar.update_idletasks()
-
-    def get_it(self):
-        """ Get Initial Time Offset: time.time() - self.init_time """
-        return time.time() - self.init_time
-
-    def get_el(self, start):
-        """ Get End Time and Calculated Elapsed time """
-        end = self.get_it()
-        return end, end - start
-
-    def log_it(self, et, ec, start):
-        """ Log start time """
-        tup = (et, ec, start, 0.0, 0.0)
-        self.event_log.append(tup)
-
-    def log_el(self, et, ec, es, ee, el):
-        """ Log ee time & sanity check """
-        _who = self.who + "log_el():"
-        tup = (et, ec, es, ee, el)
-        self.event_log.append(tup)
-
-        # Sanity check
-        for lt, lc, ls, le, lel in reversed(self.event_log):
-            if et != lt or ec != lc:
-                continue
-            if es != ls:
-                print("\n" + _who, "et:", et, "ec:", ec,
-                      "es times differ:", self.fit(es), self.fit(ls))
-            return
-
-        print("\n" + _who, "et:", et, "ec:", ec,
-              "Log start not found! es:", self.fit(es), "ee", self.fit(ee),
-              "el:", self.fel(el))
-
-    def prt_log(self):
-        """ Print Log """
-        _who = self.who + "prt_log():"
-        cit = time.time() - self.init_time
-        print("\n" + _who, "Log closed after:", self.fit(cit), "seconds.")
-        print("Event (R=Raise Window, M=Move Window), Event Count, Start sec")
-        print(" "*5, "Start sec  End sec  Elapsed ms")
-
-        last_start = 0.0
-        for lt, lc, ls, le, lel in self.event_log:
-            if ls == last_start:  # suppress duplicated start time
-                print(" "*15, self.fit(le).rjust(7), self.fel(lel).rjust(6))
+            sticky = tk.W
+            if input_type == "string":
+                var = tk.StringVar(value=value)
+            elif input_type == "integer":
+                var = tk.IntVar(value=value)
+                #sticky = tk.E
+            elif input_type == "float" or input_type == "time":
+                var = tk.DoubleVar(value=value)
+                #sticky = tk.E
+            elif input_type == "boolean":
+                str_value = "1" if value is True else "0"
+                var = tk.BooleanVar(value=str_value)
             else:
-                print(lt, str(lc).rjust(3), self.fit(ls).rjust(7),
-                      self.fit(le).rjust(7), self.fel(lel).rjust(6))  #
-            last_start = ls
+                var = None  # for pycharm error
+                print(_who, "invalid input_type:", input_type)
+                exit()
 
-    @staticmethod
-    def fit(it):
-        """ Format Initial Time Offset to 3 decimals """
-        if it:
-            return "%.3f" % round(it, 3)
-        else:
-            return "     "
+            def validate():
+                """ Validate var """
+                _new_value = var.get()
+                #print(atts[0], "new_value:", new_value)
+                return True
 
-    @staticmethod
-    def fel(it):
-        """ Format Elapsed Initial Time Offset in milliseconds to 2 decimal """
-        if it:
-            it = it * 1000.
-            return "%.2f" % round(it, 2)
-        else:
-            return "    "
+            state = tk.NORMAL if entry_type == "read-write" else tk.DISABLED
+            entry = ttk.Entry(frm, textvariable=var, width=width, font=g.FONT,
+                              state=state, validate='all', validatecommand=validate)
+            entry.grid(row=row, column=1, sticky=sticky, padx=15, pady=10)
+            self.tt_add(entry, tt_text, "sw")
 
-    # DOWN TO BUSINESS
-    def raise_children(self, *_args):
-        """ Focus in on parent. Focus in and lift the children up in the
-            order they were registered.
-        """
-        if not len(self.window_list):
+            if value is None:
+                #print("value is None")
+                pass
+
+            return var
+
+        def add_rows(frm, tab):
+            """ Add rows to frame (frm) matching dictionary tab. """
+            _who = self.who + "add_rows():"
+            '''
+            # (name, tab#, hide/ro/rw, input as, stored as, width, decimals, 
+                     min, max, edit callback, tooltip text)
+            '''
+            row = 0
+            for atts in listFields:
+                if atts[1] != tab:
+                    continue
+
+                label = ttk.Label(frm, text=atts[0], font=g.FONT)
+                label.grid(row=row, column=0, sticky=tk.W, padx=15, pady=10)
+                data = dictData.get(atts[0], None)
+                self.tt_add(label, atts[10])
+                # If data dictionary doesn't exist for key, can't process
+                # NOTE: GLO['SUDO_PASSWORD'] can also have value of None
+                if data is None:
+                    continue
+
+                _var = add_var(frm, row, atts, data)
+                #val = _var.get()  # Value is retrieved but doesn't appear in tab
+                #_var.trace_add('write', edit_var)
+
+                row += 1
+
+        tab_no = 1  # 1's based tab number matching dictionary
+        for name, tip in listTabs:
+
+            ''' frame for Notebook tab '''
+            frame = ttk.Frame(notebook, width=200, height=200, padding=[20, 20])
+            #self.tt_add(frame, tip, "ne")
+            # 2024-12-29 - tooltip spams screen moving between fields
+            add_rows(frame, tab_no)
+            if self.close:
+                close_btn = ttk.Button(
+                    frame, width=7, text="✘ Close", style=self.bStyle, command=self.close)
+                close_btn.grid(row=100, column=1, columnspan=2, padx=10, pady=5,
+                               sticky=tk.E)
+                tt_text = "Close Preferences.\n" +\
+                    "Any changes made will be lost."
+                self.tt_add(close_btn, tt_text, "ne", tool_type='button')
+
+            notebook.add(frame, text=name, compound=tk.TOP)
+            # style=tStyle,
+            #   File "/home/rick/HomA/toolkit.py", line 1593, in __init__
+            #     notebook.add(frame, style=tStyle, text=name, compound=tk.TOP)
+            #   File "/usr/lib/python2.7/lib-tk/ttk.py", line 842, in add
+            #     self.tk.call(self._w, "add", child, *(_format_optdict(kw)))
+            # TclError: unknown option "-style"
+            tab_no += 1
+            #frame.update()
+            #self.frames.append(frame)
+
+        notebook.grid(row=0, column=0, padx=3, pady=3, sticky=tk.NSEW)
+        notebook.update()
+        notebook.enable_traversal()
+
+    def tt_add(self, widget, tt_text, tt_anchor="nw", tool_type="label"):
+        """ Add tooltip """
+        if self.tt is None:
             return
-        _who = self.who + "raise_children():"
-        self.rec += 1  # raise event count
-        self.rit_st = self.get_it()
-        self.log_it("R", self.rec, self.rit_st)
-        for win_dict in self.window_list:
-            if self.check_candidacy(win_dict):
-                win_dict['widget'].lift()
-                win_dict['widget'].focus_force()
-        self.rit_en, self.rit_el = self.get_el(self.rit_st)
-        self.log_el("R", self.rec, self.rit_st, self.rit_en, self.rit_el)
-
-    def move_children(self, x_off, y_off):
-        """ Focus in on parent. Focus in and lift the children up in the
-            order they were registered.
-
-            2024-04-02 - As window dragged down to left, child raises up to left.
-        """
-        if not len(self.window_list):
-            return
-        _who = self.who + "move_children():"
-        self.mec += 1  # raise event count
-        self.mit_st = self.get_it()
-        self.log_it("M", self.mec, self.mit_st)
-        if True is False:
-            print("\n" + _who, " | x_off:", x_off, " | y_off:", y_off)
-
-        for win_dict in self.window_list:
-            if self.check_candidacy(win_dict):
-                _w, _h, x, y = self.geometry(win_dict['widget'])
-                new_x = x + x_off
-                new_y = y + y_off
-                geom = "+" + str(new_x) + "+" + str(new_y)
-                win_dict['widget'].geometry(geom)
-
-        self.mit_en, self.mit_el = self.get_el(self.mit_st)
-        self.log_el("M", self.mec, self.mit_st, self.mit_en, self.mit_el)
-
-    def check_candidacy(self, win_dict):
-        """ Test if 50% of a window lays inside parent toplevel
-
-            :param win_dict: dictionary
-        """
-        _who = self.who + "check_candidacy():"
-        w, h, x, y = self.geometry(win_dict['widget'])
-        if True is False:  # Too much noise with spam prints
-            print("\n" + _who, " | key:", win_dict['key'],
-                  " | widget:", win_dict['widget'],
-                  "\n\t\t | x:", x, " | y:", y, " | w:", w, " | h:", h)
-        return True
-
-    def drag_window(self, _event):
-        """ Defined in __init__ with:
-                self.key.bind("<Configure>", drag_window)
-        """
-        _who = self.who + "drag_window():"
-        self.curr_geom = self.geometry(self.toplevel)  # window's [wid, hgt, x, y]
-        if not self.last_geom[3]:  # Is last window height impossibly zero?
-            self.last_geom = copy.deepcopy(self.curr_geom)  # last time not init
-
-        # Leave now if geometry unchanged from last time
-        if self.curr_geom == self.last_geom:
-            return  # drag_window called with window.update() & no changes
-
-        # How much has window moved or resized?
-        self.move_geom = [c - l for c, l in zip(self.curr_geom, self.last_geom)]
-
-        # Move and raise children if 50% inside parent window
-        self.move_children(self.move_geom[2], self.move_geom[3])
-        self.raise_children()  # NOTE: move before 50% test of raising children
-
-        # Save for comparison next time
-        self.last_geom = copy.deepcopy(self.curr_geom)
-
-        # Uncomment print commands for debugging
-        _w, _h, _x, _y = self.curr_geom  # shorthand for printing current
-        _wm, _hm, _xm, _ym = self.move_geom  # shorthand for moved amounts
-        #print(_who, "| x:", _x, " | y:", _y, " | w:", _w, " | h:", _h)
-        #print("\t| x moved:", _xm, "\t| y moved:", _ym,
-        #      "\t| width change:", _wm, "\t| height change:", _hm)
-
-        # NOTE _event.x, _event.x_root refer to mouse position not window position
-
-    def register_child(self, key, widget):
-        """ Called from mserve.py for delayed textbox (dtb) or
-            here for displaying mini-windows E.G. column details.
-
-            Set focus in for self.key to lift the child window
-            When self.key is dragged, so is the child window.
-            Whilst child window is "None" do nothing.
-
-            window.winfo_xxx see: https://wiki.tcl-lang.org/page/winfo%28%29
-
-            :param key: 'dtb', 'column details', 'rename heading', etc.
-            :param widget: msg_top, or create_window toplevel, etc.
-        """
-        _who = self.who + "register_child():"
-        has_key = self.key_for_widget(widget)
-        has_widget = self.widget_for_key(key)
-        if has_key or has_widget:
-            print("\n" + _who, "Window already registered.")
-            print("\tkey:", key, "window:", widget)
-            print("\t", self.window_list)
-
-        w, h, x, y = self.geometry(widget)
-        #print("\n" + _who, " | key:", key, " | widget:", widget,
-        #      "\n\t\t | x:", x, " | y:", y, " | w:", w, " | h:", h)
-        # Unordered dict so geometry order irrelevant
-        win = {'key': key, 'widget': widget, 'x': x, 'y': y, 'w': w, 'h': h}
-        self.window_list.append(win)  # order children born
-        #print("self.window_list:", self.window_list)
-
-    def unregister_child(self, widget):
-        """ Called from mserve.py for delayed textbox (dtb) or
-            here for displaying mini-windows E.G. column details.
-
-            :param widget: dtb.msg_top, or self.key
-        """
-        if not len(self.window_list):
-            return
-        _who = self.who + "unregister_child():"
-        #print("\n" + _who, "Searching for:", widget)
-        #print(_who, "BEFORE self.window_list:", self.window_list)
-
-        i = found = False
-        for i, win in enumerate(self.window_list):
-            if win['widget'] == widget:
-                found = True
-                break  # deleting index inside loop doesn't work
-
-        if found:
-            _deleted = self.window_list.pop(i)
-            # Parent responsible for destroying child window.
-        else:
-            print("\n" + _who, " - Widget not found:", widget)
-
-        #print(_who, "AFTER self.window_list:", self.window_list)
-        #self.prt_log()
-
-    def destroy_all(self, tt=None):
-        """ When caller doesn't know the window widgets at close time """
-        if not len(self.window_list):
-            return
-
-        _who = self.who + "destroy_all():"
-        #print(_who, "self.window_list:", self.window_list)
-        safe_list = []  # Can't iterate window_list and remove from it
-        for win_dict in self.window_list:
-            safe_list.append(win_dict['key'])
-        for key in safe_list:
-            self.destroy_by_key(key, tt)
-
-        self.window_list = []  # Should be empty now
-
-    def destroy_by_key(self, key, tt=None):
-        """ When caller doesn't know the window widgets at close time """
-        _who = self.who + "destroy_by_key():"
-
-        window = self.widget_for_key(key)
-        if window is None:
-            print("\n" + _who, " - Key not found:", key)
-            return False
-
-        if tt:  # Close all tooltips under the window
-            if tt.check(window):  # window may not have any tooltips
-                tt.close(window)
-
-        window.destroy()
-        self.unregister_child(window)
-        return True
-
-    def key_for_widget(self, widget):
-        """ When caller doesn't know the 'key' get it with window widget
-
-            ONLY USED FOR A FEW MINUTES THEN OBSOLETE. Leave for now.
-
-            :param widget: Window's TK widget identifier
-        """
-        if not len(self.window_list):
-            return
-        _who = self.who + "key_for_widget():"
-        for win_dict in self.window_list:
-            if win_dict['widget'] == widget:
-                return win_dict['key']
-
-        #print("No key for widget:", widget)
-
-    def widget_for_key(self, key):
-        """ When caller doesn't know the 'key' get it with window widget
-
-            :param key: Child Window's key. E.G. "move column"
-        """
-        if not len(self.window_list):
-            return
-        _who = self.who + "widget_for_key():"
-        for win_dict in self.window_list:
-            if win_dict['key'] == key:
-                return win_dict['widget']
-
-        #print("No key for widget:", widget)
-
-    @staticmethod
-    def geometry(widget):
-        """ Return list of widget's [width, height, x, y]
-            Called for both parent window and child windows
-
-        stackoverflow: https://stackoverflow.com/a/77503326/6929343 """
-        widget.update_idletasks()  # 2024-03-29 tested & confirm needed
-        geometry_info = widget.geometry()
-        # re search in "<WIDTH> x <HEIGHT> + <X> + <Y>" string (no spaces or <>)
-        position_info = re.split('[x+]', geometry_info)
-        # https://stackoverflow.com/a/50716478/6929343
-        return map(int, position_info)
+        if tt_text is not None and tt_anchor is not None:
+            self.tt.add_tip(widget, tt_text, tool_type=tool_type, anchor=tt_anchor)
 
 
 # ==============================================================================
@@ -5426,6 +5104,14 @@ class ToolTips(CommonTip):
             self.fg = self.dft_fg  # 'canvas_button', 'label', 'splash',
             self.bg = self.dft_bg  # and 'piggy-back' have no fg/bg colors.
         '''
+        if self.fg is None or self.fg == "":  # 2024-12-29
+            # When ttk.Label, ttk.Frame and ttk.Entry is used the colors are "".
+            self.fg = self.dft_fg
+            #print("self.tool_type:", self.tool_type, "self.fg:", self.fg, "self.bg:",
+            #      self.bg,
+            #      "self.dft_fg:", self.dft_fg, "self.dft_bg:", self.dft_bg)
+        if self.bg is None or self.bg == "":
+            self.bg = self.dft_bg
 
         #self.tip_window = tw = tk.Toplevel(self.widget)  # Original sample code...
         if self.menu_tuple:

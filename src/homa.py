@@ -182,7 +182,7 @@ class DeviceCommonSelf:
         self.dependencies_installed = None  # Parent will call self.CheckDependencies()
         self.passed_dependencies = []
         self.passed_installed = []
-        
+
         self.system_ctl = False  # Turning off TV shuts down / suspends system
         self.remote_suspends_system = False  # If TV powered off suspend system
 
@@ -422,124 +422,120 @@ class Globals(DeviceCommonSelf):
         with open(g.USER_DATA_DIR + os.sep + GLO['CONFIG_FNAME'], "w") as f:
             f.write(json.dumps(self.dictGlobals))
 
-    def dictNotebook(self):
-        """ Define dictNotebook
+    def defineNotebook(self):
+        """ Define defineNotebook
             https://stackoverflow.com/questions/284234/notebook-widget-in-tkinter
         """
-        _who = self.who + "dictNotebook():"
+        _who = self.who + "defineNotebook():"
 
-        dictHeader = {
-            "name": "HomA Preferences",
-            "name_tip": "Click on tabs to set HomA preferences.\n"
-                        "When done, click 'Save' or 'Cancel' / 'Close'.",
-            "tab0": "Sony TV",
-            "tab0_tip": "Variables improving performance of HomA\n"
-                        "communicating with Sony Televisions on LAN.",
-            "tab1": "Google TV",
-            "tab1_tip": "Variables improving performance of HomA\n"
-                        "communicating with Google Televisions on LAN.",
-            "tab2": "Smart Plug",
-            "tab2_tip": "Variables improving performance of HomA\n"
-                        "communicating with TP-Link Smart Plugs.",
-            "tab3": "Power Off",
-            "tab3_tip": "Define how the computer is turned off or\n"
-                        "if it suspended/hibernated instead. ",
-            "tab4": "Power On",
-            "tab4_tip": "Define how the computer is turned on or\n"
-                        "it is resumed / woken up.",
-            "tab5": "Laptop",
-            "tab5_tip": "Define how the laptop display is controlled\n"
-                        "by HomA.",
-            "tab6": "TV Control",
-            "tab7": "TV Control",
-            "tab8": "TV Control",
-            "tab10": "TV Control"
-        }
+        listTabs = [
+            ("Sony TV",
+             "Variables improving performance of HomA\n"
+             "communicating with Sony Televisions on LAN."),
+            ("Google TV",
+             "Variables improving performance of HomA\n"
+             "communicating with Google Televisions on LAN."),
+            ("Smart Plug",
+             "Variables improving performance of HomA\n"
+             "communicating with TP-Link Smart Plugs."),
+            ("Miscellaneous",
+             "Variables for 'sensors' temperature monitor\n"
+             "and Countdown Timer."),
+            ("Power",
+             "Define how the computer is turned on or\n"
+             "it is resumed / woken up."),
+            ("Computer",  # Only display when chassis = 'Laptop'
+             "Laptop backlight display control codes.")
+        ]
 
-        HD = 0  # Hidden
-        RO = 1  # Read-only
-        RW = 2  # Read-Write
-        STR = 3  # String
-        INT = 4  # Integer
-        FLOAT = 5  # Float
-        MIN = MAX = CB = None  # Minimum, Maximum, Callback - placeholders
-        dictFields = {
-            # name: [tab#, ro/rw, input mask, stored as, min, max, edit callback
-            "SONY_PWD": [1, RW, STR, STR, MIN, MAX, CB,
-                         "Password for Sony REST API"],
-            "CONFIG_FNAME": [1, HD, STR, STR, MIN, MAX, CB,
-                             "HomA Configuration filename"],
-            "DEVICES_FNAME": [1, HD, STR, STR, MIN, MAX, CB,
-                              "HomA discovered network devices."],
-            "VIEW_ORDER_FNAME": [1, HD, STR, STR, MIN, MAX, CB,
-                                 "HomA Network Devices Treeview display order"],
+        HD = "hidden"
+        RO = "read-only"
+        RW = "read-write"
+        STR = "string"
+        INT = "integer"
+        FLOAT = "float"
+        TM = "time"
+        BOOL = "boolean"
+        LIST = "list"
+        WID = 15  # Default Width
+        DEC = MIN = MAX = CB = None  # Decimal places, Minimum, Maximum, Callback
+        listFields = [
+            # name: [tab#, ro/rw, input as, stored as, width, decimals, min, max, edit callback
+            ("SONY_PWD", 1, RW, STR, STR, 10, DEC, MIN, MAX, CB,
+             "Password for Sony REST API"),
+            ("CONFIG_FNAME", 0, HD, STR, STR, WID, DEC, MIN, MAX, CB,
+             "HomA Configuration filename"),
+            ("DEVICES_FNAME", 0, HD, STR, STR, WID, DEC, MIN, MAX, CB,
+             "HomA discovered network devices."),
+            ("VIEW_ORDER_FNAME", 0, HD, STR, STR, WID, DEC, MIN, MAX, CB,
+             "HomA Network Devices Treeview display order"),
             # Timeouts improve device interface performance
-            "PLUG_TIME": [2, RW, FLOAT, STR, MIN, MAX, CB,
-                          "Smart plug timeout to turn power on/off"],
-            "CURL_TIME": [2, RW, STR, STR, MIN, MAX, CB,
-                          "Anything longer means not a Sony TV or disconnected"],
-            "ADB_CON_TIME": [2, RW, STR, STR, MIN, MAX, CB,
-                             "Android TV test if connected timeout"],
-            "ADB_PWR_TIME": [2, RW, STR, STR, MIN, MAX, CB,
-                             "Android TV test power state timeout"],
-            "ADB_KEY_TIME": [2, RW, STR, STR, MIN, MAX, CB,
-                             "Android keyevent KEYCODE_SLEEP or KEYCODE_WAKEUP timeout"],
-            "ADB_MAGIC_TIME": [2, RW, STR, STR, MIN, MAX, CB,
-                               "Android TV Wake on Lan Magic Packet wait time."],
+            ("PLUG_TIME", 3, RW, FLOAT, STR, 5, DEC, MIN, MAX, CB,
+             "Smart plug timeout to turn power on/off"),
+            ("CURL_TIME", 1, RW, STR, STR, 5, DEC, MIN, MAX, CB,
+             "Anything longer means not a Sony TV or disconnected"),
+            ("ADB_CON_TIME", 2, RW, STR, STR, 5, DEC, MIN, MAX, CB,
+             "Android TV test if connected timeout"),
+            ("ADB_PWR_TIME", 2, RW, STR, STR, 5, DEC, MIN, MAX, CB,
+             "Android TV test power state timeout"),
+            ("ADB_KEY_TIME", 2, RW, STR, STR, 5, DEC, MIN, MAX, CB,
+             "Android keyevent KEYCODE_SLEEP or KEYCODE_WAKEUP timeout"),
+            ("ADB_MAGIC_TIME", 2, RW, STR, STR, 5, DEC, MIN, MAX, CB,
+             "Android TV Wake on Lan Magic Packet wait time."),
             # Application timings and global working variables
-            "APP_RESTART_TIME": [3, RW, STR, STR, MIN, MAX, CB,
-                                 "Time started or resumed. Use for elapsed time print"],
-            "REFRESH_MS": [3, RW, STR, STR, MIN, MAX, CB,
-                           "Refresh tooltip fades 60 frames per second"],
-            "REDISCOVER_SECONDS": [3, RW, STR, STR, MIN, MAX, CB,
-                                   "Check devices changes every x seconds"],
-            "RESUME_TEST_SECONDS": [3, RW, STR, STR, MIN, MAX, CB,
-                                    "> x seconds disappeared means system resumed"],
-            "RESUME_DELAY_RESTART": [3, RW, STR, STR, MIN, MAX, CB,
-                                     "Pause x seconds after resuming from suspend"],
-            "TIMER_SEC": [3, RW, INT, INT, MIN, MAX, CB,
-                          "Tools Dropdown Menubar - Countdown Timer default"],
-            "TIMER_ALARM": [3, RW, INT, INT, 10, MAX, CB,
-                            ".wav sound file to play when timer ends."],
-            "LOG_EVENTS": [3, RW, STR, STR, MIN, MAX, CB,
-                           "Override runCommand event logging / --verbose3 printing"],
-            "EVENT_ERROR_COUNT": [3, RO, INT, INT, 0, MAX, CB,
-                                  "To enable/disable View Dropdown menu 'Discovery errors'"],  #
-            "SENSOR_CHECK": [3, RW, STR, STR, MIN, MAX, CB,
-                             "Check `sensors` (CPU/GPU temp & fan speeds) every x seconds"],  #
-            "SENSOR_LOG": [3, RW, STR, STR, MIN, MAX, CB,
-                           "Log `sensors` every x seconds. Log more if fan speed changes"],  #
-            "FAN_GRANULAR": [3, RW, STR, STR, MIN, MAX, CB,
-                             "Skip logging when fan changes <= FAN_GRANULAR"],  #
+            ("APP_RESTART_TIME", 5, RW, TM, TM, 18, DEC, MIN, MAX, CB,
+             "Time started or resumed. Use for elapsed time print"),
+            ("REFRESH_MS", 5, RW, INT, INT, 3, DEC, MIN, MAX, CB,
+             "Refresh tooltip fades 60 frames per second"),
+            ("REDISCOVER_SECONDS", 5, RW, INT, INT, 3, DEC, MIN, MAX, CB,
+             "Check devices changes every x seconds"),
+            ("RESUME_TEST_SECONDS", 5, RW, INT, INT, 3, DEC, MIN, MAX, CB,
+             "> x seconds disappeared means system resumed"),
+            ("RESUME_DELAY_RESTART", 5, RW, INT, INT, 3, DEC, MIN, MAX, CB,
+             "Pause x seconds after resuming from suspend"),
+            ("TIMER_SEC", 4, RW, INT, INT, 5, DEC, MIN, MAX, CB,
+             "Tools Dropdown Menubar - Countdown Timer default"),
+            ("TIMER_ALARM", 4, RW, STR, STR, 30, DEC, MIN, MAX, CB,
+             ".wav sound file to play when timer ends."),
+            ("LOG_EVENTS", 4, RO, BOOL, BOOL, WID, DEC, MIN, MAX, CB,
+             "Override runCommand event logging / --verbose3 printing"),
+            ("EVENT_ERROR_COUNT", 4, RO, INT, INT, WID, 0, MIN, MAX, CB,
+             "To enable/disable View Dropdown menu 'Discovery errors'"),
+            ("SENSOR_CHECK", 4, RW, STR, STR, WID, DEC, MIN, MAX, CB,
+             "Check `sensors`, CPU/GPU temp & fan speeds, every x seconds"),
+            ("SENSOR_LOG", 4, RW, STR, STR, WID, DEC, MIN, MAX, CB,
+             "Log `sensors` every x seconds. Log more if fan speed changes"),
+            ("FAN_GRANULAR", 4, RW, STR, STR, WID, DEC, MIN, MAX, CB,
+             "Skip logging when fan changes <= FAN_GRANULAR"),
             # Device type global identifier hard-coded in "inst.type_code"
-            "HS1_SP": [4, RW, STR, STR, MIN, MAX, CB,
-                       "TP-Link Kasa WiFi Smart Plug HS100, HS103 or HS110 using hs100.sh"],  #
-            "KDL_TV": [4, RW, STR, STR, MIN, MAX, CB,
-                       "Sony Bravia KDL Android TV using REST API (curl)"],  #
-            "TCL_TV": [4, RW, STR, STR, MIN, MAX, CB,
-                       "TCL Google Android TV using adb (after wakeonlan)"],  #
-            "DESKTOP": [4, RW, STR, STR, MIN, MAX, CB,
-                        "Desktop Computer, Tower, NUC, Raspberry Pi, etc."],  #
-            "LAPTOP_B": [4, RW, STR, STR, MIN, MAX, CB,
-                         "Laptop base (CPU, GPU, Keyboard, Fans, Ports, etc.)"],  #
-            "LAPTOP_D": [4, RW, STR, STR, MIN, MAX, CB,
-                         "Laptop display (Can be turned on/off separate from base)"],  #
-            "SUDO_PASSWORD": [4, RW, STR, STR, MIN, MAX, CB,
-                              "Sudo password required for laptop backlight"],  #
-            "BACKLIGHT_NAME": [4, RW, STR, STR, MIN, MAX, CB,
-                               "E.G. 'intel_backlight', 'nvidia_backlight', etc."],  #
-            "BACKLIGHT_ON": [4, RW, STR, STR, MIN, MAX, CB,
-                             "Sudo echo to '/sys/class/backlight/intel_backlight/bl_power'"],  #
-            "BACKLIGHT_OFF": [4, RW, STR, STR, MIN, MAX, CB,
-                              "... will control laptop display backlight power On/Off."],  #
+            ("HS1_SP", 3, RO, INT, INT, WID, DEC, MIN, MAX, CB,
+             "TP-Link Kasa WiFi Smart Plug HS100, HS103 or HS110 using hs100.sh"),  #
+            ("KDL_TV", 1, RO, INT, INT, WID, DEC, MIN, MAX, CB,
+             "Sony Bravia KDL Android TV using REST API `curl`"),
+            ("TCL_TV", 2, RO, INT, INT, WID, DEC, MIN, MAX, CB,
+             "TCL Google Android TV using adb after `wakeonlan`"),
+            ("DESKTOP", 6, RO, INT, INT, WID, DEC, MIN, MAX, CB,
+             "Desktop Computer, Tower, NUC, Raspberry Pi, etc."),
+            ("LAPTOP_B", 6, RO, INT, INT, WID, DEC, MIN, MAX, CB,
+             "Laptop base ('CPU, GPU, Keyboard, Fans, Ports, etc.')"),
+            ("LAPTOP_D", 6, RO, INT, INT, WID, DEC, MIN, MAX, CB,
+             'Laptop display ("Can be turned on/off separate from base")'),
+            ("SUDO_PASSWORD", 6, HD, STR, STR, WID, DEC, MIN, MAX, CB,
+             "Sudo password required for laptop backlight"),
+            ("BACKLIGHT_NAME", 6, RW, STR, STR, 30, DEC, MIN, MAX, CB,
+             "E.G. 'intel_backlight', 'nvidia_backlight', etc."),
+            ("BACKLIGHT_ON", 6, RW, STR, STR, 2, DEC, MIN, MAX, CB,
+             "Sudo echo to '/sys/class/backlight/intel_backlight/bl_power'"),
+            ("BACKLIGHT_OFF", 6, RW, STR, STR, 2, DEC, MIN, MAX, CB,
+             "... will control laptop display backlight power On/Off."),
             # Power all On/Off controls
-            "POWER_OFF_CMD_LIST": [4, RW, STR, STR, MIN, MAX, CB,
-                                   'Run "Turn Off" for Computer()'],  #
-            "POWER_ALL_EXCL_LIST": [4, RW, STR, STR, MIN, MAX, CB,
-                                    'Exclude devices when powering all "ON" / "OFF"']
-        }
-        
-        return dictHeader, dictFields
+            ("POWER_OFF_CMD_LIST", 6, RW, STR, LIST, 30, DEC, MIN, MAX, CB,
+             'Run "Turn Off" for Computer'),
+            ("POWER_ALL_EXCL_LIST", 6, RW, STR, LIST, 20, DEC, MIN, MAX, CB,
+             'Exclude devices when powering all "ON" / "OFF"')
+        ]
+
+        return listTabs, listFields
 
 
 class Computer(DeviceCommonSelf):
@@ -555,7 +551,7 @@ class Computer(DeviceCommonSelf):
         All laptops have WiFi. The WiFi MAC address is used to identify
         the laptop display in arp_dicts dictionaries.
 
-        A desktop with ethernet and WiFi will only have it's ethernet 
+        A desktop with ethernet and WiFi will only have it's ethernet
         MAC address stored in arp_dicts dictionaries.
     """
 
@@ -1011,7 +1007,7 @@ class NetworkInfo(DeviceCommonSelf):
         _arp_data = {}  # keyed by arp_mac, value = list [IP, name, alias, arp_mac, last_IP]
         self.arp_dicts = []  # First time discovered, thereafter read from disk
         self.instances = []  # TclGoogleAndroidTV, SonyBraviaKdlTV, etc. instances
-        self.view_order = []  # Sortable list of MAC addresses matching instances 
+        self.view_order = []  # Sortable list of MAC addresses matching instances
         for device in self.devices:
             # SONY.light (192.168.0.15) at 50:d4:f7:eb:41:35 [ether] on enp59s0
             parts = device.split()
@@ -1421,7 +1417,7 @@ class LaptopDisplay(DeviceCommonSelf):
 class SmartPlugHS100(DeviceCommonSelf):
     """ TP-Link Kasa Smart Plug HS100/HS103/HS110 using hs100.sh
         https://github.com/branning/hs100
-        TPlink is the manufacturing brand. Kasa, Deco, and Tapo are all product lines produced by TPlink. 
+        TPlink is the manufacturing brand. Kasa, Deco, and Tapo are all product lines produced by TPlink.
     """
 
     def __init__(self, mac, ip, name, alias):
@@ -1464,7 +1460,7 @@ class SmartPlugHS100(DeviceCommonSelf):
             v2_print(_who, self.ip, "- Valid Smart Plug")
             return True
 
-        v2_print(_who, self.ip, 
+        v2_print(_who, self.ip,
                  "- Not a Smart Plug! (or powered off). Reply was: '" + Reply + "'.")
 
         return False
@@ -1745,7 +1741,7 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/
             self.power_saving_mode = "?"
 
         return self.power_saving_mode
-    
+
     def PictureOn(self, forgive=False):
         """ Turn On Sony Bravia KDL TV Picture using os_curl """
 
@@ -1901,11 +1897,11 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/audio/v1_0/g
         # {'volume': 15, 'maxVolume': 100, 'minVolume': 0, 'target': 'headphone', 'mute': False}
         # ]], 'id': 33}
         #print(_who, "curl reply_dict:", reply_dict)
-        # SonyBraviaKdlTV().getVolume(): curl reply_dict: 
+        # SonyBraviaKdlTV().getVolume(): curl reply_dict:
         # {'result': [
-        # [{'volume': 23, 'maxVolume': 100, 'minVolume': 0, 'target': 'speaker', 
-        # 'mute': False}, 
-        # {'volume': 15, 'maxVolume': 100, 'minVolume': 0, 'target': 'headphone', 
+        # [{'volume': 23, 'maxVolume': 100, 'minVolume': 0, 'target': 'speaker',
+        # 'mute': False},
+        # {'volume': 15, 'maxVolume': 100, 'minVolume': 0, 'target': 'headphone',
         # 'mute': False}]], 'id': 33}
 
         try:
@@ -1956,7 +1952,7 @@ class TclGoogleAndroidTV(DeviceCommonSelf):
             https://developer.android.com/reference/android/view/KeyEvent
 
         Methods:
-            
+
             AdbReset() - adb kill-server && adb start-server
             PowerStatus() - timeout 2.0 adb shell dumpsys input_method | grep -i screen on
             isDevice() - timeout 0.1 adb connect <ip>
@@ -2223,6 +2219,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         # self.xdo_os_window_id = os.popen("xdotool getactivewindow").read().strip()
         # self.xdo_os_window_id: 92274698  # THIS CHANGES BELOW TO 102760472
         self.title("HomA - Home Automation")
+        self.btn_frm = None  # Used by BuildButtonBar(), can be hidden by edit_pref
 
         ''' ChildWindows() moves children with toplevel and keeps children on top '''
         self.win_grp = toolkit.ChildWindows(self, auto_raise=False)
@@ -2237,15 +2234,15 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         ''' System Monitor '''
         sm = SystemMonitor(self)  # sm = This machines fan speed and CPU temperatures
 
-        ''' Edit Preferences '''
-        self.preferences_top = self.edit_preferences_active = None
+        ''' Preferences Notebook '''
+        self.pref_nb = self.edit_pref_active = None
 
-        ''' Big Number Calculator and Delayed Textbox (dtb) '''
+        ''' Big Number Calculator and Delayed Textbox (dtb) are child windows '''
         self.calculator = self.calc_top = self.dtb = None
 
-        ''' Scrollbox (toolkit.CustomScrolledText) to display cmdEvents '''
+        ''' Display cmdEvents (toolkit.CustomScrolledText) as child window '''
         self.event_top = self.event_scroll_active = None
-        
+
         ''' File/Edit/View/Tools dropdown menu bars '''
         self.file_menu = self.edit_menu = self.view_menu = self.tools_menu = None
         self.BuildMenu()  # Dropdown Menu Bars after 'sm ='
@@ -2263,16 +2260,10 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.EnableMenu()
 
         # Experiments to delay rediscover when there is GUI activity
-        self.have_focus = True  # Application always starts with focus
         self.minimizing = False  # When minimizing, override FocusIn()
-        self.bind("<FocusIn>", self.FocusIn)
-        self.bind("<FocusOut>", self.FocusOut)
-        self.bind("<Enter>", self.Enter)
-        self.bind("<Leave>", self.Leave)
+        self.bind("<FocusIn>", self.FocusIn)  # Raise windows up
         self.bind("<Motion>", self.Motion)  # On motion reset rediscovery timer
 
-        self.last_enter_time = GLO['APP_RESTART_TIME']
-        self.last_leave_time = GLO['APP_RESTART_TIME']
         self.last_motion_time = GLO['APP_RESTART_TIME']
 
         # Monitors and window positions when un-minimizing
@@ -2340,7 +2331,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         # View Dropdown Menu
         self.view_menu = tk.Menu(mb, tearoff=0)
-        self.view_menu.add_command(label="Sensors", font=g.FONT, underline=0, 
+        self.view_menu.add_command(label="Sensors", font=g.FONT, underline=0,
                                    command=self.SensorsDevicesToggle, state=tk.DISABLED)
         self.view_menu.add_separator()
         self.view_menu.add_command(label="Network devices", font=g.FONT, underline=0,
@@ -2450,6 +2441,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             v0_print("sm.skipped_logs    :", "{:,d}".format(sm.skipped_logs).rjust(9))
             v0_print("sm.number_logs     :", "{:,d}".format(sm.number_logs).rjust(9))
 
+        self.destroy()  # Destroy toplevel
         exit()
 
     def MinimizeApp(self, *_args):
@@ -2505,21 +2497,19 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             NOTE: triggered two times so test current state for first time status.
             NOTE: When the right-click menu is closed it registers FocusOut and
                   toplevel registers FocusIn again.
+            NOTE: If preferences Notebook is active and countdown timer is started
+                  the digits never appear and linux locks up totally. Mouse movement
+                  can still occur but that is all. As of 2024-12-27.
         """
-        if self.have_focus is False:
-            self.have_focus = True
-            #print("\nFocus In")
-        else:
-            #print("Focus In SPAM")  # FocusIn() is called twice
-            pass
 
         if self.event_scroll_active and self.event_top:
             self.event_top.focus_force()
             self.event_top.lift()
 
-        if self.edit_preferences_active and self.preferences_top:
-            self.preferences_top.focus_force()
-            self.preferences_top.lift()
+        # 2024-12-28 Causes Xorg to freeze. Only mouse can move.
+        #if self.edit_pref_active and self.pref_nb:
+        #    self.pref_nb.focus_force()
+        #    self.pref_nb.lift()
 
         if self.calculator and self.calc_top:
             self.calc_top.focus_force()
@@ -2528,33 +2518,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         if self.dtb and self.dtb.mounted is True:
             self.dtb.msg_top.focus_force()
             self.dtb.msg_top.lift()
-
-    def FocusOut(self, *_args):
-        """ Window or menu lost focus, enable rediscovery.
-            NOTE: triggered two times so test current state for first time.
-            NOTE: When menu opened toplevel registers FocusOut and
-                  menu registers FocusIn.
-        """
-        if self.have_focus is True:
-            self.have_focus = False
-            #print("\nFocus Out")
-        else:
-            #print("Focus Out SPAM")
-            pass
-
-    def Enter(self, *_args):
-        """ Window or menu was entered, disable rediscovery.
-            NOTE: triggered two times so test current state for first time.
-        """
-        self.last_enter_time = time.time()
-        #print("\nEnter")
-
-    def Leave(self, *_args):
-        """ Window or menu was left, enable rediscovery.
-            NOTE: triggered two times so test current state for first time.
-        """
-        self.last_leave_time = time.time()
-        #print("\nLeave")
 
     def Motion(self, *_args):
         """ Window or menu had motion, reset last rediscovery time.
@@ -2651,14 +2614,14 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             Tree Toggle - Button toggles between show Sensors or show Devices.
             Suspend - Power off all devices and suspend system.
             Help - www.pippim.com/HomA.
-            Close - Close HomA. 
+            Close - Close HomA.
         """
 
-        ''' Treeview Buttons '''
-        frame = tk.Frame(self)
-        frame.grid_rowconfigure(0, weight=1)
-        frame.grid_columnconfigure(0, weight=1)
-        frame.grid(row=3, column=0, columnspan=2, sticky=tk.EW)
+        ''' self.btn_frm holds Application() bottom bar buttons '''
+        self.btn_frm = tk.Frame(self)
+        self.btn_frm.grid_rowconfigure(0, weight=1)
+        self.btn_frm.grid_columnconfigure(0, weight=1)
+        self.btn_frm.grid(row=99, column=0, columnspan=2, sticky=tk.E)
         '''
         2024-09-07 - Xorg or Tkinter glitch only fixed by reboot makes tk.Button
           3x wider and taller. Use ttk.Button which defaults to regular size.
@@ -2668,7 +2631,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         # Credit: https://stackoverflow.com/a/62506279
         #style.theme_use("classic")
 
-        style.map("C.TButton",  # Used by play_button() in build_play_btn_frm()
+        style.map("C.TButton",  # mserve play_button() in build_play_btn_frm()
                   foreground=[('!active', 'Black'), ('pressed', 'White'),
                               ('active', 'Black')],
                   background=[('!active', 'Grey75'), ('pressed', 'ForestGreen'),
@@ -2680,7 +2643,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         def device_button(row, column, txt, command, tt_text, tt_anchor):
             """ Function to combine ttk.Button, .grid() and tt.add_tip() """
             # font=
-            widget = ttk.Button(frame, text=txt, width=len(txt),
+            widget = ttk.Button(self.btn_frm, text=txt, width=len(txt),
                                 command=command, style="C.TButton")
             widget.grid(row=row, column=column, padx=5, pady=5, sticky=tk.E)
             if tt_text is not None and tt_anchor is not None:
@@ -2775,9 +2738,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         menu = tk.Menu(self)
         menu.bind("<FocusIn>", self.FocusIn)
-        menu.bind("<FocusOut>", self.FocusOut)
-        menu.bind("<Enter>", self.Enter)
-        menu.bind("<Leave>", self.Leave)
         menu.bind("<Motion>", self.Motion)
 
         menu.post(event.x_root, event.y_root)
@@ -2983,7 +2943,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         """ Resume from suspend. Display status of devices that were
             known at time of suspend. Then set variables to trigger
             rediscovery for any new devices added.
-            
+
             Called when: now - self.last_refresh_time > GLO['RESUME_TEST_SECONDS']
             Consequently long running processes must reseed self.last_refresh_time
             when they finish.
@@ -3036,8 +2996,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         tf = (None, 96)  # default font family with 96 point size for countdown
         # 2 digits needs 300px width, 3 digits needs 450px width
         width = len(str(countdown_sec)) * 150
-        self.dtb = message.DelayedTextBox(title=title, toplevel=self, width=width, 
-                                          height=250, startup_delay=0, abort=True, 
+        self.dtb = message.DelayedTextBox(title=title, toplevel=self, width=width,
+                                          height=250, startup_delay=0, abort=True,
                                           tf=tf, ta="center", win_grp=self.win_grp)
         # Loop until delay resume countdown finished or menu countdown finishes
         start = time.time()
@@ -3323,7 +3283,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                     continue
                 ni.view_order.append(mac)
                 ni.devices = copy.deepcopy(rd.devices)
-                
+
                 # Only update Devices Treeview when mounted.
                 if not usingDevicesTreeview:
                     continue
@@ -3385,42 +3345,42 @@ class Application(DeviceCommonSelf, tk.Toplevel):
     def Preferences(self):
         """ Edit preferences """
 
-        if self.edit_preferences_active and self.preferences_top:
-            self.preferences_top.focus_force()
-            self.preferences_top.lift()
+        if self.edit_pref_active and self.pref_nb:
+            self.pref_nb.focus_force()
+            self.pref_nb.lift()
             return
 
-        self.preferences_top = notebook = self.edit_preferences_active = None
+        self.pref_nb = notebook = self.edit_pref_active = None
 
         def close(*_args):
             """ Close window painted by this pretty_column() method """
-            if not self.edit_preferences_active:
+            if not self.edit_pref_active:
                 return
             #notebook.unbind("<Button-1>")  # 2024-12-21 TODO: old code, use unknown
-            #self.win_grp.unregister_child(self.preferences_top)
-            self.edit_preferences_active = None  # 2024-12-24 needed in homa?
-            self.preferences_top.destroy()
-            self.preferences_top = None
+            #self.win_grp.unregister_child(self.pref_nb)
+            self.tt.close(self.pref_nb)
+            self.edit_pref_active = None  # 2024-12-24 needed in homa?
+            self.pref_nb.destroy()
+            self.pref_nb = None
+            #self.btn_frm.grid()  # Restore Application() bottom button bar
 
+        #self.btn_frm.grid_forget()  # Hide Application() bottom button bar
         ha_font = (None, g.MON_FONT)  # ms_font = mserve, ha_font = HomA
         # style: https://stackoverflow.com/a/54213658/6929343
         style = ttk.Style()
-        style.configure('TNotebook.Tab', font=ha_font, padding=[10, 10])
+        style.configure('TNotebook.Tab', font=ha_font, padding=[10, 10],
+                        background="WhiteSmoke")
+        style.configure("TNotebook", background="WhiteSmoke")
+        style.configure("TFrame", background="WhiteSmoke")
+        style.configure("Notebook.TFrame", background="WhiteSmoke")
+        style.configure("TLabel", background="WhiteSmoke")
+        self.pref_nb = ttk.Notebook(self)
+        self.edit_pref_active = True
 
-        self.preferences_top = ttk.Notebook(self)
-        self.edit_preferences_active = True
-
-        ''' frame - Notebook tab '''
-        frame = ttk.Frame(self.preferences_top, width=200, height=200)
-
-        close_btn = ttk.Button(
-            frame, width=7, text="✘ Close", style="C.TButton", command=close)
-        close_btn.grid(row=100, column=0, padx=10, pady=5, sticky=tk.E)
-
-        self.preferences_top.add(frame, text="Options", compound=tk.TOP)
-        self.preferences_top.grid(row=0, column=0, padx=3, pady=3, sticky=tk.NSEW)
-
-        return notebook
+        listTabs, listFields = glo.defineNotebook()
+        toolkit.makeNotebook(self.pref_nb, listTabs, listFields,
+                             GLO, "TNotebook.Tab", "Notebook.TFrame",
+                             "C.TButton", close, tt=self.tt)
 
     def OpenCalculator(self):
         """ Big Number Calculator allows K, M, G, T, etc. UoM """
@@ -4151,23 +4111,25 @@ class SystemMonitor(DeviceCommonSelf):
         # Build Sensors treeview
         self.Print(start=0, end=-1, tree_only=True)
 
-        # Flash last row
-        #self.FlashLastRow()  # 2024-11-29 - getting double flashing on startup
-
     def FlashLastRow(self):
         """ Flash the last row in Sensors Treeview """
         _who = self.who + "FlashLastRow():"
         cr = TreeviewRow(self)  # also used by Applications() devices treeview
-        iid = self.sensors_log[-1]['delta']
-        trg_iid = "{0:>8.2f}".format(iid)
-
+        iid = self.sensors_log[-1]['delta']  # delta is time since app started
+        trg_iid = "{0:>8.2f}".format(iid)  # E.G. iid = "20.04" seconds
 
         try:
             _item = self.tree.item(trg_iid)
         except tk.TclError:
             v0_print("\n" + _who, "trg_iid not found: '" + str(iid) + "'",
                      " | <type>:", type(iid))
+            # SystemMonitor().FlashLastRow(): trg_iid not found: '20.04'
+            #   | <type>: <type 'float'>
             v0_print("self.sensors_log[-1]:", self.sensors_log[-1])
+            # self.sensors_log[-1]:
+            #   {'Processor Fan': '4500 RPM', 'delta': 20.04,
+            #   'Video Fan': '4600 RPM', 'time': 1735398654.633827,
+            #   'GPU': '+78.0\xc2\xb0C', 'CPU': '+78.0\xc2\xb0C'}
             return
 
         cr.FadeIn(trg_iid)
@@ -4203,6 +4165,8 @@ class SystemMonitor(DeviceCommonSelf):
             v0_print(_who, "trg_iid already exists in Sensors Treeview:", trg_iid)
 
         self.tree.see(trg_iid)
+        # 2024-12-28: Occasionally iid not found in FlashLastRow() so update_idletasks
+        self.tree.update_idletasks()
 
     @staticmethod
     def MouseWheel(event):
