@@ -423,7 +423,11 @@ class Globals(DeviceCommonSelf):
             f.write(json.dumps(self.dictGlobals))
 
     def defineNotebook(self):
-        """ Define defineNotebook
+        """ defineNotebook models global data variables in dictionary. Used by
+            Edit Preferences in HomA and makeNotebook() in toolkit.py.
+
+            2025-01-01 TODO: Don't allow Suspend when Edit Preferences is active.
+
             https://stackoverflow.com/questions/284234/notebook-widget-in-tkinter
         """
         _who = self.who + "defineNotebook():"
@@ -460,31 +464,32 @@ class Globals(DeviceCommonSelf):
         WID = 15  # Default Width
         DEC = MIN = MAX = CB = None  # Decimal places, Minimum, Maximum, Callback
         listFields = [
-            # name: [tab#, ro/rw, input as, stored as, width, decimals, min, max, edit callback
+            # name, tab#, ro/rw, input as, stored as, width, decimals, min, max,
+            #   edit callback, tooltip text
             ("SONY_PWD", 1, RW, STR, STR, 10, DEC, MIN, MAX, CB,
              "Password for Sony REST API"),
             ("CONFIG_FNAME", 0, HD, STR, STR, WID, DEC, MIN, MAX, CB,
-             "HomA Configuration filename"),
+             "Configuration filename"),
             ("DEVICES_FNAME", 0, HD, STR, STR, WID, DEC, MIN, MAX, CB,
-             "HomA discovered network devices."),
+             "discovered network devices filename"),
             ("VIEW_ORDER_FNAME", 0, HD, STR, STR, WID, DEC, MIN, MAX, CB,
-             "HomA Network Devices Treeview display order"),
+             "Network Devices Treeview display order filename"),
             # Timeouts improve device interface performance
             ("PLUG_TIME", 3, RW, FLOAT, STR, 5, DEC, MIN, MAX, CB,
              "Smart plug timeout to turn power on/off"),
-            ("CURL_TIME", 1, RW, STR, STR, 5, DEC, MIN, MAX, CB,
-             "Anything longer means not a Sony TV or disconnected"),
-            ("ADB_CON_TIME", 2, RW, STR, STR, 5, DEC, MIN, MAX, CB,
+            ("CURL_TIME", 1, RW, FLOAT, STR, 5, DEC, MIN, MAX, CB,
+             "A longer time means this is not\na Sony TV or Sony TV disconnected"),
+            ("ADB_CON_TIME", 2, RW, FLOAT, STR, 5, DEC, MIN, MAX, CB,
              "Android TV test if connected timeout"),
-            ("ADB_PWR_TIME", 2, RW, STR, STR, 5, DEC, MIN, MAX, CB,
+            ("ADB_PWR_TIME", 2, RW, FLOAT, STR, 5, DEC, MIN, MAX, CB,
              "Android TV test power state timeout"),
-            ("ADB_KEY_TIME", 2, RW, STR, STR, 5, DEC, MIN, MAX, CB,
-             "Android keyevent KEYCODE_SLEEP or KEYCODE_WAKEUP timeout"),
-            ("ADB_MAGIC_TIME", 2, RW, STR, STR, 5, DEC, MIN, MAX, CB,
+            ("ADB_KEY_TIME", 2, RW, FLOAT, STR, 5, DEC, MIN, MAX, CB,
+             "Android keyevent KEYCODE_SLEEP\nor KEYCODE_WAKEUP timeout"),
+            ("ADB_MAGIC_TIME", 2, RW, FLOAT, STR, 5, DEC, MIN, MAX, CB,
              "Android TV Wake on Lan Magic Packet wait time."),
             # Application timings and global working variables
             ("APP_RESTART_TIME", 5, RW, TM, TM, 18, DEC, MIN, MAX, CB,
-             "Time started or resumed. Use for elapsed time print"),
+             "Time HomA was started or resumed.\nUsed for elapsed time printing."),
             ("REFRESH_MS", 5, RW, INT, INT, 3, DEC, MIN, MAX, CB,
              "Refresh tooltip fades 60 frames per second"),
             ("REDISCOVER_SECONDS", 5, RW, INT, INT, 3, DEC, MIN, MAX, CB,
@@ -497,37 +502,38 @@ class Globals(DeviceCommonSelf):
              "Tools Dropdown Menubar - Countdown Timer default"),
             ("TIMER_ALARM", 4, RW, STR, STR, 30, DEC, MIN, MAX, CB,
              ".wav sound file to play when timer ends."),
-            ("LOG_EVENTS", 4, RO, BOOL, BOOL, WID, DEC, MIN, MAX, CB,
-             "Override runCommand event logging / --verbose3 printing"),
-            ("EVENT_ERROR_COUNT", 4, RO, INT, INT, WID, 0, MIN, MAX, CB,
+            ("LOG_EVENTS", 4, RO, BOOL, BOOL, 1, DEC, MIN, MAX, CB,
+             "Override runCommand events'\nlogging and --verbose3 printing"),
+            ("EVENT_ERROR_COUNT", 4, RO, INT, INT, 9, 0, MIN, MAX, CB,
              "To enable/disable View Dropdown menu 'Discovery errors'"),
-            ("SENSOR_CHECK", 4, RW, STR, STR, WID, DEC, MIN, MAX, CB,
-             "Check `sensors`, CPU/GPU temp & fan speeds, every x seconds"),
-            ("SENSOR_LOG", 4, RW, STR, STR, WID, DEC, MIN, MAX, CB,
-             "Log `sensors` every x seconds. Log more if fan speed changes"),
-            ("FAN_GRANULAR", 4, RW, STR, STR, WID, DEC, MIN, MAX, CB,
-             "Skip logging when fan changes <= FAN_GRANULAR"),
+            # 2024-12-29 TODO: SENSOR_XXX should be FLOAT not STR?
+            ("SENSOR_CHECK", 4, RW, STR, STR, 6, DEC, MIN, MAX, CB,
+             "Check `sensors`, CPU/GPU temperature\nand Fan speeds every x seconds"),
+            ("SENSOR_LOG", 4, RW, STR, STR, 9, DEC, MIN, MAX, CB,
+             "Log `sensors` every x seconds.\nLog more if Fan RPM speed changes"),
+            ("FAN_GRANULAR", 4, RW, STR, STR, 5, DEC, MIN, MAX, CB,
+             "Skip logging when Fan RPM changes <= FAN_GRANULAR"),
             # Device type global identifier hard-coded in "inst.type_code"
-            ("HS1_SP", 3, RO, INT, INT, WID, DEC, MIN, MAX, CB,
-             "TP-Link Kasa WiFi Smart Plug HS100, HS103 or HS110 using hs100.sh"),  #
-            ("KDL_TV", 1, RO, INT, INT, WID, DEC, MIN, MAX, CB,
+            ("HS1_SP", 3, RO, INT, INT, 2, DEC, MIN, MAX, CB,
+             "TP-Link Kasa WiFi Smart Plug HS100,\nHS103 or HS110 using hs100.sh"),  #
+            ("KDL_TV", 1, RO, INT, INT, 2, DEC, MIN, MAX, CB,
              "Sony Bravia KDL Android TV using REST API `curl`"),
-            ("TCL_TV", 2, RO, INT, INT, WID, DEC, MIN, MAX, CB,
+            ("TCL_TV", 2, RO, INT, INT, 2, DEC, MIN, MAX, CB,
              "TCL Google Android TV using adb after `wakeonlan`"),
-            ("DESKTOP", 6, RO, INT, INT, WID, DEC, MIN, MAX, CB,
+            ("DESKTOP", 6, RO, INT, INT, 3, DEC, MIN, MAX, CB,
              "Desktop Computer, Tower, NUC, Raspberry Pi, etc."),
-            ("LAPTOP_B", 6, RO, INT, INT, WID, DEC, MIN, MAX, CB,
+            ("LAPTOP_B", 6, RO, INT, INT, 3, DEC, MIN, MAX, CB,
              "Laptop base ('CPU, GPU, Keyboard, Fans, Ports, etc.')"),
-            ("LAPTOP_D", 6, RO, INT, INT, WID, DEC, MIN, MAX, CB,
-             'Laptop display ("Can be turned on/off separate from base")'),
+            ("LAPTOP_D", 6, RO, INT, INT, 3, DEC, MIN, MAX, CB,
+             'Laptop display ("backlight can be turned\non/off separately from laptop base")'),
             ("SUDO_PASSWORD", 6, HD, STR, STR, WID, DEC, MIN, MAX, CB,
              "Sudo password required for laptop backlight"),
             ("BACKLIGHT_NAME", 6, RW, STR, STR, 30, DEC, MIN, MAX, CB,
              "E.G. 'intel_backlight', 'nvidia_backlight', etc."),
             ("BACKLIGHT_ON", 6, RW, STR, STR, 2, DEC, MIN, MAX, CB,
-             "Sudo echo to '/sys/class/backlight/intel_backlight/bl_power'"),
+             "Sudo tee echo 'x' to\n'/sys/class/backlight/intel_backlight/bl_power'"),
             ("BACKLIGHT_OFF", 6, RW, STR, STR, 2, DEC, MIN, MAX, CB,
-             "... will control laptop display backlight power On/Off."),
+             "Sudo tee echo 'x' to\n'/sys/class/backlight/intel_backlight/bl_power'"),
             # Power all On/Off controls
             ("POWER_OFF_CMD_LIST", 6, RW, STR, LIST, 30, DEC, MIN, MAX, CB,
              'Run "Turn Off" for Computer'),
@@ -3369,11 +3375,21 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         # style: https://stackoverflow.com/a/54213658/6929343
         style = ttk.Style()
         style.configure('TNotebook.Tab', font=ha_font, padding=[10, 10],
-                        background="WhiteSmoke")
-        style.configure("TNotebook", background="WhiteSmoke")
+                        relief="sunken", background="WhiteSmoke",
+                        borderwidth=3, highlightthickness=3)
+        style.map("TNotebook.Tab",
+                  background=[("active", "SkyBlue3"), ("selected", "LightBlue")],
+                  foreground=[("active", "Black"), ("selected", "Black")])
+
+        style.configure("TNotebook", background="White", padding=[10, 10],
+                        relief="raised")
         style.configure("TFrame", background="WhiteSmoke")
         style.configure("Notebook.TFrame", background="WhiteSmoke")
         style.configure("TLabel", background="WhiteSmoke")
+
+        # Not working:
+        style.map('TEntry', lightcolor=[('focus', 'LemonChiffon')])
+        
         self.pref_nb = ttk.Notebook(self)
         self.edit_pref_active = True
 
@@ -4116,7 +4132,9 @@ class SystemMonitor(DeviceCommonSelf):
         _who = self.who + "FlashLastRow():"
         cr = TreeviewRow(self)  # also used by Applications() devices treeview
         iid = self.sensors_log[-1]['delta']  # delta is time since app started
-        trg_iid = "{0:>8.2f}".format(iid)  # E.G. iid = "20.04" seconds
+
+        # iid is Number right justified 8 = 5 whole + decimal + 2 fraction
+        trg_iid = "{:>8.2f}".format(iid)  # E.G. iid = "2150.40" seconds
 
         try:
             _item = self.tree.item(trg_iid)

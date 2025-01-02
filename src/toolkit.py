@@ -1551,6 +1551,7 @@ class makeNotebook:
     def __init__(self, notebook, listTabs, listFields, dictData,
                  tStyle=None, fStyle=None, bStyle=None, close=None, tt=None):
 
+        self.notebook = notebook
         self.listTabs = listTabs  # Tuples List: (Tab Name, Tool Tip)
         self.listFields = listFields
         self.dictData = dictData
@@ -1566,126 +1567,233 @@ class makeNotebook:
         self.oldData = copy.deepcopy(self.dictData)
         self.newData = copy.deepcopy(self.dictData)
 
-        ''' dv (data variables) list prevents garbage collection. '''
-        #self.dv = []
-        #self.entries = []
-        #self.frames = []
+        self.original_value = None  # save before input into field
 
-        def add_var(frm, row, atts, value):
-            """ Add tk Variable to Notebook Tab's frame """
-            _who = self.who + "add_rows(): add_var():"
-            '''
-            # (name, tab#, hide/ro/rw, input as, stored as, width, decimals, 
-                     min, max, edit callback, tooltip text)
-            # name: value
-            '''
+        self.bad_value_key = ""  # atts[0] (key) with bad value
+        self.bad_value_entry = None  # entry widget matching key in error
+        self.bad_title = None  # ShowInfo title
+        self.bad_text = None  # ShowInfo text
 
-            entry_type = atts[2]  # 'hidden', 'read-only', 'read-write'
-            input_type = atts[3]  # "string", "integer", "float", "time", "list"
-            _store_type = atts[4]  # "string", "integer", "float", "time", "list"
-            width = atts[5]
-            _decimal = atts[6]
-            _minimum = atts[7]
-            _maximum = atts[8]
-            _edit_cb = atts[9]
-            tt_text = atts[10]
+        self.add_tabs()  # Add notebook tabs with frames and rows
 
-            sticky = tk.W
-            if input_type == "string":
-                var = tk.StringVar(value=value)
-            elif input_type == "integer":
-                var = tk.IntVar(value=value)
-                #sticky = tk.E
-            elif input_type == "float" or input_type == "time":
-                var = tk.DoubleVar(value=value)
-                #sticky = tk.E
-            elif input_type == "boolean":
-                str_value = "1" if value is True else "0"
-                var = tk.BooleanVar(value=str_value)
-            else:
-                var = None  # for pycharm error
-                print(_who, "invalid input_type:", input_type)
-                exit()
-
-            def validate():
-                """ Validate var """
-                _new_value = var.get()
-                #print(atts[0], "new_value:", new_value)
-                return True
-
-            state = tk.NORMAL if entry_type == "read-write" else tk.DISABLED
-            entry = ttk.Entry(frm, textvariable=var, width=width, font=g.FONT,
-                              state=state, validate='all', validatecommand=validate)
-            entry.grid(row=row, column=1, sticky=sticky, padx=15, pady=10)
-            self.tt_add(entry, tt_text, "sw")
-
-            if value is None:
-                #print("value is None")
-                pass
-
-            return var
-
-        def add_rows(frm, tab):
-            """ Add rows to frame (frm) matching dictionary tab. """
-            _who = self.who + "add_rows():"
-            '''
-            # (name, tab#, hide/ro/rw, input as, stored as, width, decimals, 
-                     min, max, edit callback, tooltip text)
-            '''
-            row = 0
-            for atts in listFields:
-                if atts[1] != tab:
-                    continue
-
-                label = ttk.Label(frm, text=atts[0], font=g.FONT)
-                label.grid(row=row, column=0, sticky=tk.W, padx=15, pady=10)
-                data = dictData.get(atts[0], None)
-                self.tt_add(label, atts[10])
-                # If data dictionary doesn't exist for key, can't process
-                # NOTE: GLO['SUDO_PASSWORD'] can also have value of None
-                if data is None:
-                    continue
-
-                _var = add_var(frm, row, atts, data)
-                #val = _var.get()  # Value is retrieved but doesn't appear in tab
-                #_var.trace_add('write', edit_var)
-
-                row += 1
+    def add_tabs(self):
+        """ Populate Notebook. """
 
         tab_no = 1  # 1's based tab number matching dictionary
-        for name, tip in listTabs:
+        for name, tip in self.listTabs:
 
             ''' frame for Notebook tab '''
-            frame = ttk.Frame(notebook, width=200, height=200, padding=[20, 20])
-            #self.tt_add(frame, tip, "ne")
+            frame = ttk.Frame(self.notebook, width=200, height=200, padding=[20, 20])
             # 2024-12-29 - tooltip spams screen moving between fields
-            add_rows(frame, tab_no)
-            if self.close:
-                close_btn = ttk.Button(
-                    frame, width=7, text="✘ Close", style=self.bStyle, command=self.close)
-                close_btn.grid(row=100, column=1, columnspan=2, padx=10, pady=5,
-                               sticky=tk.E)
-                tt_text = "Close Preferences.\n" +\
-                    "Any changes made will be lost."
-                self.tt_add(close_btn, tt_text, "ne", tool_type='button')
+            #self.tt_add(frame, tip, "ne")
 
-            notebook.add(frame, text=name, compound=tk.TOP)
-            # style=tStyle,
-            #   File "/home/rick/HomA/toolkit.py", line 1593, in __init__
+            self.add_rows(frame, tab_no)  # Add label: Entry fields to frame
+
+            close_btn = ttk.Button(frame, width=7, text="✘ Close",
+                                   style=self.bStyle, command=self.close)
+            close_btn.grid(row=100, column=1, columnspan=2, padx=10, pady=5,
+                           sticky=tk.E)
+            tt_text = "Close Preferences.\nAny changes made will be lost."
+            self.tt_add(close_btn, tt_text, "ne", tool_type='button')
+
+            self.notebook.add(frame, text=name, compound=tk.TOP)
             #     notebook.add(frame, style=tStyle, text=name, compound=tk.TOP)
-            #   File "/usr/lib/python2.7/lib-tk/ttk.py", line 842, in add
-            #     self.tk.call(self._w, "add", child, *(_format_optdict(kw)))
             # TclError: unknown option "-style"
             tab_no += 1
-            #frame.update()
-            #self.frames.append(frame)
 
-        notebook.grid(row=0, column=0, padx=3, pady=3, sticky=tk.NSEW)
-        notebook.update()
-        notebook.enable_traversal()
+        self.notebook.grid(row=0, column=0, padx=3, pady=3, sticky=tk.NSEW)
+        self.notebook.update()
+        self.notebook.enable_traversal()
+
+    def add_rows(self, frm, tab_no):
+        """ Add rows to Notebook frame """
+        '''
+        # (name, tab#, hide/ro/rw, input as, stored as, width, decimals, 
+                 min, max, edit callback, tooltip text)
+        '''
+        _who = self.who + "add_rows():"
+        row = 0
+        for atts in self.listFields:
+            if atts[1] != tab_no:
+                continue  # tab number doesn't match search
+
+            data = self.oldData.get(atts[0], None)
+            if data is None:
+                # If data dictionary doesn't exist for key, can't process
+                # NOTE: GLO['SUDO_PASSWORD'] can also have value of None
+                continue
+
+            label = ttk.Label(frm, text=atts[0], font=g.FONT)
+            label.grid(row=row, column=0, sticky=tk.W, padx=15, pady=10)
+            self.tt_add(label, atts[10])
+
+            if len(atts) != 11:
+                print(_who, "Invalid number of atts[] list variables:", len(atts))
+                print("atts[0] value:", atts[0])
+                exit(0)
+
+            self.add_var(tab_no, frm, row, atts, data)
+
+            row += 1
+
+    def add_var(self, tab_no, frm, row, atts, value):
+        """ Add tk Variable to Notebook Tab's frame.
+            Called from add_rows().
+            Define 'entry' (tkk.Entry) an important widget in the Notebook.
+            tab_no is 1's based. tab_id is 0's based.
+        """
+        _who = self.who + "add_rows(): add_var():"
+        '''
+        # (name, tab#, hide/ro/rw, input as, stored as, width, decimals, 
+                 min, max, edit callback, tooltip text)
+        # name: value
+        '''
+
+        entry_type = atts[2]  # 'hidden', 'read-only', 'read-write'
+        input_type = atts[3]  # "string", "integer", "float", "time", "list"
+        _store_type = atts[4]  # "string", "integer", "float", "time", "list"
+        width = atts[5]
+        _decimal = atts[6]
+        _minimum = atts[7]
+        _maximum = atts[8]
+        _edit_cb = atts[9]
+        _tip_text = atts[10]  # Tooltip on entry variable too busy
+
+        sticky = tk.W
+        if input_type == "string":
+            var = tk.StringVar(value=value)
+        elif input_type == "integer":
+            var = tk.IntVar(value=value)
+            #sticky = tk.E
+        elif input_type == "float" or input_type == "time":
+            var = tk.DoubleVar(value=value)
+            #sticky = tk.E
+        elif input_type == "boolean":
+            str_value = "1" if value is True else "0"
+            var = tk.BooleanVar(value=str_value)
+        else:
+            var = None  # for pycharm error
+            print(_who, "invalid input_type:", input_type)
+            exit()
+
+        def get_value():
+            """ Get tk.XxxVar value. Check within bounds and data type.
+                Called from focusOut() inner function.
+            """
+            _who2 = _who + " get_value():"
+            #print("\nget_value() for:", atts[0])
+
+            try:
+                new_value = var.get()
+                self.bad_value_key = ""
+                #print("no errors\n")
+            except ValueError as e:
+                self.bad_title = \
+                    "Edit Preferences Error - HomA"
+                self.bad_text = "Invalid value for: " + atts[0] + "\n\n" +\
+                    str(e) + "\n"
+                message.ShowInfo(frm, self.bad_title, self.bad_text, icon="error")
+                self.bad_value_key = atts[0]
+                self.bad_value_entry = entry
+                #print(atts[0], "save entry:", entry)
+                self.focus_on_bad_value()
+                return None
+
+            if new_value == self.original_value:
+                return new_value
+
+            return None  # Error. Get variable again
+
+        def focusIn(_event):
+            """ variable received focus """
+            _who2 = _who + " focusIn():"
+            _what = "<FocusIn> for: " + atts[0]
+            #print(_what)
+
+            # trace will reset error condition. While error condition exists
+            # focus In/Out will spam many times and .get_value() keeps repeating error
+            if self.bad_value_key != "":
+                if atts[0] != self.bad_value_key:
+                    #print("<FocusIn> Refocus from:", atts[0], "to:", self.bad_value_key)
+                    self.focus_on_bad_value()
+                    self.notebook.update_idletasks()
+                    message.ShowInfo(frm, self.bad_title, self.bad_text, icon="error")
+                return
+
+            # Prevent entire text turning blue when painted and with tab key
+            entry.selection_range(0, 0)
+            entry.configure(font="-weight bold")
+            try:
+                self.original_value = var.get()
+            except ValueError:
+                pass  # Redoing after get_value
+
+        def focusOut(_event):
+            """ variable lost focus """
+            _who2 = _who + " focusOut():"
+            _what = "<FocusOut> for: " + atts[0]
+            #print(_what)
+            # Remove blue selection when leaving field
+            entry.selection_range(0, 0)
+
+            # trace will reset error condition. While error condition exists
+            # focus In/Out will spam many times and .get_value() keeps repeating error
+            if self.bad_value_key != "":
+                if atts[0] != self.bad_value_key:
+                    #print("<FocusOut> Refocus from:", atts[0], "to:", self.bad_value_key)
+                    self.focus_on_bad_value()
+                return
+
+            # Check value within min, max and correct data type
+            stored_value = get_value()
+            if stored_value is None:  # If error, None is returned
+                return
+
+            entry.configure(font="-weight normal")
+
+        def trace_cb(*_args):
+            """ variable received focus - Called with each keystroke ('w')"""
+            _who2 = _who + " trace_cb():"
+            _what = "'var.trace()' for: " + atts[0]
+            self.bad_value_key = ""
+
+        state = tk.NORMAL if entry_type == "read-write" else tk.DISABLED
+        entry = ttk.Entry(frm, textvariable=var, width=width, font=g.FONT,
+                          state=state)
+        entry.grid(row=row, column=1, sticky=sticky, padx=15, pady=10)
+
+        #self.tt_add(entry, _tip_text, "nw")
+        # Tooltip on entry fields causing input interference
+        if row == 0 and tab_no == 1:
+            entry.focus_set()  # Required for first time load
+
+        # Enter key goes to next field like the tab key would.
+        entry.bind('<Return>', lambda x: self.notebook.event_generate('<Tab>'))
+        # Number Keypad Enter key goes to next field like the tab key would.
+        entry.bind('<KP_Enter>', lambda x: self.notebook.event_generate('<Tab>'))
+        entry.bind("<FocusIn>", focusIn)  # set input field bold text
+        entry.bind("<FocusOut>", focusOut)  # sanity check data entered
+
+        var.trace('w', trace_cb)  # capture changes to tk.XxxVar variable
+
+    def focus_on_bad_value(self):
+        """ Force focus back onto the bad value. """
+        for atts in self.listFields:
+            if atts[0] == self.bad_value_key:
+                self.notebook.select(atts[1] - 1)  # tab_id is 0's based.
+                self.bad_value_entry.focus_set()
+                #print(atts[0], "load entry:", self.bad_value_entry)
+                return
+        # noinspection PyUnboundLocalVariable
+        print("Could not find key:", atts[0])
+        exit()
+
+
 
     def tt_add(self, widget, tt_text, tt_anchor="nw", tool_type="label"):
-        """ Add tooltip """
+        """ Add tooltip. Parent responsible for closing all tooltips
+            before destroying Notebook widget.
+        """
         if self.tt is None:
             return
         if tt_text is not None and tt_anchor is not None:
@@ -5078,6 +5186,33 @@ class ToolTips(CommonTip):
         x = self.widget.winfo_rootx() + 20
         y = self.widget.winfo_rooty() + self.widget.winfo_height() + 10
 
+        #print("parent.__dict__:", parent.__dict__)
+        # parent.__dict__: {
+        # 'widgetName': 'ttk::frame',
+        # '_w': '.140537754704352.140537752171152.140537751992440',
+        # '_tclCommands': [], '_name': '140537751992440',
+        # 'master': <ttk.Notebook instance at 0x7fd17ec bb290>,
+        # 'tk': <tkapp object at 0x7fd17ef0a130>,
+        # 'children': {
+        #    '140537752005304': <ttk.Entry instance at 0x7fd17ec92ab8>,
+        #    '140537751991216': <ttk.Label instance at 0x7fd17ec8f3b0>,
+        #    '140537752003144': <ttk.Label instance at 0x7fd17ec92248>,
+        #    '140537752052728': <ttk.Entry instance at 0x7fd17ec9e3f8>,
+        #    '140537751710680': <ttk.Label instance at 0x7fd17ec4abd8>,
+        #    '140537751708232': <ttk.Entry instance at 0x7fd17ec4a248>,
+        #    '140537752170648': <ttk.Button instance at 0x7fd17ec bb098>}
+        # }
+        #print("self.widget.__dict__:", self.widget.__dict__)
+        # self.widget.__dict__: {
+        # 'widgetName': 'ttk::entry',
+        # '_w': '.140537754704352.140537752171152.140537751992440.140537752052728',
+        # '_tclCommands': ['140537752219312validate', '140537752219072enter',
+        # '140537752219392leave', '140537752216992motion'], '_name': '140537752052728',
+        # 'master': <ttk.Frame instance at 0x7fd17ec8f878>,
+        # 'tk': <tkapp object at 0x7fd17ef0a130>,
+        # 'children': {}
+        # }
+        #print("self.widget.widgetName:", self.widget.widgetName)  # ttk::entry
         if self.tool_type == 'menu':
             ''' Menu objects have no parent and no widget _winfo(). '''
             parent, menu_x, menu_y = self.menu_tuple
