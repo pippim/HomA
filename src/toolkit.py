@@ -1584,7 +1584,7 @@ class makeNotebook:
 
             ''' frame for Notebook tab '''
             frame = ttk.Frame(self.notebook, width=200, height=200, padding=[20, 20])
-            # 2024-12-29 - tooltip spams screen moving between fields
+            # 2024-12-29 - tooltip gets focus moving mouse between fields
             #self.tt_add(frame, tip, "ne")
 
             self.add_rows(frame, tab_no)  # Add label: Entry fields to frame
@@ -1637,8 +1637,8 @@ class makeNotebook:
             row += 1
 
     def add_var(self, tab_no, frm, row, atts, value):
-        """ Add tk Variable to Notebook Tab's frame.
-            Called from add_rows().
+        """ Add tk Variable (var) to Notebook Tab's frame's row.
+            Called from add_rows() where one 'var' for each 'entry'.
             Define 'entry' (tkk.Entry) an important widget in the Notebook.
             tab_no is 1's based. tab_id is 0's based.
         """
@@ -1650,7 +1650,7 @@ class makeNotebook:
         '''
 
         entry_type = atts[2]  # 'hidden', 'read-only', 'read-write'
-        input_type = atts[3]  # "string", "integer", "float", "time", "list"
+        input_type = atts[3]  # "string", "integer", "float", "time", "list", "filename"
         _store_type = atts[4]  # "string", "integer", "float", "time", "list"
         width = atts[5]
         _decimal = atts[6]
@@ -1660,7 +1660,7 @@ class makeNotebook:
         _tip_text = atts[10]  # Tooltip on entry variable too busy
 
         sticky = tk.W
-        if input_type == "string":
+        if input_type == "string" or input_type == "filename":
             var = tk.StringVar(value=value)
         elif input_type == "integer":
             var = tk.IntVar(value=value)
@@ -1676,6 +1676,8 @@ class makeNotebook:
             print(_who, "invalid input_type:", input_type)
             exit()
 
+        var.trace('w', self.trace_cb)  # capture changes to tk.XxxVar variable
+
         def get_value():
             """ Get tk.XxxVar value. Check within bounds and data type.
                 Called from focusOut() inner function.
@@ -1686,17 +1688,15 @@ class makeNotebook:
             try:
                 new_value = var.get()
                 self.bad_value_key = ""
-                #print("no errors\n")
             except ValueError as e:
-                self.bad_title = \
-                    "Edit Preferences Error - HomA"
-                self.bad_text = "Invalid value for: " + atts[0] + "\n\n" +\
-                    str(e) + "\n"
-                message.ShowInfo(frm, self.bad_title, self.bad_text, icon="error")
                 self.bad_value_key = atts[0]
                 self.bad_value_entry = entry
-                #print(atts[0], "save entry:", entry)
                 self.focus_on_bad_value()
+                self.bad_title = \
+                    "Edit Preferences Error - HomA"  # Reused focusOut()
+                self.bad_text = "Invalid value for: " + atts[0] + "\n\n" +\
+                    str(e) + "\n"  # Reused focusOut()
+                message.ShowInfo(frm, self.bad_title, self.bad_text, icon="error")
                 return None
 
             if new_value == self.original_value:
@@ -1710,6 +1710,9 @@ class makeNotebook:
             _what = "<FocusIn> for: " + atts[0]
             #print(_what)
 
+            # Prevent entire text turning blue when painted and with tab key
+            entry.selection_range(0, 0)
+
             # trace will reset error condition. While error condition exists
             # focus In/Out will spam many times and .get_value() keeps repeating error
             if self.bad_value_key != "":
@@ -1719,14 +1722,19 @@ class makeNotebook:
                     self.notebook.update_idletasks()
                     message.ShowInfo(frm, self.bad_title, self.bad_text, icon="error")
                 return
+            elif self.bad_value_entry:
+                # residual bold from last error, has now been fixed
+                self.bad_value_entry.configure(font="-weight normal")
+                self.bad_value_entry = None
 
-            # Prevent entire text turning blue when painted and with tab key
-            entry.selection_range(0, 0)
-            entry.configure(font="-weight bold")
             try:
+                # Save validated value to compare future changes
                 self.original_value = var.get()
             except ValueError:
-                pass  # Redoing after get_value
+                pass  # Redoing after get_value() in focusOut()
+
+            entry.configure(font="-weight bold")
+            #self.notebook.update_idletasks()
 
         def focusOut(_event):
             """ variable lost focus """
@@ -1741,7 +1749,8 @@ class makeNotebook:
             if self.bad_value_key != "":
                 if atts[0] != self.bad_value_key:
                     #print("<FocusOut> Refocus from:", atts[0], "to:", self.bad_value_key)
-                    self.focus_on_bad_value()
+                    self.focus_on_bad_value()  # Tabbed away from bad value
+                    #self.notebook.update_idletasks()
                 return
 
             # Check value within min, max and correct data type
@@ -1749,14 +1758,9 @@ class makeNotebook:
             if stored_value is None:  # If error, None is returned
                 return
 
-            entry.configure(font="-weight normal")
+            entry.configure(font="-weight normal")  # Turn off bold font
 
-        def trace_cb(*_args):
-            """ variable received focus - Called with each keystroke ('w')"""
-            _who2 = _who + " trace_cb():"
-            _what = "'var.trace()' for: " + atts[0]
-            self.bad_value_key = ""
-
+        # ======================= add_var(): Mainline =======================
         state = tk.NORMAL if entry_type == "read-write" else tk.DISABLED
         entry = ttk.Entry(frm, textvariable=var, width=width, font=g.FONT,
                           state=state)
@@ -1774,7 +1778,9 @@ class makeNotebook:
         entry.bind("<FocusIn>", focusIn)  # set input field bold text
         entry.bind("<FocusOut>", focusOut)  # sanity check data entered
 
-        var.trace('w', trace_cb)  # capture changes to tk.XxxVar variable
+    def trace_cb(self, *_args):
+        """ Called with each keystroke ('w')"""
+        self.bad_value_key = ""
 
     def focus_on_bad_value(self):
         """ Force focus back onto the bad value. """
@@ -1782,13 +1788,14 @@ class makeNotebook:
             if atts[0] == self.bad_value_key:
                 self.notebook.select(atts[1] - 1)  # tab_id is 0's based.
                 self.bad_value_entry.focus_set()
+                self.bad_value_entry.configure(font="-weight bold")
+                self.notebook.update_idletasks()  # 2024-01-02 - added not sure if needed
                 #print(atts[0], "load entry:", self.bad_value_entry)
                 return
+
         # noinspection PyUnboundLocalVariable
-        print("Could not find key:", atts[0])
+        print(self.who, "Could not find key:", atts[0])
         exit()
-
-
 
     def tt_add(self, widget, tt_text, tt_anchor="nw", tool_type="label"):
         """ Add tooltip. Parent responsible for closing all tooltips

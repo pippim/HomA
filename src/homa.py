@@ -17,6 +17,7 @@ import warnings  # 'warnings' advises which methods aren't supported
 #
 #       2024-10-02 - Creation date.
 #       2024-12-01 - Create GitHub repo. Add dropdown menus and Big Number Calc.
+#       2025-01-08 - Create Bluetooth LED Light Strip support.
 #
 # ==============================================================================
 
@@ -114,6 +115,8 @@ try:
 except NameError:  # name 'reload' is not defined
     pass  # Python 3 already in unicode by default
 
+import trionesControl.trionesControl as tc  # Bluetooth LED Light strips
+
 # Pippim libraries
 import monitor  # Center window on current monitor supports multi-head rigs
 import toolkit  # Various tkinter functions common to mserve apps
@@ -187,6 +190,7 @@ class DeviceCommonSelf:
         self.remote_suspends_system = False  # If TV powered off suspend system
 
         # 2024-12-17 TODO: Use inst.suspendPowerOff, instead of self.suspendPowerOff
+        self.powerStatus = "?"  # "ON" or "OFF"
         self.suspendPowerOff = 0  # Did suspend power off the device?
         self.resumePowerOn = 0  # Did resume power on the device?
         self.menuPowerOff = 0  # Did user power off the device via menu option?
@@ -358,8 +362,9 @@ class Globals(DeviceCommonSelf):
         v2_print(self.who, "Dependencies:", self.requires)
         v2_print(self.who, "Installed?  :", self.installed)
 
-        # Defined globally with: glo = Globals()
-        #                        GLO = glo.dictGlobals
+        # Usage: glo = Globals()
+        #        GLO = glo.dictGlobals
+        #        GLO['APP_RESTART_TIME'] = time.time()
         self.dictGlobals = {
             "SONY_PWD": "123",  # Sony TV REST API password
             "CONFIG_FNAME": "config.json",  # Future configuration file.
@@ -393,6 +398,7 @@ class Globals(DeviceCommonSelf):
             "LAPTOP_B": 110,  # Laptop base (CPU, GPU, Keyboard, Fans, Ports, etc.)
             "LAPTOP_D": 120,  # Laptop display (Can be turned on/off separate from base)
             "SUDO_PASSWORD": None,  # Sudo password required for laptop backlight
+            # 2025-01-04 TODO: get backlight with runCommand()
             "BACKLIGHT_NAME": os.popen("ls /sys/class/backlight").read().strip(),  # intel_backlight
             "BACKLIGHT_ON": "0",  # Sudo echo to "/sys/class/backlight/intel_backlight/bl_power"
             "BACKLIGHT_OFF": "4",  # ... will control laptop display backlight power On/Off.
@@ -461,6 +467,7 @@ class Globals(DeviceCommonSelf):
         TM = "time"
         BOOL = "boolean"
         LIST = "list"
+        FNAME = "filename"
         WID = 15  # Default Width
         DEC = MIN = MAX = CB = None  # Decimal places, Minimum, Maximum, Callback
         listFields = [
@@ -468,11 +475,11 @@ class Globals(DeviceCommonSelf):
             #   edit callback, tooltip text
             ("SONY_PWD", 1, RW, STR, STR, 10, DEC, MIN, MAX, CB,
              "Password for Sony REST API"),
-            ("CONFIG_FNAME", 0, HD, STR, STR, WID, DEC, MIN, MAX, CB,
+            ("CONFIG_FNAME", 5, RO, STR, STR, WID, DEC, MIN, MAX, CB,
              "Configuration filename"),
-            ("DEVICES_FNAME", 0, HD, STR, STR, WID, DEC, MIN, MAX, CB,
+            ("DEVICES_FNAME", 5, RO, STR, STR, WID, DEC, MIN, MAX, CB,
              "discovered network devices filename"),
-            ("VIEW_ORDER_FNAME", 0, HD, STR, STR, WID, DEC, MIN, MAX, CB,
+            ("VIEW_ORDER_FNAME", 5, RO, STR, STR, WID, DEC, MIN, MAX, CB,
              "Network Devices Treeview display order filename"),
             # Timeouts improve device interface performance
             ("PLUG_TIME", 3, RW, FLOAT, STR, 5, DEC, MIN, MAX, CB,
@@ -488,7 +495,7 @@ class Globals(DeviceCommonSelf):
             ("ADB_MAGIC_TIME", 2, RW, FLOAT, STR, 5, DEC, MIN, MAX, CB,
              "Android TV Wake on Lan Magic Packet wait time."),
             # Application timings and global working variables
-            ("APP_RESTART_TIME", 5, RW, TM, TM, 18, DEC, MIN, MAX, CB,
+            ("APP_RESTART_TIME", 0, HD, TM, TM, 18, DEC, MIN, MAX, CB,
              "Time HomA was started or resumed.\nUsed for elapsed time printing."),
             ("REFRESH_MS", 5, RW, INT, INT, 3, DEC, MIN, MAX, CB,
              "Refresh tooltip fades 60 frames per second"),
@@ -500,18 +507,18 @@ class Globals(DeviceCommonSelf):
              "Pause x seconds after resuming from suspend"),
             ("TIMER_SEC", 4, RW, INT, INT, 5, DEC, MIN, MAX, CB,
              "Tools Dropdown Menubar - Countdown Timer default"),
-            ("TIMER_ALARM", 4, RW, STR, STR, 30, DEC, MIN, MAX, CB,
+            ("TIMER_ALARM", 4, RW, FNAME, STR, 30, DEC, MIN, MAX, CB,
              ".wav sound file to play when timer ends."),
-            ("LOG_EVENTS", 4, RO, BOOL, BOOL, 1, DEC, MIN, MAX, CB,
+            ("LOG_EVENTS", 0, HD, BOOL, BOOL, 1, DEC, MIN, MAX, CB,
              "Override runCommand events'\nlogging and --verbose3 printing"),
-            ("EVENT_ERROR_COUNT", 4, RO, INT, INT, 9, 0, MIN, MAX, CB,
+            ("EVENT_ERROR_COUNT", 0, HD, INT, INT, 9, 0, MIN, MAX, CB,
              "To enable/disable View Dropdown menu 'Discovery errors'"),
             # 2024-12-29 TODO: SENSOR_XXX should be FLOAT not STR?
-            ("SENSOR_CHECK", 4, RW, STR, STR, 6, DEC, MIN, MAX, CB,
+            ("SENSOR_CHECK", 4, FLOAT, STR, STR, 6, DEC, MIN, MAX, CB,
              "Check `sensors`, CPU/GPU temperature\nand Fan speeds every x seconds"),
-            ("SENSOR_LOG", 4, RW, STR, STR, 9, DEC, MIN, MAX, CB,
+            ("SENSOR_LOG", 4, FLOAT, STR, STR, 9, DEC, MIN, MAX, CB,
              "Log `sensors` every x seconds.\nLog more if Fan RPM speed changes"),
-            ("FAN_GRANULAR", 4, RW, STR, STR, 5, DEC, MIN, MAX, CB,
+            ("FAN_GRANULAR", 4, INT, STR, STR, 5, DEC, MIN, MAX, CB,
              "Skip logging when Fan RPM changes <= FAN_GRANULAR"),
             # Device type global identifier hard-coded in "inst.type_code"
             ("HS1_SP", 3, RO, INT, INT, 2, DEC, MIN, MAX, CB,
@@ -763,7 +770,7 @@ class Computer(DeviceCommonSelf):
         if forgive:
             pass
 
-        self.power_status = "ON"  # Can be "ON", "OFF" or "?"
+        self.powerStatus = self.power_status = "ON"  # Can be "ON", "OFF" or "?"
         return self.power_status  # Really it is "AWAKE"
 
     def TurnOff(self, forgive=False):
@@ -783,7 +790,7 @@ class Computer(DeviceCommonSelf):
         command_line_list = GLO['POWER_OFF_CMD_LIST']  # systemctl suspend
         _event = self.runCommand(command_line_list, _who, forgive=forgive)
 
-        self.power_status = "OFF"  # Can be "ON", "OFF" or "?"
+        self.powerStatus = self.power_status = "OFF"  # Can be "ON", "OFF" or "?"
         return self.power_status  # Really it is "SLEEP"
 
     def PowerStatus(self, forgive=False):
@@ -795,7 +802,7 @@ class Computer(DeviceCommonSelf):
         if forgive:
             pass
 
-        self.power_status = "ON"
+        self.powerStatus = self.power_status = "ON"
         return self.power_status
 
     def NightLightStatus(self, forgive=False):
@@ -1364,12 +1371,12 @@ class LaptopDisplay(DeviceCommonSelf):
 
         string = event['output']
         if string == GLO['BACKLIGHT_ON']:
-            self.power_status = "ON"  # Can be "ON", "OFF" or "?"
+            self.powerStatus = self.power_status = "ON"  # Can be "ON", "OFF" or "?"
         elif string == GLO['BACKLIGHT_OFF']:
-            self.power_status = "OFF"  # Can be "ON", "OFF" or "?"
+            self.powerStatus = self.power_status = "OFF"  # Can be "ON", "OFF" or "?"
         else:
             v0_print(_who, "Invalid " + power + " value:", string)
-            self.power_status = "?"  # Can be "ON", "OFF" or "?"
+            self.powerStatus = self.power_status = "?"  # Can be "ON", "OFF" or "?"
 
         return self.power_status
 
@@ -1417,7 +1424,7 @@ class LaptopDisplay(DeviceCommonSelf):
         self.cmdReturncode = 0 if self.cmdReturncode is None else self.cmdReturncode
         self.cmdDuration = time.time() - self.cmdStart
         self.logEvent(who, forgive=forgive, log=True)
-        self.power_status = status
+        self.powerStatus = self.power_status = status
 
 
 class SmartPlugHS100(DeviceCommonSelf):
@@ -1544,11 +1551,11 @@ class SmartPlugHS100(DeviceCommonSelf):
 
         if parts[1] == "ON" or parts[1] == "OFF":
             v2_print(_who, self.ip, "Smart Plug is", "'" + parts[1] + "'")
-            self.power_status = parts[1]  # Can be "ON", "OFF" or "?"
+            self.powerStatus = self.power_status = parts[1]  # Can be "ON", "OFF" or "?"
             return self.power_status
 
         v2_print(_who, self.ip, "- Not a Smart Plug! (or powered off)")
-        self.power_status = "?"  # Can be "ON", "OFF" or "?"
+        self.powerStatus = self.power_status = "?"  # Can be "ON", "OFF" or "?"
         return self.power_status
 
     def SetPower(self, status):
@@ -1566,7 +1573,7 @@ class SmartPlugHS100(DeviceCommonSelf):
         _event = self.runCommand(command_line_list, _who)
         # Return code is always 0, even if plug doesn't exist. No text returned
 
-        self.power_status = status  # Can be "ON", "OFF" or "?"
+        self.powerStatus = self.power_status = status  # Can be "ON", "OFF" or "?"
 
 
 class SonyBraviaKdlTV(DeviceCommonSelf):
@@ -1643,12 +1650,12 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/
             v3_print(_who, "Integer reply:", reply)  # 7
             return "?"
         elif u"active" == reply:
-            self.power_status = "ON"  # Can be "ON", "OFF" or "?"
+            self.powerStatus = self.power_status = "ON"  # Can be "ON", "OFF" or "?"
         elif u"standby" == reply:
-            self.power_status = "OFF"  # Can be "ON", "OFF" or "?"
+            self.powerStatus = self.power_status = "OFF"  # Can be "ON", "OFF" or "?"
         else:
             v3_print(_who, "Something weird: ?")  # Router
-            self.power_status = "?"  # Can be "ON", "OFF" or "?"
+            self.powerStatus = self.power_status = "?"  # Can be "ON", "OFF" or "?"
 
         # 2024-12-04 - Some tests
         #self.getSoundSettings()
@@ -1681,7 +1688,7 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/
             v0_print(_who, "Invalid reply_dict['result']':", reply_dict)
             ret = "Error"
 
-        self.power_status = ret  # Can be "ON", "OFF" or "?"
+        self.powerStatus = self.power_status = ret  # Can be "ON", "OFF" or "?"
         return ret
 
     def TurnOff(self, forgive=False):
@@ -1708,7 +1715,7 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/
             v0_print(_who, "Invalid reply_dict['result']':", reply_dict)
             ret = "Error"
 
-        self.power_status = ret  # Can be "ON", "OFF" or "?"
+        self.powerStatus = self.power_status = ret  # Can be "ON", "OFF" or "?"
         return self.power_status
 
     def PowerSavingMode(self, forgive=False):
@@ -2057,7 +2064,7 @@ class TclGoogleAndroidTV(DeviceCommonSelf):
                     v1_print(_who, self.ip, "timeout after:", GLO['ADB_PWR_TIME'])
                     self.power_status = "?"  # Can be "ON", "OFF" or "?"
                     return self.power_status
-            self.power_status = "? " + str(event['returncode'])
+            self.powerStatus = self.power_status = "? " + str(event['returncode'])
             return self.power_status
 
         Reply = event['output']
@@ -2067,11 +2074,11 @@ class TclGoogleAndroidTV(DeviceCommonSelf):
         # Reply = "error: device offline"
 
         if "true" in Reply:
-            self.power_status = "ON"  # Can be "ON", "OFF" or "?"
+            self.powerStatus = self.power_status = "ON"  # Can be "ON", "OFF" or "?"
         elif "false" in Reply:
-            self.power_status = "OFF"  # Can be "ON", "OFF" or "?"
+            self.powerStatus = self.power_status = "OFF"  # Can be "ON", "OFF" or "?"
         else:
-            self.power_status = "?"  # Can be "ON", "OFF" or "?"
+            self.powerStatus = self.power_status = "?"  # Can be "ON", "OFF" or "?"
 
         return self.power_status
 
@@ -2165,6 +2172,77 @@ class TclGoogleAndroidTV(DeviceCommonSelf):
         return "connected" in Reply
 
 
+class BluetoothLedLightStrip(DeviceCommonSelf):
+    # noinspection SpellCheckingInspection
+    """ A recent version of Bluez is NOT required for Bluetooth LED light strips.
+
+        Bluez: https://www.makeuseof.com/install-bluez-latest-version-on-ubuntu/
+
+        Depends ON build-essential OR build-essentials PLUS:
+        libreadline-dev libical-dev libdbus-1-dev libudev-dev libglib2.0-dev python3-docutils
+
+        trionesControl: https://github.com/Aritzherrero4/python-trionesControl
+
+        pygatt (2019 version 4.0.5): https://pypi.org/project/pygatt/4.0.5/#history
+            requires bluez version 5.18 +
+            requires Bluegiga’s BGAPI, compatible with USB adapters like the BLED112.
+            requires python-pexpect or python3-pexpect
+            requires python-serial or python3-serial
+
+        Requires MAC address for Bluetooth LED Light strips or light bulb. To
+        find your MAC address turn on Android Phone Debugging Options. Turn on
+        Bluetooth snoop. Turn your lights on / off with Android. Create Bug Report
+        and scour the report for your MAC address.
+
+        Happy Lighting Bluetooth LED Light Strip name shows as "QHM-T095" in Ubuntu.
+    """
+
+    def __init__(self, mac=None, ip=None, name=None, alias=None):
+        """ DeviceCommonSelf(): Variables used by all classes """
+        DeviceCommonSelf.__init__(self, "BluetoothLedLightStrip().")  # Define self.who
+        _who = self.who + "__init()__:"
+
+        # 192.168.0.10    Alien AW 17R3 WiFi 9c:b6:d0:10:37:f7
+        # 192.168.0.12    Alien AW 17R3 Ethernet 28:f1:0e:2a:1a:ed
+        self.mac = mac      # 36:46:3E:F3:09:5E
+        self.ip = ip        # None
+        self.name = name    # LED Light Strip
+        self.alias = alias  # Happy Lighting
+        self.requires = []
+        self.installed = []
+        self.CheckDependencies(self.requires, self.installed)
+        v2_print(self.who, "Dependencies:", self.requires)
+        v2_print(self.who, "Installed?  :", self.installed)
+
+        device = tc.connect("36:46:3E:F3:09:5E")
+        # 2025-01-07 - Error when bluetooth turned off:
+        # Can't init device hci0: Operation not possible due to RF-kill (132)
+        #   File "./homa.py", line 2214, in __init__
+        #     device = tc.connect("36:46:3E:F3:09:5E")
+        #   File "/home/rick/HomA/trionesControl/trionesControl.py", line 29, in connect
+        #     raise pygatt.exceptions.NotConnectedError("Device nor connected!")
+        # pygatt.exceptions.NotConnectedError: Device nor connected!
+
+        # Still error when bluetooth turned on:
+        # Traceback (most recent call last):
+        #   File "./homa.py", line 2214, in __init__
+        #     device = tc.connect("36:46:3E:F3:09:5E")
+        #   File "/home/rick/HomA/trionesControl/trionesControl.py", line 29, in connect
+        #     raise pygatt.exceptions.NotConnectedError("Device nor connected!")
+        # pygatt.exceptions.NotConnectedError: Device nor connected!
+
+        # After recoding to narrow down error, it mostly doesn't appear:
+        #   File "./homa.py", line 2214, in __init__
+        #     device = tc.connect("36:46:3E:F3:09:5E")
+        #   File "/home/rick/HomA/trionesControl/trionesControl.py", line 36, in connect
+        #     raise pygatt.exceptions.NotConnectedError("No Backend Tool for GATT!")
+        # pygatt.exceptions.NotConnectedError: No Backend Tool for GATT!
+
+        print(self.who, "device:", device)
+        # device: <pygatt.backends.gatttool.device.GATTToolBLEDevice object at 0x7fc1f3de2ed0>
+        tc.powerOn(device, wait_for_response=True)
+
+
 class Application(DeviceCommonSelf, tk.Toplevel):
     """ tkinter main application window
         Dropdown menus File/Edit/View/Tools
@@ -2241,7 +2319,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         sm = SystemMonitor(self)  # sm = This machines fan speed and CPU temperatures
 
         ''' Preferences Notebook '''
-        self.pref_nb = self.edit_pref_active = None
+        self.notebook = self.edit_pref_active = None
 
         ''' Big Number Calculator and Delayed Textbox (dtb) are child windows '''
         self.calculator = self.calc_top = self.dtb = None
@@ -2513,9 +2591,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.event_top.lift()
 
         # 2024-12-28 Causes Xorg to freeze. Only mouse can move.
-        #if self.edit_pref_active and self.pref_nb:
-        #    self.pref_nb.focus_force()
-        #    self.pref_nb.lift()
+        #if self.edit_pref_active and self.notebook:
+        #    self.notebook.focus_force()
+        #    self.notebook.lift()
 
         if self.calculator and self.calc_top:
             self.calc_top.focus_force()
@@ -2827,10 +2905,11 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         text = "  " + str(resp)
         cr.tree.item(cr.item, text=text)
         cr.tree.update_idletasks()
-        self.resumePowerOn = 0  # Resume didn't power on the device
-        self.manualPowerOn = 0  # Was device physically powered on?
-        self.nightPowerOn = 0  # Did nighttime power on the device?
-        self.menuPowerOn += 1  # User powered on the device via menu
+        cr.inst.powerStatus = str(resp)
+        cr.inst.resumePowerOn = 0  # Resume didn't power on the device
+        cr.inst.manualPowerOn = 0  # Was device physically powered on?
+        cr.inst.nightPowerOn = 0  # Did nighttime power on the device?
+        cr.inst.menuPowerOn += 1  # User powered on the device via menu
 
         # Setting Power can loop for a minute in worst case scenario using adb
         self.last_refresh_time = time.time()  # Refresh idle loop last entered time
@@ -2846,10 +2925,11 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         text = "  " + str(resp)
         cr.tree.item(cr.item, text=text)
         cr.tree.update_idletasks()
-        self.suspendPowerOff = 0  # Suspend didn't power off the device
-        self.manualPowerOff = 0  # Was device physically powered off?
-        self.dayPowerOff = 0  # Did daylight power off the device?
-        self.menuPowerOff += 1  # User powered off the device via menu
+        cr.inst.powerStatus = str(resp)
+        cr.inst.suspendPowerOff = 0  # Suspend didn't power off the device
+        cr.inst.manualPowerOff = 0  # Was device physically powered off?
+        cr.inst.dayPowerOff = 0  # Did daylight power off the device?
+        cr.inst.menuPowerOff += 1  # User powered off the device via menu
 
         # Setting Power can loop for a minute in worst case scenario using adb
         self.last_refresh_time = time.time()  # Refresh idle loop last entered time
@@ -3053,11 +3133,12 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 v1_print("\n" + _who, "Bias light device: '" + inst.type + "'",
                          " | IP: '" + inst.ip + "'")
                 if state == "ON" and night == "OFF":
-                    self.dayPowerOff += 1
-                    self.nightPowerOn = 0
-                    self.menuPowerOff = 0
-                    self.manualPowerOff = 0
-                    self.suspendPowerOff = 0
+                    inst.dayPowerOff += 1
+                    inst.nightPowerOn = 0
+                    inst.menuPowerOff = 0
+                    inst.manualPowerOff = 0
+                    inst.suspendPowerOff = 0
+                    inst.powerStatus = "OFF"
                     v1_print(_who, "Do not turn on Bias light in daytime.")
                     continue  # Do not turn on light during daytime
                 else:
@@ -3065,14 +3146,25 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                     night_powered_on = True
 
             if state == "ON":
-                inst.TurnOn()
-                self.resumePowerOn += 1  # Resume powered on the device
-                self.menuPowerOn = 0  # User didn't power on the device via menu
-                self.nightPowerOn += 1 if night_powered_on else 0
+                resp = inst.TurnOn()
+                inst.powerStatus = str(resp)
+                # TODO Check response
+                inst.resumePowerOn += 1  # Resume powered on the device
+                inst.menuPowerOn = 0  # User didn't power on the device via menu
+                inst.nightPowerOn += 1 if night_powered_on else 0
             elif state == "OFF":
-                inst.TurnOff()
-                self.suspendPowerOff += 1  # Suspend powered off the device
-                self.menuPowerOff = 0  # User didn't power on the device via menu
+                '''
+Application().Suspend(): Suspending system...
+TclGoogleAndroidTV().TurnOff(): runCommand(): cmdReturncode: 124
+TclGoogleAndroidTV().TurnOff(): 192.168.0.17 timeout after: 5.0
+NetworkInfo().os_curl(): logEvent(): cmdReturncode: None
+
+                If inst.Power is "OFF" do not try to turn off again and waste time.                
+                '''
+                resp = inst.TurnOff()
+                inst.powerStatus = str(resp)
+                inst.suspendPowerOff += 1  # Suspend powered off the device
+                inst.menuPowerOff = 0  # User didn't power on the device via menu
             else:
                 v0_print(_who, "state is not 'ON' or 'OFF':", state)
                 exit()
@@ -3089,7 +3181,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 continue  # Instance not in Devices Treeview, perhaps a smartphone?
 
             old_text = cr.text  # Treeview row old power state "  ON", etc.
-            cr.text = "  " + state  # Display treeview row new power state
+            cr.text = "  " + str(resp)  # Display treeview row new power state
             if cr.text != old_text:
                 v1_print(_who, cr.mac, "Power status changed from: '"
                          + old_text.strip() + "' to: '" + cr.text.strip() + "'.")
@@ -3351,52 +3443,47 @@ class Application(DeviceCommonSelf, tk.Toplevel):
     def Preferences(self):
         """ Edit preferences """
 
-        if self.edit_pref_active and self.pref_nb:
-            self.pref_nb.focus_force()
-            self.pref_nb.lift()
+        if self.edit_pref_active and self.notebook:
+            self.notebook.focus_force()
+            self.notebook.lift()
             return
 
-        self.pref_nb = notebook = self.edit_pref_active = None
+        self.notebook = self.edit_pref_active = None
 
         def close(*_args):
             """ Close window painted by this pretty_column() method """
             if not self.edit_pref_active:
                 return
             #notebook.unbind("<Button-1>")  # 2024-12-21 TODO: old code, use unknown
-            #self.win_grp.unregister_child(self.pref_nb)
-            self.tt.close(self.pref_nb)
+            #self.win_grp.unregister_child(self.notebook)
+            self.tt.close(self.notebook)
             self.edit_pref_active = None  # 2024-12-24 needed in homa?
-            self.pref_nb.destroy()
-            self.pref_nb = None
+            self.notebook.destroy()
+            self.notebook = None
+            self.EnableMenu()
             #self.btn_frm.grid()  # Restore Application() bottom button bar
 
         #self.btn_frm.grid_forget()  # Hide Application() bottom button bar
         ha_font = (None, g.MON_FONT)  # ms_font = mserve, ha_font = HomA
         # style: https://stackoverflow.com/a/54213658/6929343
         style = ttk.Style()
-        style.configure('TNotebook.Tab', font=ha_font, padding=[10, 10],
-                        relief="sunken", background="WhiteSmoke",
-                        borderwidth=3, highlightthickness=3)
-        style.map("TNotebook.Tab",
-                  background=[("active", "SkyBlue3"), ("selected", "LightBlue")],
-                  foreground=[("active", "Black"), ("selected", "Black")])
-
-        style.configure("TNotebook", background="White", padding=[10, 10],
-                        relief="raised")
+        style.configure("TNotebook", background="White", padding=[10, 10], relief="raised")
         style.configure("TFrame", background="WhiteSmoke")
         style.configure("Notebook.TFrame", background="WhiteSmoke")
         style.configure("TLabel", background="WhiteSmoke")
+        style.configure('TNotebook.Tab', font=ha_font, padding=[10, 10], relief="sunken",
+                        background="WhiteSmoke", borderwidth=3, highlightthickness=3)
+        style.map("TNotebook.Tab",
+                  background=[("active", "SkyBlue3"), ("selected", "LightBlue")],
+                  foreground=[("active", "Black"), ("selected", "Black")])
+        style.map('TEntry', lightcolor=[('focus', 'LemonChiffon')])  # Not working
 
-        # Not working:
-        style.map('TEntry', lightcolor=[('focus', 'LemonChiffon')])
-        
-        self.pref_nb = ttk.Notebook(self)
-        self.edit_pref_active = True
-
+        self.notebook = ttk.Notebook(self)
         listTabs, listFields = glo.defineNotebook()
-        toolkit.makeNotebook(self.pref_nb, listTabs, listFields,
-                             GLO, "TNotebook.Tab", "Notebook.TFrame",
-                             "C.TButton", close, tt=self.tt)
+        toolkit.makeNotebook(self.notebook, listTabs, listFields, GLO, "TNotebook.Tab",
+                             "Notebook.TFrame", "C.TButton", close, tt=self.tt)
+        self.edit_pref_active = True
+        self.EnableMenu()
 
     def OpenCalculator(self):
         """ Big Number Calculator allows K, M, G, T, etc. UoM """
@@ -4309,6 +4396,12 @@ root = None  # Tkinter toplevel
 app = None  # Application GUI
 cfg = sql.Config()  # Colors configuration SQL records
 glo = Globals()  # Global variables
+# 2025-01-07 - Below code works but needs to be relocated for speed
+#try:
+#    led = BluetoothLedLightStrip()
+#except tc.pygatt.exceptions.NotConnectedError as err:
+#    print("led = BluetoothLedLightStrip() error")
+#    print(err)
 GLO = glo.dictGlobals  # global dictionary
 cp = Computer()  # cp = Computer Platform
 ni = NetworkInfo()  # ni = global class instance used everywhere
