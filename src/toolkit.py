@@ -1660,7 +1660,8 @@ class makeNotebook:
         _tip_text = atts[10]  # Tooltip on entry variable too busy
 
         sticky = tk.W
-        if input_type == "string" or input_type == "filename":
+        if input_type == "string" or input_type == "filename" or\
+                input_type == "MAC-address":
             var = tk.StringVar(value=value)
         elif input_type == "integer":
             var = tk.IntVar(value=value)

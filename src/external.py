@@ -121,7 +121,7 @@ def read_into_list(fname):
 def read_into_string(fname):
     """ Read text file into string with "\n" separating lines """
     if os.path.isfile(fname):
-        with open(fname) as f:
+        with open(fname, "r") as f:
             return f.read()
     return None
 
