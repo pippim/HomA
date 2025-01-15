@@ -320,8 +320,9 @@ class DeviceCommonSelf:
 
         if self.cmdReturncode != 0:
             if forgive is False:
-                v0_print(who, "cmdReturncode:", self.cmdReturncode)
-                v0_print(" ", self.cmdString)
+                v1_print(who, "cmdReturncode:", self.cmdReturncode)
+                v1_print(" ", self.cmdString)
+                # 2025-01-13 TODO: Log this. Also log the time-outs.
 
             # 2024-12-21 `timeout` never returns error message
             if self.cmdReturncode == 124 and self.cmdCommand[0] == "timeout":
@@ -397,6 +398,7 @@ class Globals(DeviceCommonSelf):
             "RESUME_DELAY_RESTART": 3,  # Pause x seconds after resuming from suspend
             "LED_LIGHTS_MAC": "",  # Bluetooth LED Light Strip MAC address
             "LED_LIGHTS_STARTUP": True,  # "0" turn off, "1" turn on.
+            "LED_LIGHTS_COLOR": None,  # Last colorchooser ((r, g, b), #000000)
             "TIMER_SEC": 600,  # Tools Dropdown Menubar - Countdown Timer default
             "TIMER_ALARM": "Alarm_01.wav",  # From: https://www.pippim.com/programs/tim-ta.html
             "LOG_EVENTS": True,  # Override runCommand event logging / --verbose3 printing
@@ -432,6 +434,14 @@ class Globals(DeviceCommonSelf):
             with open(fname, "r") as f:
                 v2_print("Opening configuration file:", fname)
                 self.dictGlobals = json.loads(f.read())
+
+            #print("GLO['LED_LIGHTS_COLOR']:", GLO['LED_LIGHTS_COLOR'])
+            # Starts as a tuple json converts to list: [[44, 28, 27], u'#2c1c1b']
+            s = self.dictGlobals['LED_LIGHTS_COLOR']
+            self.dictGlobals['LED_LIGHTS_COLOR'] = \
+                ((s[0][0], s[0][1], s[0][2]), s[1])
+
+            led_tuple = ()
 
     def saveFile(self):
         """ Save dictConfig to CONFIG_FNAME = "config.json" """
@@ -524,7 +534,9 @@ class Globals(DeviceCommonSelf):
             ("LED_LIGHTS_MAC", 4, RW, MAC, STR, 17, DEC, MIN, MAX, CB,
              "Bluetooth Low Energy LED Light Strip address"),
             ("LED_LIGHTS_STARTUP", 4, RW, BOOL, BOOL, 1, DEC, MIN, MAX, CB,
-             "Bluetooth Low Energy LED Light Strip address"),
+             "LED Lights Turn On at startup? True/False"),
+            ("LED_LIGHTS_COLOR", 4, RO, STR, STR, 20, DEC, MIN, MAX, CB,
+             'LED Lights last used color.\nFormat: (red, green, blue) #9f9f9f"]'),
             ("TIMER_SEC", 4, RW, INT, INT, 5, DEC, MIN, MAX, CB,
              "Tools Dropdown Menubar - Countdown Timer default"),
             ("TIMER_ALARM", 4, RW, FNAME, STR, 30, DEC, MIN, MAX, CB,
@@ -892,6 +904,15 @@ class Computer(DeviceCommonSelf):
 class NetworkInfo(DeviceCommonSelf):
     """ Network Information from arp and getent (/etc/hosts)
 
+        If Android devices aren't automatically discovered:
+
+            adb kill-server && adb start-server
+            devices -l
+            # if android device missing:
+                adb connect <IP address>
+            # Run File Dropdown Menu option "Rediscover now"
+
+
         ni = NetworkInfo() called on startup
         rd = NetworkInfo() rediscovery called every minute
 
@@ -1056,18 +1077,19 @@ class NetworkInfo(DeviceCommonSelf):
             self.arp_dicts.append(mac_dict)
 
         # Add fake arp dictionary for Bluetooth LED Light Strip
-        v1_print("len(GLO['LED_LIGHTS_MAC']):", len(GLO['LED_LIGHTS_MAC']))  # 0 ???
+        v2_print("len(GLO['LED_LIGHTS_MAC']):", len(GLO['LED_LIGHTS_MAC']))  # 0 ???
         if len(GLO['LED_LIGHTS_MAC']) == 17:
+            # When changing below, remove devices.json file to rebuild it.
             fake_dict = {"mac": GLO['LED_LIGHTS_MAC'],
                          "ip": "irrelevant",
                          "name": "Bluetooth LED",
                          "alias": "Bluetooth LED Light Strip"}
             self.arp_dicts.append(fake_dict)
-            v1_print("fake_dict:", fake_dict)
+            v3_print("fake_dict:", fake_dict)
 
-        #print("arp_dicts:", self.arp_dicts)  # 2024-11-09 now has Computer()
-        #print("instances:", self.instances)  # Empty list for now
-        #print("view_order:", self.view_order)  # Empty list for now
+        v2_print(_who, "arp_dicts:", self.arp_dicts)  # 2024-11-09 now has Computer()
+        v2_print(_who, "instances:", self.instances)  # Empty list for now noy in
+        v2_print(_who, "view_order:", self.view_order)  # Empty list for now
         #print("cp.ether_name:", cp.ether_name,  " | cp.ether_mac:",
         #      cp.ether_mac,  " | cp.ether_ip:", cp.ether_ip)
         # name: enp59s0  | mac: 28:f1:0e:2a:1a:ed  | ip: 192.168.0.12
@@ -1080,7 +1102,8 @@ class NetworkInfo(DeviceCommonSelf):
         _who = self.who + "adb_reset():"
 
         command_line_list = \
-            ["adb", "kill-server", "&&", "adb", "start-server"]
+            ["adb", "kill-server", "&&", "adb", "start-server", "&&", 
+             "adb", "devices", "-l"]
         if background:
             command_line_list.append("&")  # Has no effect in runCommand()
 
@@ -1240,9 +1263,10 @@ class NetworkInfo(DeviceCommonSelf):
 
         for arp_dict in self.arp_dicts:
             if arp_dict['mac'] == mac:
+                v2_print(_who, "Found existing ni.arp_dict:", arp_dict['name'])
                 return arp_dict
 
-        v1_print(_who, "mac address unknown: '" + mac + "'")
+        v2_print(_who, "mac address unknown: '" + mac + "'")
 
         return {}  # TODO: Format dictionary with 'mac': and error
 
@@ -1251,15 +1275,85 @@ class NetworkInfo(DeviceCommonSelf):
             :param mac: MAC address
             :returns: instance
         """
-        _who = self.who + "arp_for_mac():"
+        _who = self.who + "inst_for_mac():"
 
         for inst in self.instances:
             if inst['mac'] == mac:
                 return inst
 
-        v1_print(_who, "mac address unknown: '" + mac + "'")
+        v2_print(_who, "mac address unknown: '" + mac + "'")
 
         return {}  # TODO: Format dictionary with 'mac': and error
+
+    def test_for_instance(self, arp):
+        """ Test if mac matches an instance and return dictionary for it.
+        :param arp: dictionary {mac: ip: name: alias: type_code:}
+        """
+        _who = self.who + "test_for_instance():"
+        # Next two sanity checks copied from Application().Rediscover()
+        mac = arp['mac']
+        # TCL.LAN (192.168.0.17) at <incomplete> on enp59s0
+        if mac == '<incomplete>':
+            v2_print(_who, "Invalid MAC:", mac)
+            return {}
+
+        ip = arp['ip']
+        # ? (20.20.20.1) at a8:4e:3f:82:98:b2 [ether] on enp59s0
+        if ip == '?':
+            v2_print(_who, "Invalid IP:", ip)
+            return {}
+
+        instance = {}
+
+        def test_one(cname):
+            """ Test if hs100, SonyTV, GoogleTV, etc. """
+            inst = cname(arp['mac'], arp['ip'], arp['name'], arp['alias'])
+            if not inst.isDevice(forgive=True):
+                return False
+
+            v1_print(arp['mac'], " # ", arp['ip'].ljust(15),
+                     "##  is a " + inst.type + " code =", inst.type_code)
+            #arp['type_code'] = inst.type_code  # Assign 10, 20, 30...
+            # 2025-01-13 Caller must do this
+
+            # Get class instance information
+            #instances.append({"mac": arp['mac'], "instance": inst})
+            #view_order.append(arp['mac'])
+            # 2025-01-13 Caller must do this
+
+            # Instance always rebuilt at run time and never saved to disk
+            #if update:
+            #    ni.arp_dicts[i] = arp  # Update arp list
+            # 2025-01-13 Caller must do this
+            instance["mac"] = arp['mac']
+            instance["instance"] = inst
+
+            return True  # Grab next type
+
+        # Test smart plug first because they seem most "fragile"
+        if test_one(SmartPlugHS100):
+            return instance
+
+        if test_one(Computer):
+            return instance
+
+        if test_one(LaptopDisplay):
+            return instance
+
+        if test_one(SonyBraviaKdlTV):
+            return instance
+
+        if test_one(TclGoogleAndroidTV):
+            v0_print(_who, "Android TV found:", arp['ip'])
+            v0_print("instance:", instance, "\n")
+            return instance
+        elif arp['ip'] == "192.168.0.17":  # "devices", "-l"
+            v0_print(_who, "Android TV failed!:", arp['ip'])
+
+        if test_one(BluetoothLedLightStrip):
+            return instance
+
+        return {}
 
 
 class LaptopDisplay(DeviceCommonSelf):
@@ -1993,6 +2087,10 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/audio/v1_0/g
 class TclGoogleAndroidTV(DeviceCommonSelf):
     """ TCL Google Android TV
 
+$ adb devices -l
+List of devices attached
+192.168.0.17:5555      device product:G03_4K_US_NF model:Smart_TV device:BeyondTV4
+
         Reference:
             https://developer.android.com/reference/android/view/KeyEvent
 
@@ -2040,7 +2138,7 @@ class TclGoogleAndroidTV(DeviceCommonSelf):
         """
 
         _who = self.who + "Connect():"
-        v1_print(_who, "Connect to:", self.ip)
+        v2_print(_who, "Attempt to connect to:", self.ip)
 
         # MAGIC_TIME needs 5 seconds for timeout
         # $ time adb connect 192.168.0.17
@@ -2051,6 +2149,7 @@ class TclGoogleAndroidTV(DeviceCommonSelf):
         # real	0m3.010s
         # user	0m0.001s
         # sys	0m0.005s
+
         command_line_list = ["adb", "devices", "-l"]
         self.runCommand(command_line_list, _who)  # Will force 'adb' daemon to run
 
@@ -2063,6 +2162,11 @@ class TclGoogleAndroidTV(DeviceCommonSelf):
             event = self.runCommand(command_line_list, _who, forgive=forgive)
             if event['returncode'] != 0:
                 return False
+
+            # 2025-01-13 Added but should not be needed except isDevice timeout is
+            #   now too short.
+            command_line_list = ["adb", "connect", self.ip]
+            _event = self.runCommand(command_line_list, _who, forgive=forgive)
 
             cnt += 1
             if cnt > 60:
@@ -2080,7 +2184,7 @@ class TclGoogleAndroidTV(DeviceCommonSelf):
 
         _who = self.who + "getPower():"
         v2_print("\n" + _who, "Get Power Status for:", self.ip)
-        self.Connect()  # 2024-12-02 - constant connection seems to be required
+        self.Connect()  # 2024-12-02 - constant reconnection seems to be required
 
         command_line_list = ["timeout", GLO['ADB_PWR_TIME'], "adb",
                              "shell", "dumpsys", "input_method",
@@ -2187,6 +2291,11 @@ class TclGoogleAndroidTV(DeviceCommonSelf):
             timeout = GLO['ADB_CON_TIME']
         command_line_list = ["timeout", timeout, "adb", "connect", self.ip]
         command_line_str = ' '.join(command_line_list)
+
+        # NEED self.runCommand to log events !!!!
+        # event = self.runCommand(command_line_list, _who, forgive=forgive)
+
+
         pipe = sp.Popen(command_line_list, stdout=sp.PIPE, stderr=sp.PIPE)
         text, err = pipe.communicate()  # This performs .wait() too
 
@@ -2210,7 +2319,11 @@ class TclGoogleAndroidTV(DeviceCommonSelf):
 
 class BluetoothLedLightStrip(DeviceCommonSelf):
     # noinspection SpellCheckingInspection
-    """ A recent version of Bluez is NOT required for Bluetooth LED light strips.
+    """
+        If Bluetooth isn't connecting, check gatttool percentage. If 100% of CPU
+        core then restart homa.py.
+
+        A recent version of Bluez is NOT required for Bluetooth LED light strips.
 
         Bluez: https://www.makeuseof.com/install-bluez-latest-version-on-ubuntu/
 
@@ -2265,7 +2378,6 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         self.app = None  # Parent app for calling GetPassword() and other methods.
 
         self.temp_fname = None  # Temporary filename for all devices report
-        self.color_choice = None  # tuple color choice - ((r, g, b), #xxxxxx)
         self.fake_top = None  # For color chooser placement geometry
 
     def startDevice(self):
@@ -2275,8 +2387,8 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         _who = self.who + "startDevice():"
 
         if self.powerStatus != "?":
-            v0_print(_who, "Power status is already:", self.powerStatus)
-            v0_print("nothing to do for:", self.mac, self.type_code, "-", self.type)
+            v1_print(_who, "Power status is already:", self.powerStatus)
+            v1_print("nothing to do for:", self.mac, self.type_code, "-", self.type)
             return
 
         self.powerStatus = self.power_status = "?"
@@ -2293,19 +2405,19 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         GLO['LED_LIGHTS_STARTUP'] = "1"  # Can be "0" (off), "1" (on), "?"
 
         if self.device is not None:
-            v1_print(_who, self.mac, "successfully connected.")
-            v1_print(self.device)
+            v2_print(_who, self.mac, "successfully connected.")
+            v2_print(self.device)
             if GLO['LED_LIGHTS_STARTUP'] != "0":
-                v1_print(_who, "Turning on LED Light.")
+                v2_print(_who, "Turning on LED Light.")
                 self.TurnOn()
             else:
-                v1_print(_who, "Turning off LED Light.")
+                v2_print(_who, "Turning off LED Light.")
                 self.TurnOff()
         else:
             v1_print(_who, self.mac, "failed to connect.")
 
         if self.app is not None:
-            v1_print(_who, "Reset self.app.last_refresh_time")
+            v2_print(_who, "Reset self.app.last_refresh_time")
             self.app.last_refresh_time = time.time()  # Recover lost 5 seconds
 
     def getBluetoothStatus(self):
@@ -2350,7 +2462,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
                     v0_print(_who, "parts:", parts)
                     self.BluetoothStatus = "?"
 
-        v1_print(_who, "self.BluetoothStatus:", self.BluetoothStatus)
+        v2_print(_who, "self.BluetoothStatus:", self.BluetoothStatus)
         return self.BluetoothStatus
 
     def resetBluetooth(self):
@@ -2374,6 +2486,9 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         # Dependencies installed?
         if not self.CheckInstalled("hciconfig"):
             # 2025-01-10 TODO: Message `hcitool` required
+            msg = "The program `hciconfig` is required to reset Bluetooth.\n\n"
+            msg += "sudo apt-get install hciconfig bluez bluez-tools rfkill\n\n"
+            self.app.ShowInfo("Missing program.", msg, icon="error")
             return "OFF"  # Prevents other methods running until turned "ON"
 
         if not self.elevateSudo():
@@ -2391,7 +2506,8 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         # 	Soft blocked: yes
         # 	Hard blocked: no
 
-        self.device = None  # 2025-01-12 Assume device destroyed, not confirmed yet.
+        #self.device = None  # 2025-01-12 Assume device destroyed, not confirmed yet.
+        self.Disconnect()  # Disconnect if connected
 
         # Remove any bluetooth soft blocking
         command_line_list = ["rfkill", "unblock", "bluetooth"]
@@ -2402,18 +2518,20 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         command_line_list = ["sudo", "systemctl", "restart", "bluetooth"]
         event = self.runCommand(command_line_list, _who, forgive=False)
 
-        status = "OFF"
         if event['returncode'] == 0:
             # Bluetooth successfully restarted. Now reset self.hci_device ('hci0')
             command_line_list = ["sudo", "hciconfig", self.hci_device, "reset"]
             _event = self.runCommand(command_line_list, _who, forgive=False)
             status = "ON"
+        else:
+            status = "OFF"
 
         v0_print(_who, "Bluetooth status:", status, "attempting self.Connect()")
-        #time.sleep(1.0)  # Added 2025-01-12 Was working beforec changes.
-        #self.Connect(sudo_reset=True)
-        #v0_print(_who, self.name, "self.device:", self.device)
-        return status
+        self.Connect(sudo_reset=True)
+        v0_print(_who, self.name, "self.device:", self.device)
+
+        self.BluetoothStatus = status
+        return self.BluetoothStatus
 
     def elevateSudo(self):
         """ If already sudo, validate timestamp hasn't expired.
@@ -2549,16 +2667,20 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         return device_list
 
     def setColor(self):
-        """ Set color
-            When color picker used, brightness goes to 100%. Cannot control brightness.
+        """ Set color.
+            When color picker used, brightness goes to 100% unless values low. E.G.:
+                #090000 - Red very low brightness
 
             Alternatives to trionesControl.py to try:
                 https://github.com/LedFx/LedFx (LED controlled by music)
         """
         _who = self.who + "setColor():"
         if self.device is None:
-            v0_print(_who, "Turn on LED Light Strip first!")
-            return
+            msg = "Turn on " + self.name + " first!"
+            v1_print(_who, msg)
+            self.app.ShowInfo("Not connected", msg, "error")
+            self.powerStatus = self.power_status = "?"
+            return self.powerStatus
 
         x, y = hc.GetMouseLocation()
         self.fake_top = tk.Toplevel(self.app)  # For color chooser placement geometry
@@ -2570,25 +2692,32 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         # So no window decorations and size of 1x1 is good compromise
 
         # variable to store hexadecimal code of color = ((r, g, b), #xxxxxx)
-        default = 'red' if self.color_choice is None else self.color_choice[1]
+        #print("GLO['LED_LIGHTS_COLOR']:", GLO['LED_LIGHTS_COLOR'])
+        # Starts as a tuple json converts to list: [[44, 28, 27], u'#2c1c1b']
+        default = 'red' if GLO['LED_LIGHTS_COLOR'] is None else GLO['LED_LIGHTS_COLOR'][1]
 
-        self.color_choice = colorchooser.askcolor(
+        new = colorchooser.askcolor(
             default, parent=self.fake_top, title="Choose color")
         self.fake_top.destroy()
-        v2_print(_who, "self.color_choice:", self.color_choice)
         try:
             # noinspection PyTupleAssignmentBalance
-            red, green, blue = self.color_choice[0]
+            red, green, blue = new[0]
         except TypeError:
-            return  # Cancel button
-
+            return "ON"  # Cancel button
+        GLO['LED_LIGHTS_COLOR'] = new
+        v2_print(_who, "GLO['LED_LIGHTS_COLOR']:", GLO['LED_LIGHTS_COLOR'])
         try:
             tc.setRGB(red, green, blue, self.device, wait_for_response=False)
-        except pygatt.exceptions.NotConnectedError as err:
-            v0_print(_who, err)
+            return "ON"
+        except (pygatt.exceptions.NotConnectedError, AttributeError) as err:
+            msg = "Turn on " + self.name + " first!"
+            v1_print(_who, msg + "\n", err)
+            #message.ShowInfo(self, thread=self.app.Refresh, icon='error',
+            #                 title="Not connected", text=msg)
+            self.app.ShowInfo("Not connected", msg, "error")
             self.device = None  # Force connect on next attempt
             self.powerStatus = self.power_status = "?"
-            # self.app.EnableMenu()  # 'NoneType' object has no attribute 'EnableMenu'
+            return self.powerStatus
 
     def setNight(self):
         """ Set to lowest brightness.
@@ -2598,26 +2727,31 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         """
         _who = self.who + "setNight():"
         if self.device is None:
-            v0_print(_who, "Turn on LED Light Strip first!")
-            return
+            msg = "Turn on " + self.name + " first!"
+            v1_print(_who, msg)
+            self.app.ShowInfo("Not connected", msg, "error")
+            self.powerStatus = self.power_status = "?"
+            return self.powerStatus
 
         try:
             # Value of 1 turns off the light strip, 10 is lowest value tested
             tc.setWhite(10, self.device, wait_for_response=True)
-        except pygatt.exceptions.NotConnectedError as err:
-            v0_print(_who, err)
-            self.device = None  # Force connect on next attempt
-            self.powerStatus = self.power_status = "?"
-            # self.app.EnableMenu()  # 'NoneType' object has no attribute 'EnableMenu'
+            return "ON"
+        except (pygatt.exceptions.NotConnectedError, AttributeError) as err:
+            msg = "Turn on " + self.name + " first!"
+            v1_print(_who, msg + "\n", err)
+            self.app.ShowInfo("Not connected", msg, "error")
+
+        self.device = None  # Force connect on next attempt
+        self.powerStatus = self.power_status = "?"
+        # self.app.EnableMenu()  # 'NoneType' object has no attribute 'EnableMenu'
+        return self.powerStatus
 
     def Connect(self, sudo_reset=False):
         """ Connect to Bluetooth Low Energy with GATT.
-try:
-    ble = BluetoothLedLightStrip()
-except tc.pygatt.exceptions.NotConnectedError as BLEerr:
-    v0_print("ble = BluetoothLedLightStrip() error")
-    v0_print(BLEerr)
-    v0_print("Is Bluetooth enabled?")
+
+            Connection is constantly dropping, so every minute (during Rediscovery),
+            call self.Connect just to be sure.
 
             :param sudo_reset: bluetooth is restarted in gatttool.py using:
                 subprocess.Popen(["sudo", "systemctl", "restart", "bluetooth"]).wait()
@@ -2627,9 +2761,9 @@ except tc.pygatt.exceptions.NotConnectedError as BLEerr:
         """
         GLO['LED_LIGHTS_MAC'] = "36:46:3E:F3:09:5E"
         _who = self.who + "Connect():"
-        v1_print("\n" + _who, "self.hci_device:", self.hci_device,
-                 "GLO['LED_LIGHTS_MAC']:", GLO['LED_LIGHTS_MAC'],
-                 self.name, "sudo_reset:", sudo_reset)
+        v2_print("\n" + _who, "self.hci_device:", self.hci_device, " | name:", self.name,
+                 "\n  GLO['LED_LIGHTS_MAC']:", GLO['LED_LIGHTS_MAC'],
+                 " | sudo_reset:", sudo_reset)
 
         if len(GLO['LED_LIGHTS_MAC']) != 17:  # Can be "" for new dictionary
             v0_print(_who, "Invalid GLO['LED_LIGHTS_MAC']:", GLO['LED_LIGHTS_MAC'])
@@ -2637,11 +2771,12 @@ except tc.pygatt.exceptions.NotConnectedError as BLEerr:
         try:
             self.device = tc.connect(GLO['LED_LIGHTS_MAC'], reset_on_start=sudo_reset)
         except tc.pygatt.exceptions.NotConnectedError as BLEerr:
-            v0_print(_who, "error:")
-            v0_print(BLEerr)
-            v0_print("Is Bluetooth enabled?")
+            v2_print(_who, "error:")
+            v2_print(BLEerr)
+            v2_print("Is Bluetooth enabled?")
             self.device = None
             self.powerStatus = self.power_status = "?"
+            # 2025-01-13 TODO: Count sequential errors and after x times ShowInfo()
 
         if self.app:  # Prevent erroneous Resume from Suspend from running
             self.app.last_refresh_time = time.time()
@@ -2656,6 +2791,11 @@ except tc.pygatt.exceptions.NotConnectedError as BLEerr:
         """
         _who = self.who + "getPower():"
         v2_print("\n" + _who, "Get Power Status for:", self.name)
+
+        # Connection is constantly dropping, so always Connect
+        #self.Disconnect()
+        #self.Connect()
+        # Getting 100% CPU usage with repeated gatt calls
 
         # BLE LED Light Strips requires connection
         if GLO['LED_LIGHTS_MAC'] is not None and self.device is None:
@@ -2683,17 +2823,18 @@ except tc.pygatt.exceptions.NotConnectedError as BLEerr:
 
         if self.device is None:
             self.Connect()
-            #time.sleep(0.5)
+
         try:
             tc.powerOn(self.device)
             self.powerStatus = self.power_status = "ON"  # Can be "ON", "OFF" or "?"
+            return self.power_status
         except pygatt.exceptions.NotConnectedError as err:
             v0_print(_who, err)
-            self.device = None  # Force connect on next attempt
-            self.powerStatus = self.power_status = "?"
-            # self.app.EnableMenu()  # 'NoneType' object has no attribute 'EnableMenu'
         except AttributeError:
             v0_print(_who, "AttributeError: self.device:", self.device)
+
+        self.device = None  # Force connect on next attempt
+        self.powerStatus = self.power_status = "?"
 
         return self.power_status
 
@@ -2707,18 +2848,18 @@ except tc.pygatt.exceptions.NotConnectedError as BLEerr:
 
         if self.device is None:
             self.Connect()
-            #time.sleep(0.5)
+
         try:
             tc.powerOff(self.device)
             self.powerStatus = self.power_status = "OFF"  # Can be "ON", "OFF" or "?"
+            return self.power_status
         except pygatt.exceptions.NotConnectedError as err:
             v0_print(_who, err)
-            self.device = None  # Force connect on next attempt
-            self.powerStatus = self.power_status = "?"
-            # self.app.EnableMenu()  # 'NoneType' object has no attribute 'EnableMenu'
         except AttributeError:
             v0_print(_who, "AttributeError: self.device:", self.device)
 
+        self.device = None  # Force connect on next attempt
+        self.powerStatus = self.power_status = "?"
         return self.power_status
 
     def isDevice(self, forgive=False):
@@ -2854,7 +2995,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         # Laptop Display needs to call .GetPassword() method in this Application()
         # Assign this Application() instance to the LaptopDisplay() instance self.app
-        # Also assign to BLE LED Light Strip
+        # Also assign to BLE LED Light Strip which calls ShowInfo
         for instance in ni.instances:
             inst = instance['instance']
             if inst.type_code == GLO['LAPTOP_D']:
@@ -3353,10 +3494,10 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             # Bluetooth Low Energy LED Light Strip
             menu.add_command(label="Set " + name + " Color ",
                              font=g.FONT, state=tk.NORMAL,
-                             command=cr.inst.setColor)
+                             command=lambda: self.setColor(cr))
             menu.add_command(label="Nighttime brightness",
                              font=g.FONT, state=tk.NORMAL,
-                             command=cr.inst.setNight)
+                             command=lambda: self.setNight(cr))
             menu.add_command(label="Reset Bluetooth", font=g.FONT,
                              command=cr.inst.resetBluetooth, state=tk.DISABLED)
             if cr.inst.device is None:
@@ -3417,9 +3558,25 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         cr.tree.item(cr.item, text=text)
         cr.tree.update_idletasks()
 
+    def setColor(self, cr):
+        """ Mouse right button click selected "Set LED Lights Color". """
+        _who = self.who + "setColor():"
+        resp = cr.inst.setColor()
+        text = "  " + str(resp)
+        cr.tree.item(cr.item, text=text)
+        cr.tree.update_idletasks()
+
+    def setNight(self, cr):
+        """ Mouse right button click selected "Nighttime brightness". """
+        _who = self.who + "setNight():"
+        resp = cr.inst.setNight()
+        text = "  " + str(resp)
+        cr.tree.item(cr.item, text=text)
+        cr.tree.update_idletasks()
+
     def TurnOn(self, cr):
         """ Mouse right button click selected "Turn On".
-            Also be called by SetAllPower("ON").
+            Also called by SetAllPower("ON").
         """
         _who = self.who + "TurnOn():"
         resp = cr.inst.TurnOn()
@@ -3533,7 +3690,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         if int(now - self.last_rediscover_time) > GLO['REDISCOVER_SECONDS']:
             self.Rediscover(auto=True)  # Check for changes in IP addresses, etc
             night = cp.NightLightStatus()
-            v1_print(_who, "cp.NightLightStatus():", night)
+            v2_print(_who, "cp.NightLightStatus():", night)
 
         ''' sleep remaining time until GLO['REFRESH_MS'] expires '''
         sleep = GLO['REFRESH_MS'] - int(now - self.last_refresh_time)
@@ -3791,7 +3948,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                          + old_text.strip() + "' to: '" + cr.text.strip() + "'.")
             cr.Update(iid)  # Update row with new ['text']
             if auto is False or old_text == "Wait...":
-                # Fade in/out performed when called from Dropdown Menu.
+                # Fade in/out performed when called from Dropdown Menu (auto=False).
                 # Or on startup when status is "Wait...". Otherwise, too distracting.
                 cr.FadeOut(iid)
 
@@ -3856,7 +4013,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 return  # Reenter refresh loop. Return here in 16 ms
 
         arp_count = len(rd.arp_dicts)
-        v1_print(_who, "arp_count:", arp_count)
+        v2_print(_who, "arp_count:", arp_count)
 
         # Refresh power status for all device instances in ni.arp_dicts
         self.RefreshAllPowerStatuses(auto=auto)
@@ -3865,7 +4022,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         # TODO: process one row at a time to reduce chances of mouse-click lag
         #  OR:  Use splash message stating Refresh in progress
 
-        # TODO: Process all rd.arp_dict entries for ip changes or new entries
+        # TODO: Check rd.arp_dict entries for ip changes or new entries
         for i, rediscover in enumerate(rd.arp_dicts):
             mac = rediscover['mac']
             # TCL.LAN (192.168.0.17) at <incomplete> on enp59s0
@@ -3879,9 +4036,10 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 v1_print(_who, "Invalid IP:", ip)
                 continue
 
-            arp_mac = ni.arp_for_mac(mac)
+            v2_print("Checking MAC:", mac, "IP:", ip)
+            arp_mac = ni.arp_for_mac(mac)  # NOTE different than rediscover !
             if not arp_mac:
-                v1_print(_who, "MAC not found to treeview:", mac)
+                v1_print(_who, "new MAC discovered:", mac)
                 #print("\n new arp_mac in rd.arp_dicts:", mac)
                 # new arp_mac: 28:f1:0e:2a:1a:ed
                 # new arp_mac: 9c:b6:d0:10:37:f7
@@ -3892,14 +4050,21 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 discovered, instances, view_order = \
                     discover(update=False, start=start, end=start+1)
 
+                if len(discovered) != 1:
+                    print(_who, "Catastrophic error! len(discovered):",
+                          len(discovered))
+                    exit()
+
                 if instances:
                     ni.instances.append(instances[0])
-                    v1_print(_who, "Adding MAC to treeview:", mac)
+                    v1_print(_who, "Adding MAC to ni.instances:", mac)
                 else:
                     v1_print(_who, "No new instance for MAC:", mac)
                     continue
+
                 ni.view_order.append(mac)
-                ni.devices = copy.deepcopy(rd.devices)
+
+                ni.devices = copy.deepcopy(rd.devices)  # Prevent rediscovery
 
                 # Only update Devices Treeview when mounted.
                 if not usingDevicesTreeview:
@@ -3910,8 +4075,28 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 new_row = len(self.tree.get_children())
                 tr.Add(new_row)
                 self.tree.see(str(new_row))
-            else:
+            elif mac not in ni.view_order:
+                #v1_print(_who, "ni.arp_dicts MAC not in view order:", mac)
+                # ni.arp_dicts MAC not in view order: a8:4e:3f:82:98:b2   <-- ROUTER
                 pass  # TODO: 2024-11-28 - Check rd.arp changes from ni.arp
+
+            arp_inst = ni.inst_for_mac(mac)
+            if not arp_inst:
+                #v1_print(_who, "No Instance for ni.arp_dicts MAC:", mac)
+                # No Instance for ni.arp_dicts MAC: a8:4e:3f:82:98:b2   <-- ROUTER
+
+                # Application().Rediscover(): ni.arp_dicts MAC not in view order: c0:79:82:41:2f:1f
+                # NetworkInfo().inst_for_mac(): mac address unknown: 'c0:79:82:41:2f:1f'
+                # Application().Rediscover(): No Instance for ni.arp_dicts MAC: c0:79:82:41:2f:1f
+                instance = ni.test_for_instance(arp_mac)
+                if bool(instance):
+                    v0_print("\n" + _who, "FOUND NEW INSTANCE or",
+                             "REDISCOVERED LOST INSTANCE:")
+                    v0_print(instance)
+                    ni.instances.append(instance)
+                    arp_mac['type_code'] = instance['instance'].type_code
+                    ni.view_order.append(arp_mac['mac'])
+                    ni.arp_dicts[i] = arp_mac  # Update arp list
 
         # All steps done: Wait for next rediscovery period
         ni.cmdEvents.extend(rd.cmdEvents)  # For auto-rediscover, rd.cmdEvents[] empty
@@ -3958,6 +4143,14 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         self.last_refresh_time = time.time()  # Refresh idle loop last entered time
         return password  # Will be <None> if invalid password entered
+
+    def ShowInfo(self, title, text, icon="information"):
+        """ Called from instance which has no tk reference of it's own 
+            From Application use: inst.app = self
+            From Instance us: self.app.ShowInfo()
+        """
+        message.ShowInfo(self, thread=self.Refresh, icon=icon,
+                         title=title, text=text)
 
     def Preferences(self):
         """ Edit preferences """
@@ -4088,7 +4281,10 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 scrollbox.highlight_pattern("Command:", "blue")
                 scrollbox.highlight_pattern(event['command_string'], "yellow")
 
-                errors = event['error'].splitlines()  # Error lines split on "\n"
+                try:
+                    errors = event['error'].splitlines()  # Error lines split on "\n"
+                except AttributeError:
+                    errors = event['error']  # Already a list
                 for error in errors:
                     scrollbox.insert("end", "\t\t" + error + "\n")
 
@@ -4289,7 +4485,7 @@ class TreeviewRow(DeviceCommonSelf):
         """
         DeviceCommonSelf.__init__(self, "TreeviewRow().")  # Define self.who
 
-        self.top = top
+        self.top = top  # 2025-01-13 top is not passed as argument???
         self.tree = self.top.tree  # Shortcut
         self.photos = self.top.photos  # Shortcut
         self.item = None  # Treeview Row iid
@@ -4367,7 +4563,7 @@ class TreeviewRow(DeviceCommonSelf):
         except KeyError:
             v0_print("self.inst_dict has no 'instance' key:", self.inst_dict)
             v0_print("self.arp_dict has no instance:", self.arp_dict)
-            return
+            # return  # 2025-01-12 need self.values defined
 
         try:
             type_code = self.arp_dict['type_code']
@@ -4395,16 +4591,30 @@ class TreeviewRow(DeviceCommonSelf):
             photo = None
 
         self.photo = photo
+
+        # 2025-01-12 no instance
+        if self.inst is None:
+            status = "?"
+            type_code = "?"
+            name = "?"
+        else:
+            status = self.inst.power_status
+            type_code = self.inst.type
+            name = self.inst.name
+
         # Did program just start, or is power status already known?
-        if self.inst.power_status == "?":  # Initial boot
+        #if self.inst.power_status == "?":  # Initial boot  # 2025-01-12
+        if status == "?":  # Initial boot
             self.text = "Wait..."  # Power status checked when updating treeview
         else:
             self.text = "  " + self.inst.powerStatus  # Power state already known
-        self.name_column = self.inst.name
+        #self.name_column = self.inst.name # 2025-01-12
+        self.name_column = name  # 2025-01-12
         self.name_column += "\nIP: " + self.arp_dict['ip']
         self.attribute_column = self.arp_dict['alias']
         self.attribute_column += "\nMAC: " + self.arp_dict['mac']
-        self.attribute_column += "\n" + self.inst.type
+        #self.attribute_column += "\n" + self.inst.type
+        self.attribute_column += "\n" + type_code
         self.values = (self.name_column, self.attribute_column, self.mac)
 
     def Add(self, item):
@@ -4423,9 +4633,11 @@ class TreeviewRow(DeviceCommonSelf):
         ''' 2024-11-29 - Use faster method for repainting devices treeview '''
         if p_args.fast:
             text = "Wait..."  # Wait for idle loop
-        else:
+        elif self.inst is not None:  # 2025-01-12 new error self.inst is None
             self.inst.getPower()
             text = "  " + self.inst.powerStatus
+        else:
+            text = " Error!"
 
         self.text = text
 
@@ -4890,71 +5102,34 @@ def discover(update=False, start=None, end=None):
         # "mac": mac, "ip": ip, "name": name, "alias": alias, "type_code": 99}
         v2_print("\nTest for device type using 'arp' dictionary:", arp)
 
-        # Next two sanity checks copied from Application().Rediscover()
-        mac = arp['mac']
-        # TCL.LAN (192.168.0.17) at <incomplete> on enp59s0
-        if mac == '<incomplete>':
-            v1_print(_who, "Invalid MAC:", mac)
+        instance = ni.test_for_instance(arp)
+        if len(instance) == 0:
             continue
 
-        ip = arp['ip']
-        # ? (20.20.20.1) at a8:4e:3f:82:98:b2 [ether] on enp59s0
-        if ip == '?':
-            v1_print(_who, "Invalid IP:", ip)
-            continue
+        discovered.append(arp)  # Saved to disk
 
-        def test_one(cname):
-            """ Test if hs100, SonyTV, GoogleTV, etc. """
-            inst = cname(arp['mac'], arp['ip'], arp['name'], arp['alias'])
-            is_device = inst.isDevice(forgive=True)
-            if not is_device:
-                return False
-
-            v1_print(arp['mac'], " # ", arp['ip'].ljust(15),
-                     "##  is a " + inst.type + " code =", inst.type_code)
-            arp['type_code'] = inst.type_code  # Assign 10, 20, 30...
-            discovered.append(arp)  # Saved to disk
-
-            # Get class instance information
-            instances.append({"mac": arp['mac'], "instance": inst})
-            view_order.append(arp['mac'])
-            # Instance always rebuilt at run time and never saved to disk
-            if update:
-                ni.arp_dicts[i] = arp  # Update arp list
-            return True  # Grab next type
-
-        # Test smart plug first because they seem most "fragile"
-        if test_one(SmartPlugHS100):
-            continue
-
-        if test_one(Computer):
-            continue
-
-        if test_one(LaptopDisplay):
-            continue
-
-        if test_one(SonyBraviaKdlTV):
-            continue
-
-        if test_one(TclGoogleAndroidTV):
-            continue
-
-        if test_one(BluetoothLedLightStrip):
-            continue
+        # Get class instance information
+        #instances.append({"mac": arp['mac'], "instance": inst})
+        instances.append(instance)
+        arp['type_code'] = instance['instance'].type_code
+        view_order.append(arp['mac'])
+        # Instance always rebuilt at run time and never saved to disk
+        if update:
+            ni.arp_dicts[i] = arp  # Update arp list
 
     return discovered, instances, view_order
 
 
 v1_print(sys.argv[0], "- Home Automation", " | verbose1:", p_args.verbose1,
          " | verbose2:", p_args.verbose2, " | verbose3:", p_args.verbose3,
-         " | fast:", p_args.fast, " | silent:", p_args.silent)
+         "\n  | fast:", p_args.fast, " | silent:", p_args.silent)
 
 ''' Global classes '''
 root = None  # Tkinter toplevel
 app = None  # Application GUI
 cfg = sql.Config()  # Colors configuration SQL records
 glo = Globals()  # Global variables
-GLO = glo.dictGlobals  # global dictionary
+GLO = glo.dictGlobals  # global dictionary. Dummy declaration, reset during open.
 ble = BluetoothLedLightStrip()  # Must follow GLO dictionary and before ni instance
 cp = Computer()  # cp = Computer Platform
 ni = NetworkInfo()  # ni = global class instance used everywhere
