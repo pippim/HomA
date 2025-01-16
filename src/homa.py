@@ -399,6 +399,7 @@ class Globals(DeviceCommonSelf):
             "LED_LIGHTS_MAC": "",  # Bluetooth LED Light Strip MAC address
             "LED_LIGHTS_STARTUP": True,  # "0" turn off, "1" turn on.
             "LED_LIGHTS_COLOR": None,  # Last colorchooser ((r, g, b), #000000)
+            "BLUETOOTH_SCAN_TIME": 10,  # Number of seconds to scan bluetooth devices
             "TIMER_SEC": 600,  # Tools Dropdown Menubar - Countdown Timer default
             "TIMER_ALARM": "Alarm_01.wav",  # From: https://www.pippim.com/programs/tim-ta.html
             "LOG_EVENTS": True,  # Override runCommand event logging / --verbose3 printing
@@ -437,11 +438,12 @@ class Globals(DeviceCommonSelf):
 
             #print("GLO['LED_LIGHTS_COLOR']:", GLO['LED_LIGHTS_COLOR'])
             # Starts as a tuple json converts to list: [[44, 28, 27], u'#2c1c1b']
-            s = self.dictGlobals['LED_LIGHTS_COLOR']
-            self.dictGlobals['LED_LIGHTS_COLOR'] = \
-                ((s[0][0], s[0][1], s[0][2]), s[1])
-
-            led_tuple = ()
+            try:
+                s = self.dictGlobals['LED_LIGHTS_COLOR']
+                self.dictGlobals['LED_LIGHTS_COLOR'] = \
+                    ((s[0][0], s[0][1], s[0][2]), s[1])
+            except (TypeError, IndexError):  # No color saved
+                self.dictGlobals['LED_LIGHTS_COLOR'] = None
 
     def saveFile(self):
         """ Save dictConfig to CONFIG_FNAME = "config.json" """
@@ -537,6 +539,9 @@ class Globals(DeviceCommonSelf):
              "LED Lights Turn On at startup? True/False"),
             ("LED_LIGHTS_COLOR", 4, RO, STR, STR, 20, DEC, MIN, MAX, CB,
              'LED Lights last used color.\nFormat: (red, green, blue) #9f9f9f"]'),
+            ("BLUETOOTH_SCAN_TIME", 4, RW, INT, INT, 3, DEC, MIN, MAX, CB,
+             'Number of seconds to perform bluetooth scan.\n'
+             'A longer time may discover more devices.'),
             ("TIMER_SEC", 4, RW, INT, INT, 5, DEC, MIN, MAX, CB,
              "Tools Dropdown Menubar - Countdown Timer default"),
             ("TIMER_ALARM", 4, RW, FNAME, STR, 30, DEC, MIN, MAX, CB,
@@ -1270,18 +1275,35 @@ class NetworkInfo(DeviceCommonSelf):
 
         return {}  # TODO: Format dictionary with 'mac': and error
 
-    def inst_for_mac(self, mac):
+    def update_arp_dict(self, arp_dict):
+        """ Get arp_dict by mac address.
+            :param arp_dict: arp dictionary
+            :returns: True if found, False if not found
+        """
+        _who = self.who + "update_arp_dict():"
+
+        #for arp_dict in self.arp_dicts:
+        #    if arp_dict['mac'] == mac:
+        #        v2_print(_who, "Found existing ni.arp_dict:", arp_dict['name'])
+        #        return arp_dict
+
+        #v2_print(_who, "mac address unknown: '" + mac + "'")
+
+        return True  # TODO: Format dictionary with 'mac': and error
+
+    def inst_for_mac(self, mac, not_found_error=True):
         """ Get instance by mac address.
             :param mac: MAC address
             :returns: instance
         """
         _who = self.who + "inst_for_mac():"
 
-        for inst in self.instances:
-            if inst['mac'] == mac:
-                return inst
+        for instance in self.instances:
+            if instance['mac'] == mac:
+                return instance
 
-        v2_print(_who, "mac address unknown: '" + mac + "'")
+        if not_found_error:
+            v2_print(_who, "mac address unknown: '" + mac + "'")
 
         return {}  # TODO: Format dictionary with 'mac': and error
 
@@ -2467,7 +2489,8 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
 
     def resetBluetooth(self):
         """ Turn Bluetooth on. Called from Right-Click menu, Reset Bluetooth
-            Called from Dropdown View Menu - view named Bluetooth devices
+            Called from Dropdown View Menu - Bluetooth devices, getBluetoothDevices()
+            Visible on Right click treeview row - reset Bluetooth if power "?"
 
             Lifted from gatttool.py connect()
 
@@ -2493,21 +2516,6 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
 
         if not self.elevateSudo():
             return "?"  # Cancel button (256) or escape or 'X' on window decoration (64512)
-
-        # Error: Can't init device hci0: Operation not possible due to RF-kill (132)
-        # $ rfkill list all
-        # 0: dell-r btn: Wireless LAN
-        # 	Soft blocked: no
-        # 	Hard blocked: no
-        # 1: phy0: Wireless LAN
-        # 	Soft blocked: yes
-        # 	Hard blocked: no
-        # 7: hci0: Bluetooth
-        # 	Soft blocked: yes
-        # 	Hard blocked: no
-
-        #self.device = None  # 2025-01-12 Assume device destroyed, not confirmed yet.
-        self.Disconnect()  # Disconnect if connected
 
         # Remove any bluetooth soft blocking
         command_line_list = ["rfkill", "unblock", "bluetooth"]
@@ -2553,6 +2561,8 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
     def getBluetoothDevices(self, show_unknown=False):
         """ Get list of all bluetooth devices (including unknown)
 
+        NOTE: Called with inst.getBluetoothDevices()
+
         $ sudo timeout 10 hcitool -i hci0 lescan > devices.txt &
 
         $ sort devices.txt | uniq -c | grep -v unknown
@@ -2561,25 +2571,14 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         _who = self.who + "getBluetoothDevices():"
 
         if self.app is None:
-            print(_who, "Cannot run until GUI is running.")
+            print(_who, "Cannot start until GUI is running.")
             return ""
 
         if not self.elevateSudo():
             return ""  # Cancel button (256) or escape or 'X' on window decoration (64512)
 
-        # Save original connection status for LED Lights
-        device_was_connected = False if self.device is None else True
-
-        if self.powerStatus == "ON":
-            v1_print(_who, "Turning off LED Lights")
-            self.TurnOff()
-
-        self.Disconnect()  # clear self.device which is lost by reset
-
         self.resetBluetooth()  # Hammer connections in order to prevent:
         # Set scan parameters failed: Input/output error
-
-        BLUETOOTH_SCAN_TIME = 10
 
         TMP_FFPROBE = g.TEMP_DIR + "homa_bluetooth_devices"  # _a3sd24 appended
 
@@ -2589,18 +2588,22 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         self.temp_fname = TMP_FFPROBE + "_" + temp_suffix
 
         self.cmdStart = time.time()
-        self.cmdCommand = ["sudo", "timeout", str(BLUETOOTH_SCAN_TIME),
+        self.cmdCommand = ["sudo", "timeout", str(GLO['BLUETOOTH_SCAN_TIME']),
                            "hcitool", "-i", self.hci_device, "lescan", ">",
                            self.temp_fname, "&"]
         self.cmdString = ' '.join(self.cmdCommand)
         v2_print(self.cmdString)
 
         ''' run command with os.popen() because sp.Popen() fails on ">" '''
+        # 2025-01-15 TODO: Log to cmdEvents
         os.popen(self.cmdString)
 
-        self.app.ResumeWait(timer=BLUETOOTH_SCAN_TIME, alarm=False,
+        self.app.ResumeWait(timer=GLO['BLUETOOTH_SCAN_TIME'], alarm=False,
                             title="Scanning Bluetooth Devices", abort=False)
-        self.app.after(500)  # Slush fund sleep 1/2 second
+        self.app.after(500)  # Slush fund sleep extra 1/2 second
+        # 2025-01-15 NOTE: It takes another 3 to 7 seconds for window to open ???
+        #   Each time running without restart, gatttool is using 100% of a core
+        #   Turning off existing HomA connection to LED lights necessary to appear.
 
         lines = ext.read_into_string(self.temp_fname)
         lines = "" if lines is None else lines
@@ -2651,19 +2654,16 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
                 continue
             if len(parts[1]) != 17:
                 continue
+            count = parts[0]
             address = parts[1]
             name = ' '.join(parts[2:])
 
-            v0_print("address:", address, "name:", name)
-            device_list.append((address, name))
+            v0_print("address:", address, "name:", name, "count:", count)
+            device_list.append((address, name, count))
 
         self.resetBluetooth()  # Hammer connections in order to prevent:
-        # Set scan parameters failed: Input/output error
-
-        if device_was_connected:
-            v1_print(_who, "Reconnecting Bluetooth Low Energy LED Lights")
-            self.Connect(sudo_reset=True)  # Already elevated to sudo so safe to do.
         ext.remove_existing(self.temp_fname)
+
         return device_list
 
     def setColor(self):
@@ -2792,11 +2792,6 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         _who = self.who + "getPower():"
         v2_print("\n" + _who, "Get Power Status for:", self.name)
 
-        # Connection is constantly dropping, so always Connect
-        #self.Disconnect()
-        #self.Connect()
-        # Getting 100% CPU usage with repeated gatt calls
-
         # BLE LED Light Strips requires connection
         if GLO['LED_LIGHTS_MAC'] is not None and self.device is None:
             self.startDevice()  # Will test self.BluetoothStatus attribute.
@@ -2814,6 +2809,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
             except AttributeError:
                 v0_print(_who, "self.device:", self.device)
         self.device = None
+        self.powerStatus = self.power_status = "?"
 
     def TurnOn(self):
         """ Turn On BLE (Bluetooth Low Energy) LED Light Strip. """
@@ -3218,8 +3214,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             return
 
         self.SetAllPower("OFF")  # Turn off all devices except computer
-        if ble and ble.device is not None:
-            ble.Disconnect()
+        #if ble and ble.device is not None:
+        #    ble.Disconnect()
+        # 2025-01-15 - Get device like DisplayBluetooth()
         cp.TurnOff()  # suspend the computer
 
     def FocusIn(self, *_args):
@@ -4385,7 +4382,21 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             v0_print(_who, "Bluetooth will not turn on.")
             return
 
-        device_list = ble.getBluetoothDevices()  # 10 second scan with countdown dtb
+        found_inst = None
+        for mac_arp in ni.arp_dicts:
+            instance = ni.inst_for_mac(mac_arp['mac'], not_found_error=False)
+            if not bool(instance):
+                continue  # empty dictionary
+            if instance['mac'] == GLO['LED_LIGHTS_MAC']:
+                found_inst = instance['instance']
+
+        if found_inst:
+            v1_print(_who, "Using existing instance:", found_inst)
+            found_inst.Disconnect()
+            device_list = found_inst.getBluetoothDevices()
+        else:
+            v1_print(_who, "Creating new instance for reset.")
+            device_list = ble.getBluetoothDevices()  # 10 second scan with countdown dtb
         if len(device_list) == 0:
             return
 
@@ -4395,12 +4406,41 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         # Loop through device_list
         for i, device in enumerate(device_list):
-            address, name = device
-            scrollbox.insert("end", address)
+            address, name, count = device
 
-            scrollbox.insert("end", " - " + name + "\n")
-            scrollbox.highlight_pattern(address, "blue")
-            scrollbox.highlight_pattern(name, "green")
+            scrollbox.insert("end", address)
+            scrollbox.insert("end", " - " + name + "  (")
+            scrollbox.insert("end", str(count) + ")\n")
+
+            instance = ni.inst_for_mac(address)
+            if bool(instance):
+                scrollbox.highlight_pattern(address, "red")
+                scrollbox.highlight_pattern(name, "yellow")
+                arp_dict = ni.arp_for_mac(address)
+                arp_dict['name'] = name  # Will this update directly?
+                ni.update_arp_dict(arp_dict)
+                # warning sometimes mac address will appear twice:
+                # address This IS NAM (1)   <--- BAD NAME
+                # address This IS NAME (4)  <--- GOOD NAME
+                # 2025-01-15 TODO: Update Treeview Row with new name.
+            else:  # empty dictionary
+                scrollbox.highlight_pattern(address, "blue")
+                scrollbox.highlight_pattern(name, "green")
+
+        if found_inst:
+            v1_print(_who, "Restarting existing instance.")
+            found_inst.startDevice()
+
+        # After running gatttool taking 100% of a single CPU core
+        # until homa.py exits
+        # $ ps aux | grep gatttool | grep -v grep
+        #     5114  0.0  0.0  21556  3288 pts/2    Ss+  16:46   0:00 /usr/bin/gatttool -i hci0 -I
+        #     7070  0.0  0.0  21556  3340 pts/24   Ss+  16:47   0:00 /usr/bin/gatttool -i hci0 -I
+        #     7497  0.0  0.0  21556  3308 pts/25   Ss+  16:47   0:00 /usr/bin/gatttool -i hci0 -I
+        #     7650 52.2  0.0  21556  3292 pts/26   Rs+  16:47   1:04 /usr/bin/gatttool -i hci0 -I
+        #     9573  0.0  0.0  21556  3316 pts/27   Ss+  16:48   0:00 /usr/bin/gatttool -i hci0 -I
+        #     9973  0.0  0.0  21556  3308 pts/28   Ss+  16:48   0:00 /usr/bin/gatttool -i hci0 -I
+        #     9990  0.0  0.0  21556  3316 pts/29   Ss+  16:48   0:00 /usr/bin/gatttool -i hci0 -I
 
     def DisplayCommon(self, _who, title, width=1200, height=500):
         """ Common method for DisplayBluetooth, DisplayErrors(), DisplayTimings() """
@@ -4469,6 +4509,39 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         scrollbox.tag_config('magenta', background='magenta')
 
         return scrollbox
+
+
+    def check_speech_dispatcher(self):
+        """ Four annoying speech dispatchers appear in Ubuntu
+            TODO: clone to new function that resets Firefox volume from 89%
+                  to 100%
+        """
+        global DELETE_SPEECH
+        if not DELETE_SPEECH:
+            return  # Already done or don't want to kill pids
+
+        found_pids = list()
+        for Sink in pav.sinks_now:
+            if Sink.name == "speech-dispatcher":
+                found_pids.append(Sink.pid)  # Found a gremlin :)
+
+        if len(found_pids) == 0:
+            return  # Nothing found, but can appear 18 minutes after boot.
+
+        DELETE_SPEECH = False  # Don't show message again this session
+        title = "Speech Dispatcher Jobs Discovered."
+        text = str(len(found_pids)) + " instance(s) of Speech"
+        text += "Dispatcher have been found.\n\n"
+        text += "Do you want to cancel the job(s)?\n"  # centered: \t breaks
+        answer = message.AskQuestion(self.play_top, title, text, 'no',
+                                     thread=self.get_refresh_thread)
+        text += "\n\t\tAnswer was: " + answer.result
+        self.info.cast(title + "\n\n" + text)
+
+        if answer.result != 'yes':
+            return  # Don't delete pids
+        for pid in found_pids:
+            ext.kill_pid_running(pid)
 
 
 class TreeviewRow(DeviceCommonSelf):
