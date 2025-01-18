@@ -5162,7 +5162,10 @@ class ToolTips(CommonTip):
                 self.pb_alpha(alpha)
             else:
                 ''' Adjust tip window alpha (transparency) during fade-in/out '''
-                self.tip_window.attributes("-alpha", alpha)
+                try:
+                    self.tip_window.attributes("-alpha", alpha)
+                except AttributeError:
+                    alpha = 1.0  # 2025-01-16 - 'NoneType' error occurred in HomA.
             self.current_alpha = alpha  # Save to prevent spamming same alpha
 
     def create_tip_window(self):

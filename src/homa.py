@@ -855,7 +855,7 @@ class Computer(DeviceCommonSelf):
         """
 
         _who = self.who + "NightLightStatus():"
-        v2_print(_who, "Test if Night Light is active:", self.ip)
+        v2_print(_who, "Test if GNOME Night Light is active:", self.ip)
 
         if forgive:
             pass
@@ -1241,7 +1241,8 @@ class NetworkInfo(DeviceCommonSelf):
 
         if returncode is not None:
             if forgive is False:
-                v0_print(_who, "text:", text)
+                v0_print(_who, "text:")
+                v0_print(" ", text)  # string, list
                 v0_print(_who, "returncode:", returncode)
             return {"result": [{"status": returncode}]}
 
@@ -1275,26 +1276,12 @@ class NetworkInfo(DeviceCommonSelf):
 
         return {}  # TODO: Format dictionary with 'mac': and error
 
-    def update_arp_dict(self, arp_dict):
-        """ Get arp_dict by mac address.
-            :param arp_dict: arp dictionary
-            :returns: True if found, False if not found
-        """
-        _who = self.who + "update_arp_dict():"
-
-        #for arp_dict in self.arp_dicts:
-        #    if arp_dict['mac'] == mac:
-        #        v2_print(_who, "Found existing ni.arp_dict:", arp_dict['name'])
-        #        return arp_dict
-
-        #v2_print(_who, "mac address unknown: '" + mac + "'")
-
-        return True  # TODO: Format dictionary with 'mac': and error
-
     def inst_for_mac(self, mac, not_found_error=True):
-        """ Get instance by mac address.
+        """ Get device instance for mac address. Instances are dynamically
+            created at run time and cannot be saved in arp_dict.
             :param mac: MAC address
-            :returns: instance
+            :param not_found_error: When True print debug error message
+            :returns: existing class instance for controlling device
         """
         _who = self.who + "inst_for_mac():"
 
@@ -1308,8 +1295,10 @@ class NetworkInfo(DeviceCommonSelf):
         return {}  # TODO: Format dictionary with 'mac': and error
 
     def test_for_instance(self, arp):
-        """ Test if mac matches an instance and return dictionary for it.
+        """ Test if arp dictionary is a known device type and create
+            an instance for the device.
         :param arp: dictionary {mac: ip: name: alias: type_code:}
+        :returns: {mac: "xx:xx...", instance: <object>}
         """
         _who = self.who + "test_for_instance():"
         # Next two sanity checks copied from Application().Rediscover()
@@ -1335,18 +1324,14 @@ class NetworkInfo(DeviceCommonSelf):
 
             v1_print(arp['mac'], " # ", arp['ip'].ljust(15),
                      "##  is a " + inst.type + " code =", inst.type_code)
-            #arp['type_code'] = inst.type_code  # Assign 10, 20, 30...
-            # 2025-01-13 Caller must do this
 
-            # Get class instance information
-            #instances.append({"mac": arp['mac'], "instance": inst})
-            #view_order.append(arp['mac'])
-            # 2025-01-13 Caller must do this
-
-            # Instance always rebuilt at run time and never saved to disk
-            #if update:
-            #    ni.arp_dicts[i] = arp  # Update arp list
-            # 2025-01-13 Caller must do this
+            ''' 2025-01-13 Caller must do this:
+            arp['type_code'] = inst.type_code  # Assign 10, 20, 30...
+            instances.append({"mac": arp['mac'], "instance": inst})
+            view_order.append(arp['mac'])
+            if update:
+                ni.arp_dicts[i] = arp  # Update arp list
+            '''
             instance["mac"] = arp['mac']
             instance["instance"] = inst
 
@@ -1365,6 +1350,8 @@ class NetworkInfo(DeviceCommonSelf):
         if test_one(SonyBraviaKdlTV):
             return instance
 
+        # Special testing. android.isDevice was failing without extra time.
+        #   TODO: ni.adb_reset() too long or android.Connect() is timing out.
         if test_one(TclGoogleAndroidTV):
             v0_print(_who, "Android TV found:", arp['ip'])
             v0_print("instance:", instance, "\n")
@@ -2157,6 +2144,29 @@ List of devices attached
     def Connect(self, forgive=False):
         """ Wakeonlan and Connect to TCL / Google Android TV
             Called on startup. Also called from TurnOff() and TurnOn().
+
+        DEBUGGING:
+
+        $ time adb connect 192.168.0.17
+
+* daemon not running. starting it now on port 5037 *
+* daemon started successfully *
+connected to 192.168.0.17:5555
+
+real	0m3.010s
+user	0m0.003s
+sys	    0m0.000s
+
+        Next, run Rediscover Now from Dropdown File menu.
+
+        Command line will show:
+
+Application().Rediscover(): FOUND NEW INSTANCE or REDISCOVERED LOST INSTANCE:
+{'instance': <__main__.TclGoogleAndroidTV instance at 0x7f59af94d3f8>,
+'mac': u'c0:79:82:41:2f:1f'}
+
+        Now restart HomA and missing TV will reappear.
+
         """
 
         _who = self.who + "Connect():"
@@ -2424,12 +2434,10 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         self.Connect()
         #time.sleep(1.0)  # self.Connect doesn't wait for reply from lights
 
-        GLO['LED_LIGHTS_STARTUP'] = "1"  # Can be "0" (off), "1" (on), "?"
-
         if self.device is not None:
             v2_print(_who, self.mac, "successfully connected.")
             v2_print(self.device)
-            if GLO['LED_LIGHTS_STARTUP'] != "0":
+            if GLO['LED_LIGHTS_STARTUP'] is not False:
                 v2_print(_who, "Turning on LED Light.")
                 self.TurnOn()
             else:
@@ -2487,10 +2495,12 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         v2_print(_who, "self.BluetoothStatus:", self.BluetoothStatus)
         return self.BluetoothStatus
 
-    def resetBluetooth(self):
+    def resetBluetooth(self, reconnect=True):
         """ Turn Bluetooth on. Called from Right-Click menu, Reset Bluetooth
             Called from Dropdown View Menu - Bluetooth devices, getBluetoothDevices()
             Visible on Right click treeview row - reset Bluetooth if power "?"
+
+            When called from Right click treeview row, auto reconnect.
 
             Lifted from gatttool.py connect()
 
@@ -2528,15 +2538,22 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
 
         if event['returncode'] == 0:
             # Bluetooth successfully restarted. Now reset self.hci_device ('hci0')
+            msg = "'systemctl restart bluetooth' success."
+            #if reconnect:
+            msg += "  Attempting reset." if reconnect else msg
+            v1_print(_who, "\n  " + msg)
             command_line_list = ["sudo", "hciconfig", self.hci_device, "reset"]
             _event = self.runCommand(command_line_list, _who, forgive=False)
             status = "ON"
         else:
+            v1_print(_who, "\n  " +
+                     "'systemctl restart bluetooth' FAILED !")
             status = "OFF"
 
-        v0_print(_who, "Bluetooth status:", status, "attempting self.Connect()")
-        self.Connect(sudo_reset=True)
-        v0_print(_who, self.name, "self.device:", self.device)
+        if reconnect:
+            v0_print(_who, "Bluetooth status:", status, "attempting self.Connect()")
+            self.Connect(sudo_reset=True)
+            v0_print(_who, self.name, "self.device:", self.device)
 
         self.BluetoothStatus = status
         return self.BluetoothStatus
@@ -2558,7 +2575,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
 
         return GLO['SUDO_PASSWORD']
 
-    def getBluetoothDevices(self, show_unknown=False):
+    def getBluetoothDevices(self, show_unknown=False, reconnect=True):
         """ Get list of all bluetooth devices (including unknown)
 
         NOTE: Called with inst.getBluetoothDevices()
@@ -2577,7 +2594,8 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         if not self.elevateSudo():
             return ""  # Cancel button (256) or escape or 'X' on window decoration (64512)
 
-        self.resetBluetooth()  # Hammer connections in order to prevent:
+        self.resetBluetooth(reconnect=reconnect)
+        # Hammer connections in order to prevent:
         # Set scan parameters failed: Input/output error
 
         TMP_FFPROBE = g.TEMP_DIR + "homa_bluetooth_devices"  # _a3sd24 appended
@@ -2641,8 +2659,9 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         who = self.cmdCaller + " logEvent():"
         self.logEvent(who, forgive=False, log=True)
 
-        if returncode is not None:
-            v0_print(_who, "text:", text)
+        if returncode:
+            v0_print(_who, "text:")
+            v0_print(" ", text)  # string, list
             v0_print(_who, "returncode:", returncode)
 
         device_list = []
@@ -2661,8 +2680,11 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
             v0_print("address:", address, "name:", name, "count:", count)
             device_list.append((address, name, count))
 
-        self.resetBluetooth()  # Hammer connections in order to prevent:
-        ext.remove_existing(self.temp_fname)
+        self.resetBluetooth(reconnect=False)
+        # Hammer connections in order to prevent:
+        # Set scan parameters failed: Input/output error
+
+        ext.remove_existing(self.temp_fname)  # Clean up temporary output file
 
         return device_list
 
@@ -2712,8 +2734,6 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         except (pygatt.exceptions.NotConnectedError, AttributeError) as err:
             msg = "Turn on " + self.name + " first!"
             v1_print(_who, msg + "\n", err)
-            #message.ShowInfo(self, thread=self.app.Refresh, icon='error',
-            #                 title="Not connected", text=msg)
             self.app.ShowInfo("Not connected", msg, "error")
             self.device = None  # Force connect on next attempt
             self.powerStatus = self.power_status = "?"
@@ -2759,7 +2779,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
                     "sudo", "hciconfig", self._hci_device, "reset"]).wait()
 
         """
-        GLO['LED_LIGHTS_MAC'] = "36:46:3E:F3:09:5E"
+
         _who = self.who + "Connect():"
         v2_print("\n" + _who, "self.hci_device:", self.hci_device, " | name:", self.name,
                  "\n  GLO['LED_LIGHTS_MAC']:", GLO['LED_LIGHTS_MAC'],
@@ -2787,6 +2807,13 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         """ Return "ON", "OFF" or "?".
             On startup cannot query LED's so status unknown until turned on or off
                 using the self.startDevice() method.
+$ ps aux | grep gatttool | grep -v grep | wc -l
+46
+
+# Run getPower() which doesn't initialize Bluetooth Low Energy LED Lights device
+
+$ ps aux | grep gatttool | grep -v grep | wc -l
+47
 
         """
         _who = self.who + "getPower():"
@@ -2795,6 +2822,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         # BLE LED Light Strips requires connection
         if GLO['LED_LIGHTS_MAC'] is not None and self.device is None:
             self.startDevice()  # Will test self.BluetoothStatus attribute.
+            # self.startDevice() runs self.Connect()
 
         return self.powerStatus
 
@@ -2906,7 +2934,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         v0_print()
         '''
 
-        self.requires = ['arp', 'getent', 'timeout', 'curl', 'adb', 'hs100.sh', 'aplay']
+        self.requires = ['arp', 'getent', 'timeout', 'curl', 'adb', 'hs100.sh', 'aplay',
+                         'ps', 'grep']
         self.installed = []
         self.CheckDependencies(self.requires, self.installed)
 
@@ -3192,7 +3221,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             if True is True:
                 # 2024-12-13: Safe method of suspending. However countdown timer
                 #   disappears until message acknowledged
-                message.ShowInfo(self, thread=self.Refresh,
+                message.ShowInfo(self, thread=self.Refresh, win_grp=self.win_grp,
                                  icon='warning', title="Cannot Suspend now.",
                                  text="Countdown timer must be closed.")
                 v0_print(_who, "Aborting suspend. Countdown timer active.")
@@ -3207,7 +3236,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         if not self.rediscover_done:
             # 2024-12-14: Safe method of suspending. Last night during suspend the
             #   system rebooted. TODO: Disable suspend button during rediscovery.
-            message.ShowInfo(self, thread=self.Refresh,
+            message.ShowInfo(self, thread=self.Refresh, win_grp=self.win_grp,
                              icon='warning', title="Cannot Suspend now.",
                              text="Device rediscovery is in progress for a few seconds.")
             v0_print(_who, "Aborting suspend. Device rediscovery in progress.")
@@ -3708,6 +3737,26 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             Called when: now - self.last_refresh_time > GLO['RESUME_TEST_SECONDS']
             Consequently long running processes must reseed self.last_refresh_time
             when they finish.
+
+            2025-01-17 ERROR: Resume did not work for Sony TV, Sony Light, TCL TV,
+                and TCL TV light. It did work for BLE LED Lights. Error message:
+
+ 5931.54 | +94.0°C 5200 RPM | +80.0°C 5000 RPM |  6:18 AM
+Application().Suspend(): Suspending system...
+Application().SetAllPower(OFF): power status is not 'OFF': TCL.Light
+Application().SetAllPower(OFF): power status is not 'OFF': SONY.LAN
+Application().SetAllPower(OFF): power status is not 'OFF': SONY.Light
+Application().SetAllPower(OFF): power status is not 'OFF': TCL.LAN
+Application().SetAllPower(OFF): power status is not 'OFF': Bluetooth LED
+
+= = = =  Application().Refresh() Resuming from suspend after: 9 hr, 27 min  = = = =
+
+NetworkInfo().os_curl(): text: []
+NetworkInfo().os_curl(): returncode: 1792
+SonyBraviaKdlTV().TurnOn(): reply_dict['result']' should be empty: [{'status': 1792}]
+BluetoothLedLightStrip().TurnOn(): Device not connected!
+    0.06 | +42.0°C    0 RPM | +31.0°C    0 RPM |  3:56 PM
+
         """
         global rd
         _who = self.who + "ResumeFromSuspend():"
@@ -3839,6 +3888,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 pass
             resp = "?"  # Necessary for pyCharm checker only
             if state == "ON":
+                v0_print(_who, "Unconditionally turning power 'ON':", inst.name)
                 resp = inst.TurnOn()
                 inst.powerStatus = str(resp)
                 # TODO Check response
@@ -3846,7 +3896,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 inst.menuPowerOn = 0  # User didn't power on the device via menu
                 inst.nightPowerOn += 1 if night_powered_on else 0
             elif state == "OFF":
-                '''
+                ''' Timing out if power is already OFF
                 Application().Suspend(): Suspending system...
                 TclGoogleAndroidTV().TurnOff(): runCommand(): cmdReturncode: 124
                 TclGoogleAndroidTV().TurnOff(): 192.168.0.17 timeout after: 5.0
@@ -3855,7 +3905,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 If inst.Power is "OFF" do not try to turn off again and waste time.                
                 '''
                 if inst.powerStatus != "OFF":
-                    v0_print(_who, "power status is not 'OFF':", inst.name)
+                    v0_print(_who, "Conditionally turning power 'OFF':", inst.name)
                     resp = inst.TurnOff()
                     inst.powerStatus = str(resp)
                     inst.suspendPowerOff += 1  # Suspend powered off the device
@@ -4073,27 +4123,56 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 tr.Add(new_row)
                 self.tree.see(str(new_row))
             elif mac not in ni.view_order:
-                #v1_print(_who, "ni.arp_dicts MAC not in view order:", mac)
+                v2_print(_who, "ni.arp_dicts MAC not in view order:", mac)
                 # ni.arp_dicts MAC not in view order: a8:4e:3f:82:98:b2   <-- ROUTER
                 pass  # TODO: 2024-11-28 - Check rd.arp changes from ni.arp
 
             arp_inst = ni.inst_for_mac(mac)
-            if not arp_inst:
-                #v1_print(_who, "No Instance for ni.arp_dicts MAC:", mac)
-                # No Instance for ni.arp_dicts MAC: a8:4e:3f:82:98:b2   <-- ROUTER
+            if bool(arp_inst):
+                v2_print(_who, "found instance:", arp_inst['mac'], arp_mac['name'])
+                if mac not in ni.view_order:
+                    v0_print(_who, "arp exists, instance exists, but no view order")
+                    v0_print("Inserting", rediscover['mac'], rediscover['name'])
+                    ni.view_order.append(mac)
+                    if not usingDevicesTreeview:
+                        continue
 
-                # Application().Rediscover(): ni.arp_dicts MAC not in view order: c0:79:82:41:2f:1f
-                # NetworkInfo().inst_for_mac(): mac address unknown: 'c0:79:82:41:2f:1f'
-                # Application().Rediscover(): No Instance for ni.arp_dicts MAC: c0:79:82:41:2f:1f
-                instance = ni.test_for_instance(arp_mac)
-                if bool(instance):
-                    v0_print("\n" + _who, "FOUND NEW INSTANCE or",
-                             "REDISCOVERED LOST INSTANCE:")
-                    v0_print(instance)
-                    ni.instances.append(instance)
-                    arp_mac['type_code'] = instance['instance'].type_code
-                    ni.view_order.append(arp_mac['mac'])
-                    ni.arp_dicts[i] = arp_mac  # Update arp list
+                    tr = TreeviewRow(self)
+                    tr.New(mac)
+                    new_row = len(self.tree.get_children())
+                    tr.Add(new_row)
+                    self.tree.see(str(new_row))
+                    # 2025-01-16 - At this point HomA locks up ???
+                continue
+
+            # Instance doesn't exist for existing arp mac
+            v2_print(_who, "No Instance for ni.arp_dicts MAC:", mac)
+            # No Instance for ni.arp_dicts MAC: a8:4e:3f:82:98:b2   <-- ROUTER
+
+            # Application().Rediscover(): ni.arp_dicts MAC not in view order: c0:79:82:41:2f:1f
+            # NetworkInfo().inst_for_mac(): mac address unknown: 'c0:79:82:41:2f:1f'
+            # Application().Rediscover(): No Instance for ni.arp_dicts MAC: c0:79:82:41:2f:1f
+            instance = ni.test_for_instance(arp_mac)
+            if not bool(instance):
+                continue
+
+            v0_print("="*80, "\n" + _who, "FOUND NEW INSTANCE or",
+                     "REDISCOVERED LOST INSTANCE:")
+            v0_print(instance)
+            ni.instances.append(instance)
+            arp_mac['type_code'] = instance['instance'].type_code
+            ni.view_order.append(rediscover['mac'])
+            #ni.arp_dicts[i] = arp_mac  # Update arp list
+            # 2025-01-16 arp_mac s/b updated in place. Check all usage above
+            v0_print("="*80)
+
+            if not usingDevicesTreeview:
+                continue
+            tr = TreeviewRow(self)
+            tr.New(mac)
+            new_row = len(self.tree.get_children())
+            tr.Add(new_row)
+            self.tree.see(str(new_row))
 
         # All steps done: Wait for next rediscovery period
         ni.cmdEvents.extend(rd.cmdEvents)  # For auto-rediscover, rd.cmdEvents[] empty
@@ -4122,7 +4201,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         msg = "Sudo password required for laptop display.\n\n"
         answer = message.AskString(
             self, text=msg, thread=self.Refresh, show='*',
-            title="Enter sudo password", icon="information")
+            title="Enter sudo password", icon="information", win_grp=self.win_grp)
 
         # Setting laptop display power requires sudo prompt which causes fake resume
         self.last_refresh_time = time.time()  # Refresh idle loop last entered time
@@ -4136,7 +4215,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             msg = "Invalid sudo password!\n\n"
             message.ShowInfo(
                 self, text=msg, thread=self.Refresh,
-                title="Invalid sudo password", icon="error")
+                title="Invalid sudo password", icon="error", win_grp=self.win_grp)
 
         self.last_refresh_time = time.time()  # Refresh idle loop last entered time
         return password  # Will be <None> if invalid password entered
@@ -4147,7 +4226,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             From Instance us: self.app.ShowInfo()
         """
         message.ShowInfo(self, thread=self.Refresh, icon=icon,
-                         title=title, text=text)
+                         title=title, text=text, win_grp=self.win_grp)
 
     def Preferences(self):
         """ Edit preferences """
@@ -4370,17 +4449,13 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         scrollbox.highlight_pattern("Avg:", "yellow")
 
     def DisplayBluetooth(self):
-        """ Display Bluetooth devices that have a name """
+        """ Display Bluetooth devices that have a name
+            May have to call a few times to see a device that was connected.
+            See: https://wiki.archlinux.org/title/Bluetooth#Troubleshooting
+            for general problems and solutions with deprecated Bluez Tools.
+        """
         _who = self.who + "DisplayBluetooth():"
         title = "Bluetooth devices"
-
-        status = ble.getBluetoothStatus()  # Check for hci0 device active
-        if status != "ON":
-            status = ble.resetBluetooth()
-
-        if status != "ON":
-            v0_print(_who, "Bluetooth will not turn on.")
-            return
 
         found_inst = None
         for mac_arp in ni.arp_dicts:
@@ -4391,12 +4466,26 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 found_inst = instance['instance']
 
         if found_inst:
+            status = found_inst.getBluetoothStatus()  # Check for hci0 device active
+        else:
+            status = ble.getBluetoothStatus()  # Check for hci0 device active
+        if status != "ON" and found_inst:
+            status = found_inst.resetBluetooth(reconnect=False)
+        if status != "ON" and found_inst is None:
+            status = ble.resetBluetooth(reconnect=False)
+
+        if status != "ON":
+            v0_print(_who, "Bluetooth will not turn on.")
+            return
+
+        if found_inst:
             v1_print(_who, "Using existing instance:", found_inst)
             found_inst.Disconnect()
-            device_list = found_inst.getBluetoothDevices()
+            device_list = found_inst.getBluetoothDevices(reconnect=False)
         else:
             v1_print(_who, "Creating new instance for reset.")
-            device_list = ble.getBluetoothDevices()  # 10 second scan with countdown dtb
+            device_list = ble.getBluetoothDevices(reconnect=False)
+            # 10 second scan with countdown dtb
         if len(device_list) == 0:
             return
 
@@ -4413,15 +4502,11 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             scrollbox.insert("end", str(count) + ")\n")
 
             instance = ni.inst_for_mac(address)
-            if bool(instance):
+            if bool(instance):  # MAC address matches BLE device's MAC discovered
                 scrollbox.highlight_pattern(address, "red")
                 scrollbox.highlight_pattern(name, "yellow")
                 arp_dict = ni.arp_for_mac(address)
-                arp_dict['name'] = name  # Will this update directly?
-                ni.update_arp_dict(arp_dict)
-                # warning sometimes mac address will appear twice:
-                # address This IS NAM (1)   <--- BAD NAME
-                # address This IS NAME (4)  <--- GOOD NAME
+                arp_dict['ip'] = name  # ip isn't used for bluetooth.
                 # 2025-01-15 TODO: Update Treeview Row with new name.
             else:  # empty dictionary
                 scrollbox.highlight_pattern(address, "blue")
@@ -4441,6 +4526,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         #     9573  0.0  0.0  21556  3316 pts/27   Ss+  16:48   0:00 /usr/bin/gatttool -i hci0 -I
         #     9973  0.0  0.0  21556  3308 pts/28   Ss+  16:48   0:00 /usr/bin/gatttool -i hci0 -I
         #     9990  0.0  0.0  21556  3316 pts/29   Ss+  16:48   0:00 /usr/bin/gatttool -i hci0 -I
+
+        self.GATTToolJobs()
 
     def DisplayCommon(self, _who, title, width=1200, height=500):
         """ Common method for DisplayBluetooth, DisplayErrors(), DisplayTimings() """
@@ -4510,38 +4597,71 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         return scrollbox
 
+    def GATTToolJobs(self):
+        """ Check quantity and percentage of gatttool process ID's.
 
-    def check_speech_dispatcher(self):
-        """ Four annoying speech dispatchers appear in Ubuntu
-            TODO: clone to new function that resets Firefox volume from 89%
-                  to 100%
+            ps -aux | grep gatttool | grep -v grep
         """
-        global DELETE_SPEECH
-        if not DELETE_SPEECH:
-            return  # Already done or don't want to kill pids
+        _who = self.who + "GATTToolPercentage():"
+        v1_print("\n" + _who, "Check GATTTool percentage")
+        if not self.CheckInstalled("ps"):
+            v1_print(_who, "Commands 'ps' or 'grep' are not installed. Exiting.")
+            return
+        if not self.CheckInstalled("grep"):
+            v1_print(_who, "Commands 'ps' or 'grep' are not installed. Exiting.")
+            return
 
-        found_pids = list()
-        for Sink in pav.sinks_now:
-            if Sink.name == "speech-dispatcher":
-                found_pids.append(Sink.pid)  # Found a gremlin :)
+        ''' ps | grep FAILS:
+            Shell parameter expansion happens after the high-level parsing of 
+            pipes breaks the line into structured commands, so your function 
+            body runs as though you'd written:
+            
+                ps ax '|' grep -v grep '|'
+            
+            - that is, with the pipes as literal arguments to ps. That's why 
+            you're getting the error from ps (not from grep!) complaining it 
+            doesn't understand the | argument.
+        '''
+        command_line_list = ["ps", "ux"]  # "aux" is all users. Just get current.
+        event = self.runCommand(command_line_list, _who)
+        v3_print(_who, self.cmdString, event['output'], event['error'])
 
-        if len(found_pids) == 0:
-            return  # Nothing found, but can appear 18 minutes after boot.
+        found_pids = []
+        lines = self.cmdOutput.splitlines()
+        v1_print(_who, "'ps ux | grep gatttool' results:")
+        for line in lines:
+            if "gatttool" in line:
+                ll = line.split()
+                v1_print(ll)
+                found_pids.append(ll)
+                if float(ll[2]) > 10.0:  # CPU percentage > 10%?
+                    v0_print(_who, "\n  CPU usage > 10%", ll[:3])
 
-        DELETE_SPEECH = False  # Don't show message again this session
-        title = "Speech Dispatcher Jobs Discovered."
-        text = str(len(found_pids)) + " instance(s) of Speech"
-        text += "Dispatcher have been found.\n\n"
+        ''' Found_pids have 12 results, 3 for each time view Bluetooth Devices is run:        
+        [snip 4...]
+        ['rick', '17229', '90.9', '0.0', '21556', '3344', 'pts/31', 'Rs+', '00:59', '0:28', '/usr/bin/gatttool', '-i', 'hci0', '-I'], 
+        [...snip 7] '''
+
+        v0_print(_who, "self.win_grp BEFORE:")
+        v0_print(self.win_grp.window_list)
+
+        title = "GATTTool Jobs Discovered."
+        text = str(len(found_pids)) + " instance(s) of GATTTool"
+        text += "have been found.\n\n"
         text += "Do you want to cancel the job(s)?\n"  # centered: \t breaks
-        answer = message.AskQuestion(self.play_top, title, text, 'no',
-                                     thread=self.get_refresh_thread)
+        answer = message.AskQuestion(self, title, text, 'no',
+                                     thread=self.Refresh, win_grp=self.win_grp)
+
         text += "\n\t\tAnswer was: " + answer.result
-        self.info.cast(title + "\n\n" + text)
+        #self.info.cast(title + "\n\n" + text)
+
+        v0_print(_who, "self.win_grp AFTER :")
+        v0_print(self.win_grp.window_list)
 
         if answer.result != 'yes':
             return  # Don't delete pids
         for pid in found_pids:
-            ext.kill_pid_running(pid)
+            ext.kill_pid_running(pid[1])
 
 
 class TreeviewRow(DeviceCommonSelf):
@@ -5202,7 +5322,7 @@ root = None  # Tkinter toplevel
 app = None  # Application GUI
 cfg = sql.Config()  # Colors configuration SQL records
 glo = Globals()  # Global variables
-GLO = glo.dictGlobals  # global dictionary. Dummy declaration, reset during open.
+GLO = glo.dictGlobals  # global dictionary. Dummy, reset during main() glo.open_file().
 ble = BluetoothLedLightStrip()  # Must follow GLO dictionary and before ni instance
 cp = Computer()  # cp = Computer Platform
 ni = NetworkInfo()  # ni = global class instance used everywhere
@@ -5325,6 +5445,12 @@ def main():
 
     glo.openFile()
     GLO = glo.dictGlobals
+    GLO['APP_RESTART_TIME'] = time.time()
+
+    # 2025-01-18 Temporary declarations whilst dictionary recreated during development
+    GLO['LED_LIGHTS_MAC'] = "36:46:3E:F3:09:5E"
+    GLO['LED_LIGHTS_STARTUP'] = True  # Displayed as "0" (off), "1" (on), "?"
+
     ni = NetworkInfo()  # Generate Network Information for arp and hosts
 
     # ni.adb_reset()  # adb kill-server && adb start-server
