@@ -2675,9 +2675,9 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
                 continue
             count = parts[0]
             address = parts[1]
-            name = ' '.join(parts[2:])
+            name = ' '.join(parts[2:])  # Device name was split on spaces
 
-            v0_print("address:", address, "name:", name, "count:", count)
+            v2_print("address:", address, "name:", name, "count:", count)
             device_list.append((address, name, count))
 
         self.resetBluetooth(reconnect=False)
@@ -4457,6 +4457,9 @@ BluetoothLedLightStrip().TurnOn(): Device not connected!
         _who = self.who + "DisplayBluetooth():"
         title = "Bluetooth devices"
 
+        # Save mouse position because it can change over next 10 seconds
+        x, y = hc.GetMouseLocation()
+
         found_inst = None
         for mac_arp in ni.arp_dicts:
             instance = ni.inst_for_mac(mac_arp['mac'], not_found_error=False)
@@ -4489,7 +4492,7 @@ BluetoothLedLightStrip().TurnOn(): Device not connected!
         if len(device_list) == 0:
             return
 
-        scrollbox = self.DisplayCommon(_who, title, width=700)
+        scrollbox = self.DisplayCommon(_who, title, x=x, y=y, width=700)
         if scrollbox is None:
             return  # Window already opened and method is running
 
@@ -4517,19 +4520,12 @@ BluetoothLedLightStrip().TurnOn(): Device not connected!
             found_inst.startDevice()
 
         # After running gatttool taking 100% of a single CPU core
-        # until homa.py exits
-        # $ ps aux | grep gatttool | grep -v grep
-        #     5114  0.0  0.0  21556  3288 pts/2    Ss+  16:46   0:00 /usr/bin/gatttool -i hci0 -I
-        #     7070  0.0  0.0  21556  3340 pts/24   Ss+  16:47   0:00 /usr/bin/gatttool -i hci0 -I
-        #     7497  0.0  0.0  21556  3308 pts/25   Ss+  16:47   0:00 /usr/bin/gatttool -i hci0 -I
-        #     7650 52.2  0.0  21556  3292 pts/26   Rs+  16:47   1:04 /usr/bin/gatttool -i hci0 -I
-        #     9573  0.0  0.0  21556  3316 pts/27   Ss+  16:48   0:00 /usr/bin/gatttool -i hci0 -I
-        #     9973  0.0  0.0  21556  3308 pts/28   Ss+  16:48   0:00 /usr/bin/gatttool -i hci0 -I
-        #     9990  0.0  0.0  21556  3316 pts/29   Ss+  16:48   0:00 /usr/bin/gatttool -i hci0 -I
+        # until homa.py exits. Fix by calling self.GATTToolJobs()
 
+        self.update_idletasks()
         self.GATTToolJobs()
 
-    def DisplayCommon(self, _who, title, width=1200, height=500):
+    def DisplayCommon(self, _who, title, x=None, y=None, width=1200, height=500):
         """ Common method for DisplayBluetooth, DisplayErrors(), DisplayTimings() """
 
         if self.event_scroll_active and self.event_top:
@@ -4550,7 +4546,8 @@ BluetoothLedLightStrip().TurnOn(): Device not connected!
             self.event_top = None
 
         self.event_top = tk.Toplevel()
-        x, y = hc.GetMouseLocation()
+        if x is None or y is None:
+            x, y = hc.GetMouseLocation()
         self.event_top.geometry('%dx%d+%d+%d' % (width, height, int(x), int(y)))
         self.event_top.minsize(width=120, height=63)
         self.event_top.title(title)
@@ -4602,14 +4599,18 @@ BluetoothLedLightStrip().TurnOn(): Device not connected!
 
             ps -aux | grep gatttool | grep -v grep
         """
-        _who = self.who + "GATTToolPercentage():"
+        _who = self.who + "GATTToolJobs():"
         v1_print("\n" + _who, "Check GATTTool percentage")
         if not self.CheckInstalled("ps"):
-            v1_print(_who, "Commands 'ps' or 'grep' are not installed. Exiting.")
+            v1_print(_who, "Command 'ps' not installed. Exiting.")
             return
         if not self.CheckInstalled("grep"):
-            v1_print(_who, "Commands 'ps' or 'grep' are not installed. Exiting.")
+            v1_print(_who, "Command 'grep' not installed. Exiting.")
             return
+
+        # When calling 'ps ux' (aux) is all users can get PID's that are ending.
+        # external.kill_pid_running() ERROR: os.kill  failed for PID: 3962
+        # external.kill_pid_running() ERROR: os.kill  failed for PID: 9915
 
         ''' ps | grep FAILS:
             Shell parameter expansion happens after the high-level parsing of 
@@ -4627,41 +4628,67 @@ BluetoothLedLightStrip().TurnOn(): Device not connected!
         v3_print(_who, self.cmdString, event['output'], event['error'])
 
         found_pids = []
+        high_pid_perc = 0
         lines = self.cmdOutput.splitlines()
-        v1_print(_who, "'ps ux | grep gatttool' results:")
+        # 'ps ux' results but, twist the truth for meaningful reality
+        # Change v1_print to v1_print after testing, reverse for testing.
+        v1_print(_who, "'ps ux | grep -v grep | grep gatttool' results:")
         for line in lines:
-            if "gatttool" in line:
+            if "gatttool" in line and "grep" not in line:
+                # equivalent of "ps ux | grep -v grep | grep gatttool"
                 ll = line.split()
-                v1_print(ll)
-                found_pids.append(ll)
+                # Line 4 is job closing down that can't be killed
+                # 1  ['rick', '8336',  '10.7', '0.0', '0', '0', '?', 'Zs', '10:47', '0:24']
+                # 2  ['rick', '13964', '61.2', '0.0', '0', '0', '?', 'Zs', '10:50', '1:00']
+                # 3  ['rick', '14836', '42.2', '0.0', '0', '0', '?', 'Zs', '10:50', '0:30']
+                # 4  ['rick', '15789', '0.0',  '0.0', '0', '0', '?', 'Zs', '10:50', '0:00']
+                # 5  ['rick', '16969', '0.0',  '0.0', '21556', '3376', 'pts/27', 'Ss+', '10:51', '0:00']
+                # external.kill_pid_running() ERROR: os.kill  failed for PID: 15789
+                v1_print(" ", ll[:10])
                 if float(ll[2]) > 10.0:  # CPU percentage > 10%?
-                    v0_print(_who, "\n  CPU usage > 10%", ll[:3])
+                    v1_print("   PID:", ll[1], " | CPU usage over 10%:", ll[2])
+                    high_pid_perc += 1  # Also has "?" instead of 'pts/99'
+                elif ll[6] == "?":
+                    v1_print("   PID:", ll[1], " | 'pts/99' == '?'.  Skipping...")
+                    continue
+                found_pids.append(ll)
+
+        # If less than 5 pids and none > 10% skip AskQuestion()
+        if len(found_pids) < 5 and high_pid_perc == 0:
+            return
 
         ''' Found_pids have 12 results, 3 for each time view Bluetooth Devices is run:        
         [snip 4...]
         ['rick', '17229', '90.9', '0.0', '21556', '3344', 'pts/31', 'Rs+', '00:59', '0:28', '/usr/bin/gatttool', '-i', 'hci0', '-I'], 
         [...snip 7] '''
 
-        v0_print(_who, "self.win_grp BEFORE:")
-        v0_print(self.win_grp.window_list)
+        v3_print(_who, "self.win_grp BEFORE:")  # AskQuestion() win_grp debugging
+        v3_print(self.win_grp.window_list)
 
         title = "GATTTool Jobs Discovered."
         text = str(len(found_pids)) + " instance(s) of GATTTool"
-        text += "have been found.\n\n"
+        text += " have been found.\n\n"
+        if high_pid_perc:
+            text += str(high_pid_perc) + " job(s) have high CPU percentage.\n\n"
         text += "Do you want to cancel the job(s)?\n"  # centered: \t breaks
         answer = message.AskQuestion(self, title, text, 'no',
                                      thread=self.Refresh, win_grp=self.win_grp)
 
         text += "\n\t\tAnswer was: " + answer.result
-        #self.info.cast(title + "\n\n" + text)
+        v3_print(title, text)
 
-        v0_print(_who, "self.win_grp AFTER :")
-        v0_print(self.win_grp.window_list)
+        v3_print(_who, "self.win_grp AFTER :")  # AskQuestion() win_grp debugging
+        v3_print(self.win_grp.window_list)
 
         if answer.result != 'yes':
             return  # Don't delete pids
         for pid in found_pids:
-            ext.kill_pid_running(pid[1])
+            ext.kill_pid_running(int(pid[1]))
+            # No way to kill <defunct> : https://askubuntu.com/a/201308/307523
+            # So these jobs will commit suicide when homa.py ends:
+            # $ ps ux | grep gatttool | grep -v grep
+            # rick  7716 13.3  0.0 0 0 ? Zs 11:44 0:46 [gatttool] <defunct>
+            # rick 13317  0.0  0.0 0 0 ? Zs 11:47 0:00 [gatttool] <defunct>
 
 
 class TreeviewRow(DeviceCommonSelf):

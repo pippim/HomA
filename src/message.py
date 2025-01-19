@@ -865,6 +865,7 @@ TclError: grab failed: another application has grab
         #print("self.ok, self.result", self.result)  # "yes"
         if self.win_grp:  # unregister in both self.ok() and self.Cancel()
             self.win_grp.unregister_child(self)
+            self.win_grp = None  # Duplicate unregister in self.cancel()
 
     def cancel(self, _event=None):
         """ Cancel button clicked. """
@@ -876,6 +877,7 @@ TclError: grab failed: another application has grab
         self.result = "no"
         if self.win_grp:  # unregister in both self.ok() and self.Cancel()
             self.win_grp.unregister_child(self)
+            self.win_grp = None  # Duplicate unregister in self.cancel()
 
         self.destroy()  # Called by self.OK as well to destroy window
 
@@ -985,6 +987,7 @@ class AskString(simpledialog.Dialog, AskCommonSelf):
         self.result = "yes"
         if self.win_grp:  # unregister in both self.ok() and self.Cancel()
             self.win_grp.unregister_child(self)
+            self.win_grp = None  # Duplicate unregister in self.cancel()
 
     def apply(self, _event=None):
         """ Clicked Apply button. E.G. accept string input """
@@ -994,6 +997,7 @@ class AskString(simpledialog.Dialog, AskCommonSelf):
         #print('self.string:', self.string)
         if self.win_grp:  # unregister in both self.ok() and self.Cancel()
             self.win_grp.unregister_child(self)
+            self.win_grp = None  # Duplicate unregister in self.cancel()
         return True
 
     def cancel(self, _event=None):
@@ -1006,6 +1010,7 @@ class AskString(simpledialog.Dialog, AskCommonSelf):
         self.result = "no"
         if self.win_grp:  # unregister in both self.ok() and self.Cancel()
             self.win_grp.unregister_child(self)
+            self.win_grp = None  # Duplicate unregister in self.cancel()
         self.destroy()
 
 
@@ -1081,6 +1086,7 @@ class AskDirectory(filedialog.Directory, AskCommonSelf):
             self.cancel()
         if self.win_grp:  # unregister in both self.ok() and self.Cancel()
             self.win_grp.unregister_child(self)
+            self.win_grp = None  # Duplicate unregister in self.cancel()
         return self.directory
 
     def cancel(self, _event=None):
@@ -1092,6 +1098,7 @@ class AskDirectory(filedialog.Directory, AskCommonSelf):
             self.parent.focus_set()
         if self.win_grp:  # unregister in both self.ok() and self.Cancel()
             self.win_grp.unregister_child(self)
+            self.win_grp = None  # Duplicate unregister in self.cancel()
         self.destroy()
 
 

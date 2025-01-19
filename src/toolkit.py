@@ -1276,7 +1276,11 @@ class ChildWindows:
                 new_x = x + x_off
                 new_y = y + y_off
                 geom = "+" + str(new_x) + "+" + str(new_y)
-                win_dict['widget'].geometry(geom)
+                try:
+                    win_dict['widget'].geometry(geom)
+                except tk.TclError as err:
+                    print("toolkit.py ChildWindows.move_children(): win_dict['widget'].geometry(geom)")
+                    print(" ", err)
 
         self.mit_en, self.mit_el = self.get_el(self.mit_st)
         self.log_el("M", self.mec, self.mit_st, self.mit_en, self.mit_el)
