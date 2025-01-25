@@ -91,6 +91,11 @@ def h(float_time):
     return f_time.strftime("%H:%M:%S.%f")
 
 
+def ch():
+    """ Print current 24 hour time with milliseconds """
+    return h(time.time())
+
+
 def tail(f, n, offset=0):
     """
     https://stackoverflow.com/a/136280/6929343 Python 2 version give deprecation warning

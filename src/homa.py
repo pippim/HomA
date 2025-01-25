@@ -87,6 +87,7 @@ from PIL import Image, ImageTk, ImageDraw, ImageFont
 import signal  # Shutdown signals
 import sqlite3  # Was only used for error messages but needed sql. in front
 
+
 try:
     import subprocess32 as sp
     SUBPROCESS_VER = '32'
@@ -112,6 +113,8 @@ import time  # For now = time.time()
 import datetime as dt  # For dt.datetime.now().strftime('%I:%M %p')
 import random  # Temporary filenames
 import string  # Temporary filenames
+import base64  # Required for Cryptology
+from cryptography.fernet import Fernet  # To encrypt sudo password
 
 try:
     reload(sys)  # June 25, 2023 - Without utf8 sys reload, os.popen() fails on OS
@@ -681,6 +684,8 @@ class Computer(DeviceCommonSelf):
         # '192.168.0.10', '192.168.0.10', '192.168.0.10']
 
         self.Interface()  # Initial values
+        self.crypto_key = self.generateCryptoKey()
+        v3_print(_who, "self.crypto_key:", self.crypto_key)
         self.NightLightStatus()
 
     def Interface(self, forgive=False):
@@ -810,7 +815,7 @@ class Computer(DeviceCommonSelf):
             pass
 
         self.powerStatus = self.power_status = "ON"  # Can be "ON", "OFF" or "?"
-        return self.power_status  # Really it is "AWAKE"
+        return self.powerStatus  # Really it is "AWAKE"
 
     def TurnOff(self, forgive=False):
         """ Turn off computer with GLO['POWER_OFF_CMD_LIST'] which contains:
@@ -830,7 +835,7 @@ class Computer(DeviceCommonSelf):
         _event = self.runCommand(command_line_list, _who, forgive=forgive)
 
         self.powerStatus = self.power_status = "OFF"  # Can be "ON", "OFF" or "?"
-        return self.power_status  # Really it is "SLEEP"
+        return self.powerStatus  # Really it is "SLEEP"
 
     def getPower(self, forgive=False):
         """ The computer is always "ON" """
@@ -842,7 +847,28 @@ class Computer(DeviceCommonSelf):
             pass
 
         self.powerStatus = self.power_status = "ON"
-        return self.power_status
+        return self.powerStatus
+
+    def generateCryptoKey(self, key=None):
+        """ 32 byte key can be passed or generated based on device. """
+        _who = self.who + "generateCryptoKey():"
+        if key is None:
+            if self.ether_mac is not None:
+                key = self.ether_mac + ":" + self.ether_mac
+            elif self.wifi_mac is not None:
+                key = self.wifi_mac + ":" + self.wifi_mac
+
+        key = key + " "*32
+        v3_print(_who, "key[32]", key[:33])
+        # Computer().generateCryptoKey(): key[32] 28:f1:0e:2a:1a:ed:28:f1:0e:2a:1a:
+        # Computer().__init()__: self.crypto_key: Mjg6ZjE6MGU6MmE6MWE6ZWQ6Mjg6ZjE6MGU6MmE6MWE6
+
+        # https://www.microfocus.com/documentation/visual-cobol/vc80/CSWin/BKCJCJDEFNS009.html
+        # The resulting base64-encoded data is approximately 33% longer than the
+        # original data, and typically appears as seemingly random characters.
+        # Base64 encoding is specified in full in RFC 1421 and RFC 2045.
+
+        return base64.urlsafe_b64encode(key[:33])
 
     def NightLightStatus(self, forgive=False):
         """ Return True if "On" or "Off"
@@ -1467,7 +1493,7 @@ class LaptopDisplay(DeviceCommonSelf):
             pass  # Dummy argument for uniform instance parameter list
 
         self.SetPower("ON", forgive=forgive)
-        return self.power_status
+        return self.powerStatus
 
     def TurnOff(self, forgive=False):
         """ Return True if "On" or "Off", False if no communication
@@ -1513,7 +1539,7 @@ class LaptopDisplay(DeviceCommonSelf):
             v0_print(_who, "Invalid " + power + " value:", back)
             self.powerStatus = self.power_status = "?"  # Can be "ON", "OFF" or "?"
 
-        return self.power_status
+        return self.powerStatus
 
     def SetPower(self, status, forgive=False):
         """ Set Laptop Display Backlight Power 'OFF' or 'ON'
@@ -1687,11 +1713,11 @@ class SmartPlugHS100(DeviceCommonSelf):
         if parts[1] == "ON" or parts[1] == "OFF":
             v2_print(_who, self.ip, "Smart Plug is", "'" + parts[1] + "'")
             self.powerStatus = self.power_status = parts[1]  # Can be "ON", "OFF" or "?"
-            return self.power_status
+            return self.powerStatus
 
         v2_print(_who, self.ip, "- Not a Smart Plug! (or powered off)")
         self.powerStatus = self.power_status = "?"  # Can be "ON", "OFF" or "?"
-        return self.power_status
+        return self.powerStatus
 
     def SetPower(self, status):
         """ Set Power to status, 'OFF' or 'ON'
@@ -1797,7 +1823,7 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/
         #self.getSpeakerSettings()
         #self.getVolume()
 
-        return self.power_status
+        return self.powerStatus
 
     def TurnOn(self, forgive=False):
         """ Turn On Sony Bravia KDL TV using os_curl """
@@ -1851,7 +1877,7 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/
             ret = "Error"
 
         self.powerStatus = self.power_status = ret  # Can be "ON", "OFF" or "?"
-        return self.power_status
+        return self.powerStatus
 
     def PowerSavingMode(self, forgive=False):
         """ Get Sony Bravia KDL TV power savings mode """
@@ -2230,10 +2256,10 @@ Application().Rediscover(): FOUND NEW INSTANCE or REDISCOVERED LOST INSTANCE:
                 #if pipe.returncode == 124:
                 if event['returncode'] == 124:
                     v1_print(_who, self.ip, "timeout after:", GLO['ADB_PWR_TIME'])
-                    self.power_status = "?"  # Can be "ON", "OFF" or "?"
-                    return self.power_status
+                    self.powerStatus = self.power_status = "?"  # Can be "ON", "OFF" or "?"
+                    return self.powerStatus
             self.powerStatus = self.power_status = "? " + str(event['returncode'])
-            return self.power_status
+            return self.powerStatus
 
         Reply = event['output']
         # Reply = "connected to 192.168.0.17:5555"
@@ -2252,7 +2278,7 @@ Application().Rediscover(): FOUND NEW INSTANCE or REDISCOVERED LOST INSTANCE:
         #  SPECIAL self.mac c0:79:82:41:2f:1f self.name: TCL.LAN
         #  above is working for this inst. class but not for LED Lights inst. class
 
-        return self.power_status
+        return self.powerStatus
 
     def TurnOn(self, forgive=False):
         """ Turn On TCL / Google Android TV.
@@ -2267,8 +2293,9 @@ Application().Rediscover(): FOUND NEW INSTANCE or REDISCOVERED LOST INSTANCE:
             return self.getPower()
 
         cnt = 1
-        self.power_status = "?"
-        while not self.power_status == "ON":
+        self.powerStatus = self.power_status = "?"
+        # 2025-01-25 next 3 occurrences of power_status changed to powerStatus
+        while not self.powerStatus == "ON":
 
             v1_print(_who, "Attempt #:", cnt, "Send 'KEYCODE_WAKEUP' to IP:", self.ip)
 
@@ -2283,11 +2310,11 @@ Application().Rediscover(): FOUND NEW INSTANCE or REDISCOVERED LOST INSTANCE:
                     # v0_print(_who, "pipe.returncode:", pipe.returncode)
                     if event['returncode'] == 124:
                         v0_print(_who, self.ip, "timeout after:", GLO['ADB_KEY_TIME'])
-                return "?"
+                return "?"  # self.powerStatus already has this value
 
             self.getPower()
-            if self.power_status == "ON" or cnt >= 5:
-                return self.power_status
+            if self.powerStatus == "ON" or cnt >= 5:
+                return self.powerStatus
             cnt += 1
 
     def TurnOff(self, forgive=False):
@@ -2308,8 +2335,8 @@ Application().Rediscover(): FOUND NEW INSTANCE or REDISCOVERED LOST INSTANCE:
                     v0_print(_who, self.ip, "timeout after:", GLO['ADB_KEY_TIME'])
             return "?"
 
-        self.power_status = "OFF"  # Can be "ON", "OFF" or "?"
-        return self.power_status
+        self.powerStatus = self.power_status = "OFF"  # Can be "ON", "OFF" or "?"
+        return self.powerStatus
 
     def isDevice(self, forgive=False, timeout=None):
         """ Return True if adb connection for Android device (using IP address).
@@ -2411,6 +2438,9 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
 
         self.temp_fname = None  # Temporary filename for all devices report
         self.fake_top = None  # For color chooser placement geometry
+
+        self.connect_errors = 0  # Count sequential errors for message display
+        self.already_breathing_colors = False  #
 
     def startDevice(self):
         """ Called during startup and resume.
@@ -2618,10 +2648,11 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
 
         self.app.ResumeWait(timer=GLO['BLUETOOTH_SCAN_TIME'], alarm=False,
                             title="Scanning Bluetooth Devices", abort=False)
-        self.app.after(500)  # Slush fund sleep extra 1/2 second
+        #self.app.after(500)  # Slush fund sleep extra 1/2 second
         # 2025-01-15 NOTE: It takes another 3 to 7 seconds for window to open ???
         #   Each time running without restart, gatttool is using 100% of a core
         #   Turning off existing HomA connection to LED lights necessary to appear.
+        time.sleep(.5)  # self.app.after() appears to take too long
 
         lines = ext.read_into_string(self.temp_fname)
         lines = "" if lines is None else lines
@@ -2698,10 +2729,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         """
         _who = self.who + "setColor():"
         if self.device is None:
-            msg = "Turn on " + self.name + " first!"
-            v1_print(_who, msg)
-            self.app.ShowInfo("Not connected", msg, "error")
-            self.powerStatus = self.power_status = "?"
+            self.showMessage()  # self.powerStatus = self.power_status = "?"
             return self.powerStatus
 
         x, y = hc.GetMouseLocation()
@@ -2728,15 +2756,13 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
             return "ON"  # Cancel button
         GLO['LED_LIGHTS_COLOR'] = new
         v2_print(_who, "GLO['LED_LIGHTS_COLOR']:", GLO['LED_LIGHTS_COLOR'])
+        self.already_breathing_colors = False  # Turn it off, just in case on
         try:
             tc.setRGB(red, green, blue, self.device, wait_for_response=False)
+            # wait_for_response takes 30 seconds when device not connected
             return "ON"
         except (pygatt.exceptions.NotConnectedError, AttributeError) as err:
-            msg = "Turn on " + self.name + " first!"
-            v1_print(_who, msg + "\n", err)
-            self.app.ShowInfo("Not connected", msg, "error")
-            self.device = None  # Force connect on next attempt
-            self.powerStatus = self.power_status = "?"
+            self.showMessage(err)  # self.device = None & self.powerStatus = "?"
             return self.powerStatus
 
     def setNight(self):
@@ -2746,38 +2772,263 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
             defaults to "White" which is really "light green" on Happy Lighting LEDs.
         """
         _who = self.who + "setNight():"
+        self.already_breathing_colors = False  # Turn it off, just in case on
         if self.device is None:
-            msg = "Turn on " + self.name + " first!"
-            v1_print(_who, msg)
-            self.app.ShowInfo("Not connected", msg, "error")
-            self.powerStatus = self.power_status = "?"
+            self.showMessage()  # self.device = None & self.powerStatus = "?"
             return self.powerStatus
 
         try:
             # Value of 1 turns off the light strip, 10 is lowest value tested
             tc.setWhite(10, self.device, wait_for_response=True)
+            # 2025-01-18 New error. Taking 30 seconds with invalid self.device
+            #   leftover from view Bluetooth Devices. No error.
             return "ON"
-        except (pygatt.exceptions.NotConnectedError, AttributeError) as err:
-            msg = "Turn on " + self.name + " first!"
-            v1_print(_who, msg + "\n", err)
-            self.app.ShowInfo("Not connected", msg, "error")
+        except (pygatt.exceptions.NotConnectedError, AttributeError,
+                pygatt.exceptions.NotificationTimeout) as err:
+            self.showMessage(err)  # self.device = None & self.powerStatus = "?"
+
 
         self.device = None  # Force connect on next attempt
         self.powerStatus = self.power_status = "?"
         # self.app.EnableMenu()  # 'NoneType' object has no attribute 'EnableMenu'
         return self.powerStatus
 
+    def breatheColors(self, low=6, high=30, span=5.0, step=0.25, bots=3.0, tops=0.25):
+        """ Breathe Colors: R, R&G, G, G&B, B, B&R
+
+        Best settings for nighttime:
+            low=4, high=40, span=5.0, step=0.25, bots=3.0, tops=0.5
+
+        :param low: Low value (darkest) E.G. 9 (Lowest brightness before lights turn off)
+        :param high: High value (brightest) E.G. 180 (About 75% brightness)
+        :param span: Float seconds for one way transition E.G. 3.0 (3 second breath)
+        :param step: Float seconds to hold each step E.G. 0.33 (would be 90 steps)
+        :param bots: Float seconds to hold bottom step E.G. 1.0 (hold bottom 1 second)
+        :param tops: Float seconds to hold top step E.G. 3.0 (hold top 3 seconds)
+        """
+        _who = self.who + "breatheColors():"
+        if self.already_breathing_colors:
+            V0_print("\n" + ext.ch(), _who, "Already running breathing colors.")
+            return
+
+        self.already_breathing_colors = True
+        v1_print("\n" + ext.ch(), _who, "Breathing colors - Starting up.")
+
+        if self.device is None:
+            self.showMessage()  # self.device = None & self.powerStatus = "?"
+            return self.powerStatus
+
+        colors = ((True, False, False), (True, True, False), (False, True, False),
+                  (False, True, True), (False, False, True), (True, False, True))
+
+        color_ndx = 0
+        color_max = len(colors) - 1
+        turning_up = True  # False = turning down
+        step_count = int(float(span) / float(step))
+        step_float = float(high - low) / float(step_count)
+        span_ms = int(float(step) * 1000.0)  # E.G. .1 = 100ms
+        bots = int(bots * 1000.0)  # E.G. 1.0 = 1000ms
+        tops = int(tops * 1000.0)  # E.G. 3.0 = 3000ms
+        # low=20, high=100, span=10.0, step=0.6
+        v1_print("  low:", low, " | high:", high, " | span:", span,
+                 " | step:", step, " | bots:", bots, " | tops:", tops)
+        v1_print("  step_count:", step_count, " | step_float:", step_float,
+                 " | span_ms:", span_ms)
+        # step_count: 303  | step_float: 0.825082508251  | span_ms: 33  | bots: 1000
+        # 303 * 33 = 9999 = 10 seconds
+        gatt_mils = refresh_mils = slept_mils = extra_mils = short_mils = 0
+        gatt_count = refresh_count = slept_count = extra_count = short_count = 0
+        gatt_low = gatt_high = None
+
+        def setColor(sr, sg, sb):
+            """ Set colors: red (sr), green (sg) and blue (sb) """
+            if not self.app.isActive or not self.already_breathing_colors:
+                return False
+            try:
+                tc.setRGB(sr, sg, sb, self.device, wait_for_response=True)
+                # wait_for_response takes 30 seconds when device not connected
+                # When not waiting GATT cmd used which results in 100% CPU core
+                return self.app.isActive and self.powerStatus == "ON"
+            except (pygatt.exceptions.NotConnectedError, AttributeError,
+                    pygatt.exceptions.NotificationTimeout) as err:
+                self.showMessage(err)  # self.device = None & self.powerStatus = "?"
+                return False
+
+        def oneStep(stepNdx):
+            """
+            :param stepNdx: offset into color matrix.
+            """
+            tr, tg, tb = colors[color_ndx]  # Turn on red, green, blue?
+            num_colors = sum(colors[color_ndx])  # How many colors are used?
+            if turning_up is True:
+                if stepNdx == 0:
+                    brightness = low
+                elif stepNdx == step_count - 1:  # Last index in range?
+                    brightness = high
+                else:
+                    brightness = low + int(stepNdx * step_float)
+            else:
+                if stepNdx == 0:
+                    brightness = high
+                elif stepNdx == step_count - 1:  # Last index in range?
+                    brightness = low
+                else:
+                    brightness = high - int(stepNdx * step_float)
+            brightness = low if brightness < low else brightness
+            brightness = high if brightness > high else brightness
+            brightness = int(brightness / num_colors)
+            sr = brightness if tr else 0
+            sg = brightness if tg else 0
+            sb = brightness if tb else 0
+            return setColor(sr, sg, sb) and self.powerStatus == "ON"
+
+        def refresh(ms):
+            """ Sleep for designated milliseconds.
+                Call self.app.Refresh() in loop
+            """
+            sleep_time = float(ms) / 1000.0
+            if sleep_time < 0.016:
+                time.sleep(sleep_time)
+                return  # Not enough time to refresh
+
+            start = time.time()
+            elapsed = 0
+            while elapsed < ms:
+                before_refresh = time.time()
+                self.app.last_refresh_time = time.time()
+                self.app.Refresh(tk_after=False)  # Takes a few milliseconds?
+                refresh_seconds = time.time() - before_refresh
+                sleep_time -= refresh_seconds
+                if sleep_time <= 0.0:
+                    return  # Negative sleep time
+                elif sleep_time < 0.016:
+                    time.sleep(sleep_time)
+                    return  # Not enough time to refresh
+                elif sleep_time > 1.0:
+                    time.sleep(1.0)
+                    sleep_time -= 1.0
+                else:
+                    time.sleep(sleep_time)
+                    sleep_time = 0.0
+                elapsed = int((time.time() - start) * 1000)
+
+        while self.app.isActive and self.powerStatus == "ON":
+            for i in range(step_count):
+                if not self.app.isActive:
+                    v2_print(_who, "Closing down. self.app.isActive:", self.app.isActive)
+                    break
+                if not self.already_breathing_colors:
+                    break  # Nighttime and Set Color can turn off breathing
+
+                self.app.update_idletasks()  # Give screen and mouse response
+
+                start_step = time.time()
+                result = oneStep(i)  # Waits for response
+                if not result:
+                    # LED Light strip not connected OR Nighttime/Set Color menu options
+                    #v2_print(_who, "LED Light strip not connected.")
+                    self.already_breathing_colors = False
+                    break
+
+                end_step = time.time()
+                gatt_ms = int((end_step - start_step) * 1000.0)
+                gatt_mils += gatt_ms
+                gatt_count += 1
+                if gatt_low is None:
+                    gatt_low = gatt_high = gatt_ms
+                gatt_low = gatt_ms if gatt_ms < gatt_low else gatt_low
+                gatt_high = gatt_ms if gatt_ms > gatt_high else gatt_high
+
+                #self.app.Refresh()  # Could be 10 second lag for rediscovery
+                #time.sleep(span_ms/1000)
+                self.app.last_refresh_time = time.time()
+                sleep_ms = span_ms - gatt_ms
+                sleep_ms = 0 if sleep_ms < 0 else sleep_ms
+
+                # If at bottom hold for bots, If at top hold fpr tops
+                if turning_up is False:
+                    if i == step_count - 1:
+                        sleep_ms = bots
+                        v2_print(ext.ch(), "LOWEST Brightness")
+                if turning_up is True:
+                    sleep_ms = tops if i == step_count - 1 else sleep_ms
+                    if i == step_count - 1:
+                        sleep_ms = tops
+                        v2_print(ext.ch(), "HIGHEST Brightness")
+
+                if sleep_ms:
+                    slept_mils += sleep_ms
+                    slept_count += 1
+
+                if sleep_ms < 20:
+                    time.sleep(sleep_ms / 1000.0)
+                else:
+                    start_refresh = time.time()
+                    refresh(sleep_ms)
+                    refresh_ms = int((time.time() - start_refresh) * 1000.0)
+                    refresh_mils += refresh_ms
+                    refresh_count += 1
+
+                    if refresh_ms < sleep_ms:  # Refresh took less than sleep time?
+                        extra_count += 1
+                        extra_sleep = int(sleep_ms - refresh_ms)
+                        extra_mils += extra_sleep
+                        # 2025-01-20 TODO: Use multiple self.Refresh
+                        if extra_sleep > span_ms:
+                            v2_print(ext.ch(), "bots or tops extra_sleep:", extra_sleep)
+                        #self.app.after(extra_sleep)  Corrupted
+                        # after initially ms, then seconds, then minutes, then forever
+                    elif refresh_ms > sleep_ms:
+                        short_count += 1
+                        short_mils += refresh_ms - sleep_ms
+
+            if not self.already_breathing_colors:
+                if self.powerStatus == "ON":
+                    v2_print(_who, "Forced off by Nighttime or Set Color menu option.")
+                elif self.powerStatus == "?":
+                    v2_print(_who, "Lost connection to: '" + self.name + "'.")
+                elif self.powerStatus == "OFF":
+                    v2_print(_who, "'" + self.name + "' was manually turned off.")
+                else:
+                    v2_print(_who, "Breathing Colors invalid power",
+                             "status: '" + self.powerStatus + "'.")
+                break  # 2025-01-25 TODO: Display run statistics
+
+            # Finished turning down? Go to next color
+            if turning_up is False:
+                color_ndx += 1
+                color_ndx = color_ndx if color_ndx <= color_max else 0
+                v2_print(ext.ch(), "New color_ndx:", color_ndx)
+            else:
+                v2_print(ext.ch(), "Turning down brightness")
+            turning_up = True if turning_up is False else False
+
+        v1_print(_who, "is closing down. self.app.isActive:", self.app.isActive)
+        slept_avg = 0 if slept_count == 0 else slept_mils / slept_count 
+        v1_print("slept_mils:", slept_mils, " | slept_count:", slept_count,
+                 " | average:", slept_avg)
+        extra_avg = 0 if extra_count == 0 else extra_mils / extra_count 
+        v1_print("extra_mils:", extra_mils, " | extra_count:", extra_count,
+                 " | average:", extra_avg)
+        short_avg = 0 if short_count == 0 else short_mils / short_count 
+        v1_print("short_mils:", short_mils, " | short_count:", short_count,
+                 " | average:", short_avg)
+        gatt_avg = 0 if gatt_count == 0 else gatt_mils / gatt_count 
+        v1_print("gatt_mils:", gatt_mils, " | gatt_count:", gatt_count,
+                 " | average:", gatt_avg, " | low:", gatt_low, " | high:", gatt_high)
+        refresh_avg = 0 if refresh_count == 0 else refresh_mils / refresh_count 
+        v1_print("refresh_mils:", refresh_mils, " | refresh_count:", refresh_count,
+                 " | average:", refresh_avg)
+        self.already_breathing_colors = False
+        return "ON"
+
     def Connect(self, sudo_reset=False):
         """ Connect to Bluetooth Low Energy with GATT.
-
-            Connection is constantly dropping, so every minute (during Rediscovery),
-            call self.Connect just to be sure.
 
             :param sudo_reset: bluetooth is restarted in gatttool.py using:
                 subprocess.Popen(["sudo", "systemctl", "restart", "bluetooth"]).wait()
                 subprocess.Popen([
                     "sudo", "hciconfig", self._hci_device, "reset"]).wait()
-
         """
 
         _who = self.who + "Connect():"
@@ -2790,18 +3041,74 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
 
         try:
             self.device = tc.connect(GLO['LED_LIGHTS_MAC'], reset_on_start=sudo_reset)
+            self.connect_errors = 0
         except tc.pygatt.exceptions.NotConnectedError as BLEerr:
             v2_print(_who, "error:")
             v2_print(BLEerr)
-            v2_print("Is Bluetooth enabled?")
+            v2_print("Is bluetooth enabled?")
             self.device = None
             self.powerStatus = self.power_status = "?"
-            # 2025-01-13 TODO: Count sequential errors and after x times ShowInfo()
+
+            # Count sequential errors and after x times ShowInfo()
+            self.connect_errors += 1
+            if self.connect_errors > 0:
+                self.connect_errors = 0  # Reset for new sequential count
+                self.showMessage(BLEerr)  # self.device = None & self.powerStatus = "?"
 
         if self.app:  # Prevent erroneous Resume from Suspend from running
             self.app.last_refresh_time = time.time()
 
         return self.device
+
+    def showMessage(self, err=None):
+        """ Show error message """
+        _who = self.who + "showMessage():"
+        self.device = None  # Force connect on next attempt
+        self.powerStatus = self.power_status = "?"
+
+        if self.app and self.app.usingDevicesTreeview:
+            self.app.refreshDeviceStatusForInst(self)
+
+        # 2025-01-24 message appears multiple times in code
+        if str(err) is not "None":
+            msg = str(err) + "\n\n"
+        else:
+            msg = ""  # No gatttool error message
+
+        if "cannot start" in msg:
+            # gatttool could not find computer's bluetooth adapter (driver not running)
+            msg += "Turn on bluetooth in Ubuntu. If bluetooth was on and won't\n"
+            msg += "restart then you can reboot or try these commands:\n\n"
+            # noinspection SpellCheckingInspection
+            msg += "\tsudo rmmod btusb btintel\n"
+            # noinspection SpellCheckingInspection
+            msg += "\tsudo modprobe btusb btintel\n"
+            msg += "\tsudo service bluetooth restart\n\n"
+
+        elif "not connected" in msg:
+            # bluetooth device not connected to computer's bluetooth adapter
+            msg += "Verify correct MAC address with Tools - View Bluetooth Devices."
+            msg += "\nYou can also view Device name with Happy Lighting Phone App.\n\n"
+            msg += "You can Right-Click on device picture and use 'Reset Bluetooth'.\n"
+            msg += "Also from same popup menu select 'Turn On "
+            msg += self.name + "'.\n"
+            msg += "The 'View Bluetooth Devices' feature is also on this menu.\n\n"
+
+        elif "No response received" in msg:
+            # waited for response and device timed out in 30 seconds
+            msg += "Waited for response from: '" + self.name + "' but none received.\n\n"
+            msg += "Right-Click on: '" + self.name + "' picture for menu.\n\n"
+            msg += "First try turning on: '" + self.name + "' a few times.\n"
+            msg += "Otherwise, try 'Reset Bluetooth' to see if that fixes the problem.\n"
+            msg += "Finally, try 'View Bluetooth Devices' and look for: '"
+            msg += self.ip + "'.\n\n"
+
+        msg += "At command line, does 'bluetoothctl show' display your devices?\n"
+        msg += "NOTE: Type 'exit' to exit the 'bluetoothctl' application.\n\n"
+        msg += "Always try: 'Turn on " + self.name + "' a few times for quick fix."
+        v1_print(_who, msg + "\n")
+        if self.app is not None:
+            self.app.ShowInfo("Not connected", msg, "error", align="left")
 
     def getPower(self):
         """ Return "ON", "OFF" or "?".
@@ -2833,9 +3140,9 @@ $ ps aux | grep gatttool | grep -v grep | wc -l
             try:
                 tc.disconnect(self.device)
             except pygatt.exceptions.NotConnectedError as err:
-                v0_print(_who, err)
+                v1_print(_who, err)  # Device not connected!
             except AttributeError:
-                v0_print(_who, "self.device:", self.device)
+                v1_print(_who, "self.device:", self.device)
         self.device = None
         self.powerStatus = self.power_status = "?"
 
@@ -2851,7 +3158,7 @@ $ ps aux | grep gatttool | grep -v grep | wc -l
         try:
             tc.powerOn(self.device)
             self.powerStatus = self.power_status = "ON"  # Can be "ON", "OFF" or "?"
-            return self.power_status
+            return self.powerStatus
         except pygatt.exceptions.NotConnectedError as err:
             v0_print(_who, err)
         except AttributeError:
@@ -2860,7 +3167,7 @@ $ ps aux | grep gatttool | grep -v grep | wc -l
         self.device = None  # Force connect on next attempt
         self.powerStatus = self.power_status = "?"
 
-        return self.power_status
+        return self.powerStatus
 
     def TurnOff(self):
         """ Turn Off BLE (Bluetooth Low Energy) LED Light Strip.
@@ -2876,7 +3183,7 @@ $ ps aux | grep gatttool | grep -v grep | wc -l
         try:
             tc.powerOff(self.device)
             self.powerStatus = self.power_status = "OFF"  # Can be "ON", "OFF" or "?"
-            return self.power_status
+            return self.powerStatus
         except pygatt.exceptions.NotConnectedError as err:
             v0_print(_who, err)
         except AttributeError:
@@ -2884,7 +3191,7 @@ $ ps aux | grep gatttool | grep -v grep | wc -l
 
         self.device = None  # Force connect on next attempt
         self.powerStatus = self.power_status = "?"
-        return self.power_status
+        return self.powerStatus
 
     def isDevice(self, forgive=False):
         """ Return True if adb connection for Android device (using IP address).
@@ -2934,6 +3241,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         v0_print()
         '''
 
+        self.isActive = True  # Set False when exiting or suspending
         self.requires = ['arp', 'getent', 'timeout', 'curl', 'adb', 'hs100.sh', 'aplay',
                          'ps', 'grep']
         self.installed = []
@@ -2956,7 +3264,48 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.rediscover_done = True  # 16ms time slices until done.
         self.rediscover_row = 0  # Current row processed in Treeview
         self.tree = None  # Painted in PopulateTree()
-        self.photos = None  # Used in PopulateTree() and many other methods
+        # Images used in PopulateTree() and/or other methods
+        self.photos = None
+
+        # Right-click popup menu images
+        on = "turn_on.png"
+        off = "turn_off.png"
+        up = "up.png"
+        down = "down.png"
+        close = "close.jpeg"
+        self.img_turn_off = ImageTk.PhotoImage(
+            Image.open(off).resize((42, 26), Image.ANTIALIAS))
+        self.img_turn_on = ImageTk.PhotoImage(
+            Image.open(on).resize((42, 26), Image.ANTIALIAS))
+        self.img_up = ImageTk.PhotoImage(
+            Image.open(up).resize((22, 26), Image.ANTIALIAS))
+        self.img_down = ImageTk.PhotoImage(
+            Image.open(down).resize((22, 26), Image.ANTIALIAS))
+        self.img_close = ImageTk.PhotoImage(
+            Image.open(close).resize((26, 26), Image.ANTIALIAS))
+
+        # Sony TV Picture On/Off
+        picture_on = "picture_on.png"
+        picture_off = "picture_off.png"
+        self.img_picture_on = ImageTk.PhotoImage(
+            Image.open(picture_on).resize((42, 26), Image.ANTIALIAS))
+        self.img_picture_off = ImageTk.PhotoImage(
+            Image.open(picture_off).resize((42, 26), Image.ANTIALIAS))
+
+        # Bluetooth LED Light Strip
+        set_color = "set_color.jpeg"
+        nighttime = "nighttime.png"
+        breathing = "breathing.jpeg"
+        reset = "reset.jpeg"
+        self.img_set_color = ImageTk.PhotoImage(
+            Image.open(set_color).resize((26, 26), Image.ANTIALIAS))
+        self.img_nighttime = ImageTk.PhotoImage(
+            Image.open(nighttime).resize((26, 26), Image.ANTIALIAS))
+        self.img_breathing = ImageTk.PhotoImage(
+            Image.open(breathing).resize((26, 26), Image.ANTIALIAS))
+        self.img_reset = ImageTk.PhotoImage(
+            Image.open(reset).resize((26, 26), Image.ANTIALIAS))
+
 
         ''' Toplevel window (self) '''
         tk.Toplevel.__init__(self, master)  # https://stackoverflow.com/a/24743235/6929343
@@ -3003,6 +3352,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.sensors_devices_btn = None
         self.sensors_btn_text = "🌡  Sensors"  # (U+1F321) when Devices active
         self.devices_btn_text = "🗲  Devices"  # (U+1F5F2) when Sensors active
+        self.usingDevicesTreeview = True  # Startup uses Devices Treeview
         self.BuildButtonBar(self.sensors_btn_text)
 
         # Dropdown Menu Bars after 'sm =' and BuildButtonBar() sets button text
@@ -3036,7 +3386,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         # self.xdo_os_window_id: 102760472  THIS CHANGED FROM ABOVE 92274698
 
         while self.Refresh():  # Run forever until quit
-            self.update_idletasks()  # Get queued tasks
+            pass
 
     def BuildMenu(self):
         """ Build dropdown Menu bars: File, Edit, View & Tools """
@@ -3134,7 +3484,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         ''' View Menu '''
         # Enable options depending on Sensors Treeview or Devices Treeview mounted
-        if self.sensors_devices_btn['text'] == self.devices_btn_text:
+        if not self.usingDevicesTreeview:
             # Sensors Treeview is displayed
             self.view_menu.entryconfig("Sensors", state=tk.DISABLED)
             self.view_menu.entryconfig("Network devices", state=tk.NORMAL)
@@ -3160,8 +3510,10 @@ class Application(DeviceCommonSelf, tk.Toplevel):
     def CloseApp(self, *_args):
         """ <Escape>, X on window, 'Exit from dropdown menu or Close Button"""
 
+        self.isActive = False  # Signal closing down so methods return
+
         # Need Devices treeview displayed to save ni.view_order
-        if self.sensors_devices_btn['text'] == self.devices_btn_text:
+        if not self.usingDevicesTreeview:
             self.SensorsDevicesToggle()  # Toggle off Sensors Treeview
 
         # Generate new ni.view_order list of MAC addresses
@@ -3241,6 +3593,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                              text="Device rediscovery is in progress for a few seconds.")
             v0_print(_who, "Aborting suspend. Device rediscovery in progress.")
             return
+
+        self.isActive = False  # Signal closing down so methods return
 
         self.SetAllPower("OFF")  # Turn off all devices except computer
         #if ble and ble.device is not None:
@@ -3453,10 +3807,12 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             show_sensors = True
             self.sensors_devices_btn['text'] = self.devices_btn_text
             self.tt.set_text(self.sensors_devices_btn, "Show Network Devices.")
+            self.usingDevicesTreeview = False
         elif self.sensors_devices_btn['text'] == self.devices_btn_text:
             show_devices = True
             self.sensors_devices_btn['text'] = self.sensors_btn_text
             self.tt.set_text(self.sensors_devices_btn, "Show Temperatures and Fans.")
+            self.usingDevicesTreeview = True
         else:
             v0_print("Invalid Button self.sensors_devices_btn['text']:",
                      self.sensors_devices_btn['text'])
@@ -3507,42 +3863,77 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         if cr.arp_dict['type_code'] == GLO['KDL_TV']:
             # Sony TV has power save mode to turn picture off and listen to music
-            menu.add_command(label="Turn " + name + " Picture On ",
+            menu.add_command(label=name + " Picture On ",
                              font=g.FONT, state=tk.DISABLED,
+                             image=self.img_picture_on, compound=tk.LEFT,
                              command=lambda: self.PictureOn(cr))
-            menu.add_command(label="Turn " + name + " Picture Off ",
+            menu.add_command(label=name + " Picture Off ",
                              font=g.FONT, state=tk.DISABLED,
+                             image=self.img_picture_off, compound=tk.LEFT,
                              command=lambda: self.PictureOff(cr))
             cr.inst.getVolume()
             menu.add_separator()
 
         if cr.arp_dict['type_code'] == GLO['BLE_LS']:
             # Bluetooth Low Energy LED Light Strip
-            menu.add_command(label="Set " + name + " Color ",
-                             font=g.FONT, state=tk.NORMAL,
+            name_string = "Set " + name + " Color"
+            menu.add_command(label=name_string,
+                             font=g.FONT, state=tk.DISABLED,
+                             image=self.img_set_color, compound=tk.LEFT,
                              command=lambda: self.setColor(cr))
             menu.add_command(label="Nighttime brightness",
-                             font=g.FONT, state=tk.NORMAL,
+                             font=g.FONT, state=tk.DISABLED,
+                             image=self.img_nighttime, compound=tk.LEFT,
                              command=lambda: self.setNight(cr))
+            menu.add_command(label="Breathing colors",
+                             font=g.FONT, state=tk.DISABLED,
+                             image=self.img_breathing, compound=tk.LEFT,
+                             command=lambda: self.breatheColors(cr))
+
+            menu.add_separator()
+
             menu.add_command(label="Reset Bluetooth", font=g.FONT,
+                             image=self.img_reset, compound=tk.LEFT,
                              command=cr.inst.resetBluetooth, state=tk.DISABLED)
+            menu.add_command(label="View Bluetooth Devices", font=g.FONT,
+                             image=self.img_reset, compound=tk.LEFT,
+                             command=self.DisplayBluetooth, state=tk.NORMAL)
+
+            # Device must be on for Set Color, Nighttime and Breathing Colors
+            if cr.inst.powerStatus == "ON":
+                state = tk.NORMAL
+            else:
+                state = tk.DISABLED
+
+            menu.entryconfig(name_string, state=state)
+            menu.entryconfig("Nighttime brightness", state=state)
+            if cr.inst.already_breathing_colors:
+                state = tk.DISABLED  # Override if breathing colors already running
+            menu.entryconfig("Breathing colors", state=state)
+
+            menu.add_separator()
+
             if cr.inst.device is None:
                 menu.entryconfig("Reset Bluetooth", state=tk.NORMAL)
             else:
                 menu.entryconfig("Reset Bluetooth", state=tk.DISABLED)
-            menu.add_separator()
 
         menu.add_command(label="Turn On " + name, font=g.FONT, state=tk.DISABLED,
+                         image=self.img_turn_on, compound=tk.LEFT,
                          command=lambda: self.TurnOn(cr))
         menu.add_command(label="Turn Off " + name, font=g.FONT, state=tk.DISABLED,
+                         image=self.img_turn_off, compound=tk.LEFT,
                          command=lambda: self.TurnOff(cr))
         menu.add_separator()
         menu.add_command(label="Move " + name + " Up", font=g.FONT, state=tk.DISABLED,
+                         image=self.img_up, compound=tk.LEFT,
                          command=lambda: self.MoveRowUp(cr))
         menu.add_command(label="Move " + name + " Down", font=g.FONT, state=tk.DISABLED,
+                         image=self.img_down, compound=tk.LEFT,
                          command=lambda: self.MoveRowDown(cr))
         menu.add_separator()
-        menu.add_command(label="Close this menu", font=g.FONT, command=ClosePopup)
+        menu.add_command(label="Close menu", font=g.FONT, command=ClosePopup,
+                         image=self.img_close, compound=tk.LEFT)
 
         menu.tk_popup(event.x_root, event.y_root)
 
@@ -3551,10 +3942,12 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         # Enable Turn On/Off menu options depending on current power status.
         if cr.arp_dict['type_code'] == GLO['KDL_TV']:
             cr.inst.PowerSavingMode()
-            if cr.inst.power_saving_mode != "ON":
-                menu.entryconfig("Turn " + name + " Picture Off ", state=tk.NORMAL)
-            if cr.inst.power_saving_mode != "OFF":
-                menu.entryconfig("Turn " + name + " Picture On ", state=tk.NORMAL)
+            if cr.inst.power_saving_mode == "OFF":
+                menu.entryconfig(name + " Picture Off ", state=tk.NORMAL)
+            elif cr.inst.power_saving_mode == "ON":
+                menu.entryconfig(name + " Picture On ", state=tk.NORMAL)
+            else:
+                pass  # power_saving_mode == "?"
 
         if cr.inst.power_status != "ON":
             menu.entryconfig("Turn On " + name, state=tk.NORMAL)
@@ -3568,8 +3961,11 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         if item != all_iid[-1]:
             menu.entryconfig("Move " + name + " Down", state=tk.NORMAL)
 
+        # Reset last rediscovery time. Some methods can take 30 seconds to timeout
+        self.last_refresh_time = time.time()
+
     def PictureOn(self, cr):
-        """ Mouse right button click selected "Turn Picture On". """
+        """ Mouse right button click selected "<name> Picture On". """
         _who = self.who + "PictureOn():"
         resp = cr.inst.PictureOn()
         text = "  " + str(resp)
@@ -3577,7 +3973,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         cr.tree.update_idletasks()
 
     def PictureOff(self, cr):
-        """ Mouse right button click selected "Turn Picture Off". """
+        """ Mouse right button click selected "<name> Picture Off". """
         _who = self.who + "PictureOff():"
         resp = cr.inst.PictureOff()
         text = "  " + str(resp)
@@ -3585,7 +3981,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         cr.tree.update_idletasks()
 
     def setColor(self, cr):
-        """ Mouse right button click selected "Set LED Lights Color". """
+        """ Mouse right button click selected "Set LED Lights Color".
+            Note if cr.device in error a 30 second timeout can occur.
+        """
         _who = self.who + "setColor():"
         resp = cr.inst.setColor()
         text = "  " + str(resp)
@@ -3593,9 +3991,24 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         cr.tree.update_idletasks()
 
     def setNight(self, cr):
-        """ Mouse right button click selected "Nighttime brightness". """
+        """ Mouse right button click selected "Nighttime brightness".
+            Note if cr.device in error a 30 second timeout can occur.
+        """
         _who = self.who + "setNight():"
         resp = cr.inst.setNight()
+        text = "  " + str(resp)
+        cr.tree.item(cr.item, text=text)
+        cr.tree.update_idletasks()
+
+    def breatheColors(self, cr):
+        """ Mouse right button click selected "Set LED Lights Color".
+            Note if cr.device in error a 30 second timeout can occur.
+        """
+        _who = self.who + "breatheColors():"
+        resp = cr.inst.breatheColors()
+        self.last_refresh_time = time.time()
+        if not self.isActive:
+            return
         text = "  " + str(resp)
         cr.tree.item(cr.item, text=text)
         cr.tree.update_idletasks()
@@ -3676,6 +4089,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         """
 
         _who = self.who + "Refresh()"
+        self.update_idletasks()
         if not self.winfo_exists():
             return False  # self.close() has destroyed window
 
@@ -3719,12 +4133,17 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             v2_print(_who, "cp.NightLightStatus():", night)
 
         ''' sleep remaining time until GLO['REFRESH_MS'] expires '''
+        if self.last_refresh_time > now:
+            #v1_print(_who, "self.last_refresh_time: ",
+            #         ext.h(self.last_refresh_time), " >  now: ", ext.h(now))
+            now = self.last_refresh_time
+
         sleep = GLO['REFRESH_MS'] - int(now - self.last_refresh_time)
         sleep = sleep if sleep > 0 else 1  # Sleep minimum 1 millisecond
         if sleep == 1:
             v0_print(_who, "Only sleeping 1 millisecond")
-        self.last_refresh_time = time.time()  # 2024-12-05 was 'now' too stale?
         self.after(sleep)  # Sleep until next 60 fps time
+        self.last_refresh_time = time.time()  # 2024-12-05 was 'now' too stale?
 
         ''' Wrapup '''
         return self.winfo_exists()  # Go back to caller as success or failure
@@ -3760,6 +4179,7 @@ BluetoothLedLightStrip().TurnOn(): Device not connected!
         """
         global rd
         _who = self.who + "ResumeFromSuspend():"
+        self.isActive = True  # Application GUI is active again
 
         self.ResumeWait()  # Display countdown waiting for devices to come online
         v1_print("\n" + _who, "ni.view_order:", ni.view_order)
@@ -3847,9 +4267,6 @@ BluetoothLedLightStrip().TurnOn(): Device not connected!
         night = cp.NightLightStatus()
         v1_print(_who, "Nightlight status: '" + night + "'")
 
-        usingDevicesTreeview = \
-            self.sensors_devices_btn['text'] != self.devices_btn_text
-
         # Loop through ni.instances
         for i, instance in enumerate(ni.instances):
             inst = instance['instance']
@@ -3924,13 +4341,13 @@ BluetoothLedLightStrip().TurnOn(): Device not connected!
                 pass
 
             # Update Devices Treeview with power status
-            if not usingDevicesTreeview:
+            if not self.usingDevicesTreeview:
                 continue  # No Devices Treeview to update
 
             # Get treeview row based on matching MAC address + type
             # Note that Laptop MAC address can have two types (Base and Display)
             cr = TreeviewRow(self)  # Setup treeview row processing instance
-            iid = cr.getInstanceIid(inst)  # Get iid number and set instance
+            iid = cr.getIidForInst(inst)  # Get iid number and set instance
             if iid is None:
                 continue  # Instance not in Devices Treeview, perhaps a smartphone?
 
@@ -3959,20 +4376,17 @@ BluetoothLedLightStrip().TurnOn(): Device not connected!
         """
         _who = self.who + "RefreshAllPowerStatuses():"
 
-        usingDevicesTreeview = \
-            self.sensors_devices_btn['text'] != self.devices_btn_text
-
         # If auto, called automatically at GLO['REDISCOVER_SECONDS']
         cr = iid = None  # Assume Sensors Treeview is displayed
-        if usingDevicesTreeview:
+        if self.usingDevicesTreeview:
             cr = TreeviewRow(self)  # Setup treeview row processing instance
 
         # Loop through ni.instances
         for i, instance in enumerate(ni.instances):
             inst = instance['instance']
-            if usingDevicesTreeview:
+            if self.usingDevicesTreeview:
                 # Get treeview row based on matching MAC address + device_type
-                iid = cr.getInstanceIid(inst)  # Get iid number and set instance
+                iid = cr.getIidForInst(inst)  # Get iid number and set instance
                 if iid is not None:
                     if auto is False or cr.text == "Wait...":
                         self.tree.see(iid)
@@ -3982,7 +4396,7 @@ BluetoothLedLightStrip().TurnOn(): Device not connected!
             self.last_refresh_time = time.time()  # In case getPower() long time
 
             # Update Devices Treeview with power status
-            if not usingDevicesTreeview:
+            if not self.usingDevicesTreeview:
                 continue  # No Devices Treeview to update
 
             if iid is None:
@@ -4030,10 +4444,6 @@ BluetoothLedLightStrip().TurnOn(): Device not connected!
         # If called from menu, reseed last rediscovery time:
         if auto is False:
             self.last_rediscover_time = time.time() - GLO['REDISCOVER_SECONDS'] * 1.5
-
-        # Is Devices Treeview mounted? (Other option is Sensors Treeview)
-        usingDevicesTreeview = \
-            self.sensors_devices_btn['text'] != self.devices_btn_text
 
         ''' Some arp lines are DISCARDED: 
         arp -a
@@ -4114,7 +4524,7 @@ BluetoothLedLightStrip().TurnOn(): Device not connected!
                 ni.devices = copy.deepcopy(rd.devices)  # Prevent rediscovery
 
                 # Only update Devices Treeview when mounted.
-                if not usingDevicesTreeview:
+                if not self.usingDevicesTreeview:
                     continue
 
                 tr = TreeviewRow(self)
@@ -4134,7 +4544,7 @@ BluetoothLedLightStrip().TurnOn(): Device not connected!
                     v0_print(_who, "arp exists, instance exists, but no view order")
                     v0_print("Inserting", rediscover['mac'], rediscover['name'])
                     ni.view_order.append(mac)
-                    if not usingDevicesTreeview:
+                    if not self.usingDevicesTreeview:
                         continue
 
                     tr = TreeviewRow(self)
@@ -4166,7 +4576,7 @@ BluetoothLedLightStrip().TurnOn(): Device not connected!
             # 2025-01-16 arp_mac s/b updated in place. Check all usage above
             v0_print("="*80)
 
-            if not usingDevicesTreeview:
+            if not self.usingDevicesTreeview:
                 continue
             tr = TreeviewRow(self)
             tr.New(mac)
@@ -4185,6 +4595,30 @@ BluetoothLedLightStrip().TurnOn(): Device not connected!
         self.file_menu.entryconfig("Rediscover now", state=tk.NORMAL)
         self.EnableMenu()
 
+    def refreshDeviceStatusForInst(self, inst):
+        """ Called by BluetoothLED """
+        _who = self.who + "refreshDeviceStatusForInst():"
+        if not self.usingDevicesTreeview:
+            return
+        # Find instance in treeview
+        cr = TreeviewRow(self)
+        iid = cr.getIidForInst(inst)
+        if iid is None:
+            v0_print(_who, "No iid for inst:", inst)
+            return
+
+        cr.Get(iid)
+        self.tree.see(iid)
+        cr.FadeIn(iid)
+
+        old_text = cr.text  # Treeview row's old power state "  ON", etc.
+        cr.text = "  " + inst.powerStatus  # Display treeview row's new power state
+        if cr.text != old_text:
+            v1_print(_who, cr.mac, "Power status changed from: '"
+                     + old_text.strip() + "' to: '" + cr.text.strip() + "'.")
+        cr.Update(iid)  # Update row with new ['text']
+        cr.FadeOut(iid)
+
     @staticmethod
     def MouseWheel(event):
         """ Mousewheel scroll defaults to 5 units, but tree has 4 images """
@@ -4195,10 +4629,21 @@ BluetoothLedLightStrip().TurnOn(): Device not connected!
             event.widget.yview_scroll(1, "units")  # tree = event.widget
             return "break"  # Don't let regular event handler do scroll of 5
 
-    def GetPassword(self):
-        """ Get Sudo password with message.AskString(show='*'...). """
+    def GetPassword(self, msg=None):
+        """ Get Sudo password with message.AskString(show='*'...).
+>>> from cryptography.fernet import Fernet
+>>> # Put this somewhere safe!
+>>> key = Fernet.generate_key()
+>>> f = Fernet(key)
+>>> token = f.encrypt(b"A really secret message. Not for prying eyes.")
+>>> token
+b'...'
+>>> f.decrypt(token)
+b'A really secret message. Not for prying eyes.'
+        """
 
-        msg = "Sudo password required for laptop display.\n\n"
+        if msg is None:
+            msg = "Sudo password required for laptop display.\n\n"
         answer = message.AskString(
             self, text=msg, thread=self.Refresh, show='*',
             title="Enter sudo password", icon="information", win_grp=self.win_grp)
@@ -4469,6 +4914,7 @@ BluetoothLedLightStrip().TurnOn(): Device not connected!
                 found_inst = instance['instance']
 
         if found_inst:
+            found_inst.Disconnect()
             status = found_inst.getBluetoothStatus()  # Check for hci0 device active
         else:
             status = ble.getBluetoothStatus()  # Check for hci0 device active
@@ -4482,8 +4928,8 @@ BluetoothLedLightStrip().TurnOn(): Device not connected!
             return
 
         if found_inst:
-            v1_print(_who, "Using existing instance:", found_inst)
             found_inst.Disconnect()
+            v1_print(_who, "Using existing instance:", found_inst)
             device_list = found_inst.getBluetoothDevices(reconnect=False)
         else:
             v1_print(_who, "Creating new instance for reset.")
@@ -4523,7 +4969,7 @@ BluetoothLedLightStrip().TurnOn(): Device not connected!
         # until homa.py exits. Fix by calling self.GATTToolJobs()
 
         self.update_idletasks()
-        self.GATTToolJobs()
+        self.GATTToolJobs(found_inst=found_inst)
 
     def DisplayCommon(self, _who, title, x=None, y=None, width=1200, height=500):
         """ Common method for DisplayBluetooth, DisplayErrors(), DisplayTimings() """
@@ -4594,7 +5040,7 @@ BluetoothLedLightStrip().TurnOn(): Device not connected!
 
         return scrollbox
 
-    def GATTToolJobs(self):
+    def GATTToolJobs(self, found_inst=None):
         """ Check quantity and percentage of gatttool process ID's.
 
             ps -aux | grep gatttool | grep -v grep
@@ -4608,7 +5054,7 @@ BluetoothLedLightStrip().TurnOn(): Device not connected!
             v1_print(_who, "Command 'grep' not installed. Exiting.")
             return
 
-        # When calling 'ps ux' (aux) is all users can get PID's that are ending.
+        # When calling 'ps ux' for current user, can get a PID that is ending.
         # external.kill_pid_running() ERROR: os.kill  failed for PID: 3962
         # external.kill_pid_running() ERROR: os.kill  failed for PID: 9915
 
@@ -4659,7 +5105,8 @@ BluetoothLedLightStrip().TurnOn(): Device not connected!
 
         ''' Found_pids have 12 results, 3 for each time view Bluetooth Devices is run:        
         [snip 4...]
-        ['rick', '17229', '90.9', '0.0', '21556', '3344', 'pts/31', 'Rs+', '00:59', '0:28', '/usr/bin/gatttool', '-i', 'hci0', '-I'], 
+        ['rick', '17229', '90.9', '0.0', '21556', '3344', 'pts/31', 'Rs+', '00:59', '0:28', 
+            '/usr/bin/gatttool', '-i', 'hci0', '-I'], 
         [...snip 7] '''
 
         v3_print(_who, "self.win_grp BEFORE:")  # AskQuestion() win_grp debugging
@@ -4682,6 +5129,22 @@ BluetoothLedLightStrip().TurnOn(): Device not connected!
 
         if answer.result != 'yes':
             return  # Don't delete pids
+
+        if found_inst and found_inst.device is not None:
+            found_inst.Disconnect()  # started device's gatttool will be killed & lags
+            # TODO: Update treeview with "?" power status like .setNight() & .setColor()
+            if self.usingDevicesTreeview:
+                cr = TreeviewRow(self)
+                iid = cr.getIidForInst(found_inst)
+                cr.Get(iid)
+                if iid is not None:
+                    resp = "?"
+                    text = "  " + str(resp)
+                    cr.tree.item(iid, text=text)
+                    cr.tree.update_idletasks()
+                else:
+                    v0_print(_who, "Could not get devices treeview row.")
+
         for pid in found_pids:
             ext.kill_pid_running(int(pid[1]))
             # No way to kill <defunct> : https://askubuntu.com/a/201308/307523
@@ -4689,6 +5152,9 @@ BluetoothLedLightStrip().TurnOn(): Device not connected!
             # $ ps ux | grep gatttool | grep -v grep
             # rick  7716 13.3  0.0 0 0 ? Zs 11:44 0:46 [gatttool] <defunct>
             # rick 13317  0.0  0.0 0 0 ? Zs 11:47 0:00 [gatttool] <defunct>
+
+            # NOTE: After killing CPU percentage declines over time for <defunct>.
+            # After 15 or 20 minutes the <defunct> start to disappear on their own.
 
 
 class TreeviewRow(DeviceCommonSelf):
@@ -4742,7 +5208,7 @@ class TreeviewRow(DeviceCommonSelf):
         self.inst_dict = ni.inst_for_mac(self.mac)
         self.inst = self.inst_dict['instance']
 
-    def getInstanceIid(self, inst):
+    def getIidForInst(self, inst):
         """ Using passed instance, get the treeview row. """
         for iid in self.tree.get_children():
             self.Get(iid)
@@ -5128,7 +5594,9 @@ class SystemMonitor(DeviceCommonSelf):
 
             if self.treeview_active:
                 self.InsertTreeRow(sensor)
-                self.FlashLastRow()  # fade in color, pause, fade out color
+                if i == len(self.sensors_log) - 1:
+                    # 2025-01-20 getting error flashing when last row not inserted yet
+                    self.FlashLastRow()  # fade in color, pause, fade out color
 
     def PopulateTree(self):
         """ Populate treeview using self.sensor_log [{}, {}... {}]
@@ -5203,18 +5671,19 @@ class SystemMonitor(DeviceCommonSelf):
         """ Flash the last row in Sensors Treeview """
         _who = self.who + "FlashLastRow():"
         cr = TreeviewRow(self)  # also used by Applications() devices treeview
-        iid = self.sensors_log[-1]['delta']  # delta is time since app started
+        iid = self.sensors_log[-1]['delta']  # delta is seconds since app started
 
         # iid is Number right justified 8 = 5 whole + decimal + 2 fraction
-        trg_iid = "{:>8.2f}".format(iid)  # E.G. iid = "2150.40" seconds
+        trg_iid = "{0:>8.2f}".format(iid)  # E.G. iid = "2150.40" seconds
+        trg_iid = str(trg_iid)  # 2025-01-19 strangely type is float today.
 
         try:
             _item = self.tree.item(trg_iid)
         except tk.TclError:
-            v0_print("\n" + _who, "trg_iid not found: '" + str(iid) + "'",
-                     " | <type>:", type(iid))
+            v0_print("\n" + _who, "trg_iid not found: '" + trg_iid + "'",
+                     " |", type(trg_iid))
             # SystemMonitor().FlashLastRow(): trg_iid not found: '20.04'
-            #   | <type>: <type 'float'>
+            #   | <type 'float'>
             v0_print("self.sensors_log[-1]:", self.sensors_log[-1])
             # self.sensors_log[-1]:
             #   {'Processor Fan': '4500 RPM', 'delta': 20.04,

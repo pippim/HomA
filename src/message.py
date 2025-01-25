@@ -514,7 +514,7 @@ class ShowInfo(simpledialog.Dialog, AskCommonSelf):
 
     def body(self, parent):
         """ Wrapper to body_func in mainline """
-        return body_func(self)
+        return body_func(self)  # This will also register win_grp
 
     def buttonbox(self):
         """ add standard button box for ShowInformation.
@@ -532,6 +532,7 @@ class ShowInfo(simpledialog.Dialog, AskCommonSelf):
         # Below from: https://stackoverflow.com/a/33664214/6929343
         self.bind("<KP_Enter>", self.ok)  # info.cast can still intercept Enter
         self.bind("<Escape>", self.ok)  # ShowInfo has no "Cancel" button
+        self.protocol("WM_DELETE_WINDOW", self.ok)
 
         box.pack()
 
@@ -540,6 +541,9 @@ class ShowInfo(simpledialog.Dialog, AskCommonSelf):
         global WAIT_LOCK
         WAIT_LOCK = False  # Only one message can be waiting at once, else chaos
         self.cancel()  # Resides in SimpleDialog() class. Closes ShowInfo window
+        if self.win_grp:  # unregister in both self.ok() and self.Cancel()
+            self.win_grp.unregister_child(self)
+            self.win_grp = None
 
 
 # data_w_l(), set_icon_image(), wait_window_func(), # body_func()
@@ -678,7 +682,7 @@ if 'BIG_SPACE' not in locals() and 'BIG_SPACE' not in globals():
     BIG_SPACE = " "  # UTF-8 (2003) aka Em Space
 
 
-def body_func(self):
+def body_func(self, name="simple_dialog"):
     """
     Force our window to stay on top.
 
@@ -743,7 +747,14 @@ def body_func(self):
     # 2025-01-18: every dialog has a body_func() so register win_grp now
     if self.win_grp:
         # Used for Toolkit ChildWindow().register_child
-        self.win_grp.register_child('simple_dialog', self)
+        # 2025-01-18 AskQuestion generating duplicates:
+        # toolkit.py ChildWindows().register_child(): Window already registered.
+        # 	key: simple_dialog window: .140235799565232.140235771038392
+        # 	 [{'widget': <message.ShowInfo instance at 0x7f8b300597a0>,
+        # 	 'key': 'simple_dialog', 'h': 1, 'w': 1, 'y': 0, 'x': 0},
+        # 	 {'widget': <Tkinter.Toplevel instance at 0x7f8b2f50ba70>,
+        # 	 'key': 'Bluetooth devices', 'h': 500, 'w': 700, 'y': 204, 'x': 4359}]
+        self.win_grp.register_child(name, self)
 
     return self.textbox
 
@@ -806,7 +817,7 @@ TclError: grab failed: another application has grab
 
     def body(self, parent):
         """ Apply bod to textbox """
-        self.textbox = body_func(self)  # 2025-01-18: Registers 'simple_dialog' child
+        self.textbox = body_func(self, name="AskQuestion")
 
         # 2025-01-18: every dialog has a body_func() so register win_grp now
         #if self.win_grp:
@@ -838,6 +849,7 @@ TclError: grab failed: another application has grab
         # Below from: https://stackoverflow.com/a/33664214/6929343
         self.bind("<KP_Enter>", self.ok)  # 2024-03-17 Replace broken <Return>
         self.bind("<Escape>", self.cancel)  # June 18, 2023 working properly
+        self.protocol("WM_DELETE_WINDOW", self.cancel)
 
         box.pack()
 
@@ -963,6 +975,7 @@ class AskString(simpledialog.Dialog, AskCommonSelf):
         # Below from: https://stackoverflow.com/a/33664214/6929343
         self.bind("<KP_Enter>", self.ok)  # 2024-03-17 Replace broken <Return>
         self.bind("<Escape>", self.cancel)
+        self.protocol("WM_DELETE_WINDOW", self.cancel)
 
         box.pack()
 
