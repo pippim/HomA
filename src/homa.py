@@ -114,15 +114,7 @@ import datetime as dt  # For dt.datetime.now().strftime('%I:%M %p')
 import random  # Temporary filenames
 import string  # Temporary filenames
 import base64  # Required for Cryptology
-
-with warnings.catch_warnings():
-    # Deprecation Warning:
-    # /usr/lib/python2.7/dist-packages/cryptography/x509/__init__.py:32:
-    #   PendingDeprecationWarning: CRLExtensionOID has been renamed to
-    #                              CRLEntryExtensionOID
-    #   from cryptography.x509.oid import (
-    warnings.simplefilter("ignore", category=PendingDeprecationWarning)
-    from cryptography.fernet import Fernet  # To encrypt sudo password
+from cryptography.fernet import Fernet  # To encrypt sudo password
 
 try:
     reload(sys)  # June 25, 2023 - Without utf8 sys reload, os.popen() fails on OS
@@ -131,7 +123,7 @@ except NameError:  # name 'reload' is not defined
     pass  # Python 3 already in unicode by default
 
 import trionesControl.trionesControl as tc  # Bluetooth LED Light strips
-# 2025-01-09 TODO: direct access to GATT
+# 2025-01-09 TODO: direct access to GATT bypassing trionesControl
 import pygatt
 import pygatt.exceptions
 
@@ -207,9 +199,9 @@ class DeviceCommonSelf:
         self.system_ctl = False  # Turning off TV shuts down / suspends system
         self.remote_suspends_system = False  # If TV powered off suspend system
 
-        # 2024-12-17 TODO: Use inst.suspendPowerOff, instead of self.suspendPowerOff
-        self.powerStatus = "?"  # "ON" or "OFF"
+        self.powerStatus = "?"  # "ON" or "OFF" after discovery
         self.suspendPowerOff = 0  # Did suspend power off the device?
+        # 2024-12-17 REVIEW: Use inst.suspendPowerOff instead of self.suspendPowerOff
         self.resumePowerOn = 0  # Did resume power on the device?
         self.menuPowerOff = 0  # Did user power off the device via menu option?
         self.menuPowerOn = 0  # Did user power on the device via menu option?
@@ -217,10 +209,6 @@ class DeviceCommonSelf:
         self.manualPowerOn = 0  # Was device physically powered on?
         self.dayPowerOff = 0  # Did daylight power off the device?
         self.nightPowerOn = 0  # Did nighttime power on the device?
-
-        # self.overrideLog = None  # Set True during auto rediscovery for no logging
-        # self.overrideLog won't work because it is defined at instance level as well
-        # as the Application() summary level
 
         # Separate self.cmdEvents for every instance.
         self.cmdEvents = []  # Command events log
@@ -684,7 +672,6 @@ class Computer(DeviceCommonSelf):
         else:
             self.type = "Desktop Computer"
             self.type_code = GLO['DESKTOP']
-        self.power_status = "?"  # Can be "ON", "OFF" or "?"
         v2_print(self.who, "chassis:", self.chassis, " | type:", self.type)
 
         # When reading /etc/hosts match from MAC address if available
@@ -859,7 +846,7 @@ class Computer(DeviceCommonSelf):
         if forgive:
             pass
 
-        self.powerStatus = self.power_status = "ON"  # Can be "ON", "OFF" or "?"
+        self.powerStatus = "ON"  # Can be "ON", "OFF" or "?"
         return self.powerStatus  # Really it is "AWAKE"
 
     def TurnOff(self, forgive=False):
@@ -879,7 +866,7 @@ class Computer(DeviceCommonSelf):
         command_line_list = GLO['POWER_OFF_CMD_LIST']  # systemctl suspend
         _event = self.runCommand(command_line_list, _who, forgive=forgive)
 
-        self.powerStatus = self.power_status = "OFF"  # Can be "ON", "OFF" or "?"
+        self.powerStatus = "OFF"  # Can be "ON", "OFF" or "?"
         return self.powerStatus  # Really it is "SLEEP"
 
     def getPower(self, forgive=False):
@@ -891,7 +878,7 @@ class Computer(DeviceCommonSelf):
         if forgive:
             pass
 
-        self.powerStatus = self.power_status = "ON"
+        self.powerStatus = "ON"
         return self.powerStatus
 
     def generateCryptoKey(self, key=None):
@@ -1481,7 +1468,6 @@ class LaptopDisplay(DeviceCommonSelf):
 
         self.type = "Laptop Display"
         self.type_code = GLO['LAPTOP_D']
-        self.power_status = "?"  # Can be "ON", "OFF" or "?"
         if name:  # name can be None
             self.name = name + " (Display)"  # There will be two rows, one 'Base'
         v2_print(_who, "chassis:", self.chassis, " | type:", self.type)
@@ -1561,7 +1547,7 @@ class LaptopDisplay(DeviceCommonSelf):
             pass  # Dummy argument for uniform instance parameter list
 
         self.SetPower("OFF", forgive=forgive)
-        return self.power_status
+        return self.powerStatus
 
     def getPower(self, forgive=False):
         """ Return "ON", "OFF" or "?" """
@@ -1577,12 +1563,12 @@ class LaptopDisplay(DeviceCommonSelf):
 
         back = event['output']
         if back == GLO['BACKLIGHT_ON']:
-            self.powerStatus = self.power_status = "ON"  # Can be "ON", "OFF" or "?"
+            self.powerStatus = "ON"  # Can be "ON", "OFF" or "?"
         elif back == GLO['BACKLIGHT_OFF']:
-            self.powerStatus = self.power_status = "OFF"  # Can be "ON", "OFF" or "?"
+            self.powerStatus = "OFF"  # Can be "ON", "OFF" or "?"
         else:
             v0_print(_who, "Invalid " + power + " value:", back)
-            self.powerStatus = self.power_status = "?"  # Can be "ON", "OFF" or "?"
+            self.powerStatus = "?"  # Can be "ON", "OFF" or "?"
 
         return self.powerStatus
 
@@ -1630,7 +1616,7 @@ class LaptopDisplay(DeviceCommonSelf):
         self.cmdReturncode = 0 if self.cmdReturncode is None else self.cmdReturncode
         self.cmdDuration = time.time() - self.cmdStart
         self.logEvent(who, forgive=forgive, log=True)
-        self.powerStatus = self.power_status = status
+        self.powerStatus = status
 
 
 class SmartPlugHS100(DeviceCommonSelf):
@@ -1652,7 +1638,6 @@ class SmartPlugHS100(DeviceCommonSelf):
 
         self.type = "TP-Link HS100 Smart Plug"
         self.type_code = GLO['HS1_SP']
-        self.power_status = "?"  # Can be "ON", "OFF" or "?"
         self.requires = ['hs100.sh', 'nc', 'base64', 'od', 'nmap', 'shasum', 'arp']
         self.installed = []
         self.CheckDependencies(self.requires, self.installed)
@@ -1757,11 +1742,11 @@ class SmartPlugHS100(DeviceCommonSelf):
 
         if parts[1] == "ON" or parts[1] == "OFF":
             v2_print(_who, self.ip, "Smart Plug is", "'" + parts[1] + "'")
-            self.powerStatus = self.power_status = parts[1]  # Can be "ON", "OFF" or "?"
+            self.powerStatus = parts[1]  # Can be "ON", "OFF" or "?"
             return self.powerStatus
 
         v2_print(_who, self.ip, "- Not a Smart Plug! (or powered off)")
-        self.powerStatus = self.power_status = "?"  # Can be "ON", "OFF" or "?"
+        self.powerStatus = "?"  # Can be "ON", "OFF" or "?"
         return self.powerStatus
 
     def SetPower(self, status):
@@ -1779,7 +1764,7 @@ class SmartPlugHS100(DeviceCommonSelf):
         _event = self.runCommand(command_line_list, _who)
         # Return code is always 0, even if plug doesn't exist. No text returned
 
-        self.powerStatus = self.power_status = status  # Can be "ON", "OFF" or "?"
+        self.powerStatus = status  # Can be "ON", "OFF" or "?"
 
 
 class SonyBraviaKdlTV(DeviceCommonSelf):
@@ -1809,7 +1794,6 @@ https://stackoverflow.com/questions/2829613/how-do-you-tell-if-a-string-contains
 
         self.type = "SonyBraviaKdlTV"
         self.type_code = GLO['KDL_TV']
-        self.power_status = "?"  # Can be "ON", "OFF" or "?"
         self.power_saving_mode = "?"  # set with PowerSavingMode()
         self.volume = "?"  # Set with getVolume()
 
@@ -1856,12 +1840,12 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/
             v3_print(_who, "Integer reply:", reply)  # 7
             return "?"
         elif u"active" == reply:
-            self.powerStatus = self.power_status = "ON"  # Can be "ON", "OFF" or "?"
+            self.powerStatus = "ON"  # Can be "ON", "OFF" or "?"
         elif u"standby" == reply:
-            self.powerStatus = self.power_status = "OFF"  # Can be "ON", "OFF" or "?"
+            self.powerStatus = "OFF"  # Can be "ON", "OFF" or "?"
         else:
             v3_print(_who, "Something weird: ?")  # Router
-            self.powerStatus = self.power_status = "?"  # Can be "ON", "OFF" or "?"
+            self.powerStatus = "?"  # Can be "ON", "OFF" or "?"
 
         # 2024-12-04 - Some tests
         #self.getSoundSettings()
@@ -1894,7 +1878,7 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/
             v0_print(_who, "Invalid reply_dict['result']':", reply_dict)
             ret = "Error"
 
-        self.powerStatus = self.power_status = ret  # Can be "ON", "OFF" or "?"
+        self.powerStatus = ret  # Can be "ON", "OFF" or "?"
         return ret
 
     def TurnOff(self, forgive=False):
@@ -1921,7 +1905,7 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/
             v0_print(_who, "Invalid reply_dict['result']':", reply_dict)
             ret = "Error"
 
-        self.powerStatus = self.power_status = ret  # Can be "ON", "OFF" or "?"
+        self.powerStatus = ret  # Can be "ON", "OFF" or "?"
         return self.powerStatus
 
     def PowerSavingMode(self, forgive=False):
@@ -2201,7 +2185,6 @@ List of devices attached
 
         self.type = "TclGoogleAndroidTV"
         self.type_code = GLO['TCL_TV']
-        self.power_status = "?"  # Can be "ON", "OFF" or "?"
         self.requires = ['wakeonlan', 'adb']
         self.installed = []
         self.CheckDependencies(self.requires, self.installed)
@@ -2301,9 +2284,9 @@ Application().Rediscover(): FOUND NEW INSTANCE or REDISCOVERED LOST INSTANCE:
                 #if pipe.returncode == 124:
                 if event['returncode'] == 124:
                     v1_print(_who, self.ip, "timeout after:", GLO['ADB_PWR_TIME'])
-                    self.powerStatus = self.power_status = "?"  # Can be "ON", "OFF" or "?"
+                    self.powerStatus = "?"  # Can be "ON", "OFF" or "?"
                     return self.powerStatus
-            self.powerStatus = self.power_status = "? " + str(event['returncode'])
+            self.powerStatus = "? " + str(event['returncode'])
             return self.powerStatus
 
         Reply = event['output']
@@ -2313,11 +2296,11 @@ Application().Rediscover(): FOUND NEW INSTANCE or REDISCOVERED LOST INSTANCE:
         # Reply = "error: device offline"
 
         if "true" in Reply:
-            self.powerStatus = self.power_status = "ON"  # Can be "ON", "OFF" or "?"
+            self.powerStatus = "ON"  # Can be "ON", "OFF" or "?"
         elif "false" in Reply:
-            self.powerStatus = self.power_status = "OFF"  # Can be "ON", "OFF" or "?"
+            self.powerStatus = "OFF"  # Can be "ON", "OFF" or "?"
         else:
-            self.powerStatus = self.power_status = "?"  # Can be "ON", "OFF" or "?"
+            self.powerStatus = "?"  # Can be "ON", "OFF" or "?"
 
         #v0_print(_who, "SPECIAL self.mac", self.mac, "self.name:", self.name)
         #  SPECIAL self.mac c0:79:82:41:2f:1f self.name: TCL.LAN
@@ -2338,8 +2321,8 @@ Application().Rediscover(): FOUND NEW INSTANCE or REDISCOVERED LOST INSTANCE:
             return self.getPower()
 
         cnt = 1
-        self.powerStatus = self.power_status = "?"
-        # 2025-01-25 next 3 occurrences of power_status changed to powerStatus
+        self.powerStatus = "?"
+
         while not self.powerStatus == "ON":
 
             v1_print(_who, "Attempt #:", cnt, "Send 'KEYCODE_WAKEUP' to IP:", self.ip)
@@ -2380,7 +2363,7 @@ Application().Rediscover(): FOUND NEW INSTANCE or REDISCOVERED LOST INSTANCE:
                     v0_print(_who, self.ip, "timeout after:", GLO['ADB_KEY_TIME'])
             return "?"
 
-        self.powerStatus = self.power_status = "OFF"  # Can be "ON", "OFF" or "?"
+        self.powerStatus = "OFF"  # Can be "ON", "OFF" or "?"
         return self.powerStatus
 
     def isDevice(self, forgive=False, timeout=None):
@@ -2471,9 +2454,6 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         v2_print(self.who, "Dependencies:", self.requires)
         v2_print(self.who, "Installed?  :", self.installed)
 
-        self.power_status = "?"  # Can be "ON", "OFF" or "?"
-        # self.powerStatus in device_common_self is status for LED Light Strip
-
         self.BluetoothStatus = "?"  # "ON" or "OFF" set by getBluetoothStatus
         self.hci_device = "hci0"  # "hci0" is the default used by trionesControl.py
         # but the real name is obtained using `hcitool dev` in getBluetoothStatus()
@@ -2498,7 +2478,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
             v1_print("nothing to do for:", self.mac, self.type_code, "-", self.type)
             return
 
-        self.powerStatus = self.power_status = "?"
+        self.powerStatus = "?"
         self.getBluetoothStatus()
         if self.BluetoothStatus != "ON":
             v1_print("_who", "Bluetooth is turned off. Reset Bluetooth.")
@@ -2775,7 +2755,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         """
         _who = self.who + "setColor():"
         if self.device is None:
-            self.showMessage()  # self.powerStatus = self.power_status = "?"
+            self.showMessage()  # self.powerStatus = "?"
             return self.powerStatus
 
         x, y = hc.GetMouseLocation()
@@ -2835,7 +2815,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
 
 
         self.device = None  # Force connect on next attempt
-        self.powerStatus = self.power_status = "?"
+        self.powerStatus = "?"
         # self.app.EnableMenu()  # 'NoneType' object has no attribute 'EnableMenu'
         return self.powerStatus
 
@@ -3093,7 +3073,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
             v2_print(BLEerr)
             v2_print("Is bluetooth enabled?")
             self.device = None
-            self.powerStatus = self.power_status = "?"
+            self.powerStatus = "?"
 
             # Count sequential errors and after x times ShowInfo()
             self.connect_errors += 1
@@ -3110,7 +3090,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         """ Show error message """
         _who = self.who + "showMessage():"
         self.device = None  # Force connect on next attempt
-        self.powerStatus = self.power_status = "?"
+        self.powerStatus = "?"
 
         if self.app and self.app.usingDevicesTreeview:
             self.app.refreshDeviceStatusForInst(self)
@@ -3190,7 +3170,7 @@ $ ps aux | grep gatttool | grep -v grep | wc -l
             except AttributeError:
                 v1_print(_who, "self.device:", self.device)
         self.device = None
-        self.powerStatus = self.power_status = "?"
+        self.powerStatus = "?"
 
     def TurnOn(self):
         """ Turn On BLE (Bluetooth Low Energy) LED Light Strip. """
@@ -3203,7 +3183,7 @@ $ ps aux | grep gatttool | grep -v grep | wc -l
 
         try:
             tc.powerOn(self.device)
-            self.powerStatus = self.power_status = "ON"  # Can be "ON", "OFF" or "?"
+            self.powerStatus = "ON"  # Can be "ON", "OFF" or "?"
             return self.powerStatus
         except pygatt.exceptions.NotConnectedError as err:
             v0_print(_who, err)
@@ -3211,7 +3191,7 @@ $ ps aux | grep gatttool | grep -v grep | wc -l
             v0_print(_who, "AttributeError: self.device:", self.device)
 
         self.device = None  # Force connect on next attempt
-        self.powerStatus = self.power_status = "?"
+        self.powerStatus = "?"
 
         return self.powerStatus
 
@@ -3228,7 +3208,7 @@ $ ps aux | grep gatttool | grep -v grep | wc -l
 
         try:
             tc.powerOff(self.device)
-            self.powerStatus = self.power_status = "OFF"  # Can be "ON", "OFF" or "?"
+            self.powerStatus = "OFF"  # Can be "ON", "OFF" or "?"
             return self.powerStatus
         except pygatt.exceptions.NotConnectedError as err:
             v0_print(_who, err)
@@ -3236,7 +3216,7 @@ $ ps aux | grep gatttool | grep -v grep | wc -l
             v0_print(_who, "AttributeError: self.device:", self.device)
 
         self.device = None  # Force connect on next attempt
-        self.powerStatus = self.power_status = "?"
+        self.powerStatus = "?"
         return self.powerStatus
 
     def isDevice(self, forgive=False):
@@ -3995,9 +3975,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             else:
                 pass  # power_saving_mode == "?"
 
-        if cr.inst.power_status != "ON":
+        if cr.inst.powerStatus != "ON":
             menu.entryconfig("Turn On " + name, state=tk.NORMAL)
-        if cr.inst.power_status != "OFF":
+        if cr.inst.powerStatus != "OFF":
             menu.entryconfig("Turn Off " + name, state=tk.NORMAL)
 
         # Allow moving up unless at top, allow moving down unless at bottom
@@ -4345,9 +4325,8 @@ BluetoothLedLightStrip().TurnOn(): Device not connected!
                 # Special debugging for LED Light Strips
                 #v0_print(_who, "BEFORE:", inst.type_code, inst.mac, inst.name)
                 #v0_print("inst.device:", inst.device)
-                #v0_print("powerStatus:", inst.powerStatus,
-                #         "BluetoothStatus:", inst.BluetoothStatus,
-                #         "power_status:", inst.power_status)
+                #v0_print("BluetoothStatus:", inst.BluetoothStatus,
+                #         "powerStatus:", inst.powerStatus)
                 pass
             resp = "?"  # Necessary for pyCharm checker only
             if state == "ON":
@@ -4381,9 +4360,8 @@ BluetoothLedLightStrip().TurnOn(): Device not connected!
                 # Special debugging for LED Light Strips
                 #v0_print(_who, "AFTER:", inst.type_code, inst.mac, inst.name)
                 #v0_print("inst.device:", inst.device)
-                #v0_print("powerStatus:", inst.powerStatus,
-                #         "BluetoothStatus:", inst.BluetoothStatus,
-                #         "power_status:", inst.power_status)
+                #v0_print("BluetoothStatus:", inst.BluetoothStatus,
+                #         "powerStatus:", inst.powerStatus)
                 pass
 
             # Update Devices Treeview with power status
@@ -5330,12 +5308,12 @@ class TreeviewRow(DeviceCommonSelf):
             type_code = "?"
             name = "?"
         else:
-            status = self.inst.power_status
+            status = self.inst.powerStatus
             type_code = self.inst.type
             name = self.inst.name
 
         # Did program just start, or is power status already known?
-        #if self.inst.power_status == "?":  # Initial boot  # 2025-01-12
+        #if self.inst.powerStatus == "?":  # Initial boot  # 2025-01-12
         if status == "?":  # Initial boot
             self.text = "Wait..."  # Power status checked when updating treeview
         else:
