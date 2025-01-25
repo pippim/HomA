@@ -114,7 +114,15 @@ import datetime as dt  # For dt.datetime.now().strftime('%I:%M %p')
 import random  # Temporary filenames
 import string  # Temporary filenames
 import base64  # Required for Cryptology
-from cryptography.fernet import Fernet  # To encrypt sudo password
+
+with warnings.catch_warnings():
+    # Deprecation Warning:
+    # /usr/lib/python2.7/dist-packages/cryptography/x509/__init__.py:32:
+    #   PendingDeprecationWarning: CRLExtensionOID has been renamed to
+    #                              CRLEntryExtensionOID
+    #   from cryptography.x509.oid import (
+    warnings.simplefilter("ignore", category=PendingDeprecationWarning)
+    from cryptography.fernet import Fernet  # To encrypt sudo password
 
 try:
     reload(sys)  # June 25, 2023 - Without utf8 sys reload, os.popen() fails on OS
@@ -448,11 +456,27 @@ class Globals(DeviceCommonSelf):
             except (TypeError, IndexError):  # No color saved
                 self.dictGlobals['LED_LIGHTS_COLOR'] = None
 
+            with warnings.catch_warnings():
+                # Deprecation Warning:
+                # /usr/lib/python2.7/dist-packages/cryptography/x509/__init__.py:32:
+                #   PendingDeprecationWarning: CRLExtensionOID has been renamed to
+                #                              CRLEntryExtensionOID
+                #   from cryptography.x509.oid import (
+                warnings.simplefilter("ignore", category=PendingDeprecationWarning)
+                f = Fernet(cp.crypto_key)  # Encrypt sudo password when storing
+
+            if self.dictGlobals['SUDO_PASSWORD'] is not None:
+                self.dictGlobals['SUDO_PASSWORD'] = \
+                    f.decrypt(self.dictGlobals['SUDO_PASSWORD'].encode())
+                #v0_print(self.dictGlobals['SUDO_PASSWORD'])
+
     def saveFile(self):
         """ Save dictConfig to CONFIG_FNAME = "config.json" """
         _who = self.who + "saveFile():"
 
-        GLO['SUDO_PASSWORD'] = None  # NEVER store a password
+        f = Fernet(cp.crypto_key)  # Encrypt sudo password when storing
+        if GLO['SUDO_PASSWORD'] is not None:
+            GLO['SUDO_PASSWORD'] = f.encrypt(GLO['SUDO_PASSWORD'].encode())
         GLO['LOG_EVENTS'] = True  # Don't want to store False value
         GLO['EVENT_ERROR_COUNT'] = 0  # Don't want to store last error count
         with open(g.USER_DATA_DIR + os.sep + GLO['CONFIG_FNAME'], "w") as f:
@@ -684,8 +708,29 @@ class Computer(DeviceCommonSelf):
         # '192.168.0.10', '192.168.0.10', '192.168.0.10']
 
         self.Interface()  # Initial values
+
+        '''
+        Convert string to bytes
+            Python2:
+            
+            s = "ABCD"
+            b = bytearray()
+            b.extend(s)
+            
+            Python3:
+            
+            s = "ABCD"
+            b = bytearray()
+            b.extend(map(ord, s))
+        '''
         self.crypto_key = self.generateCryptoKey()
-        v3_print(_who, "self.crypto_key:", self.crypto_key)
+        v3_print(_who, "BEFORE self.crypto_key:", self.crypto_key, "\n  length:",
+                 len(self.crypto_key), type(self.crypto_key))
+        b = bytearray()
+        b.extend(self.crypto_key)
+        self.crypto_key = b
+        v3_print(_who, " AFTER self.crypto_key:", self.crypto_key, "\n  length:",
+                 len(self.crypto_key), type(self.crypto_key))
         self.NightLightStatus()
 
     def Interface(self, forgive=False):
@@ -859,7 +904,7 @@ class Computer(DeviceCommonSelf):
                 key = self.wifi_mac + ":" + self.wifi_mac
 
         key = key + " "*32
-        v3_print(_who, "key[32]", key[:33])
+        v3_print(_who, "key[32]", key[:32])
         # Computer().generateCryptoKey(): key[32] 28:f1:0e:2a:1a:ed:28:f1:0e:2a:1a:
         # Computer().__init()__: self.crypto_key: Mjg6ZjE6MGU6MmE6MWE6ZWQ6Mjg6ZjE6MGU6MmE6MWE6
 
@@ -868,7 +913,7 @@ class Computer(DeviceCommonSelf):
         # original data, and typically appears as seemingly random characters.
         # Base64 encoding is specified in full in RFC 1421 and RFC 2045.
 
-        return base64.urlsafe_b64encode(key[:33])
+        return base64.urlsafe_b64encode(key[:32])
 
     def NightLightStatus(self, forgive=False):
         """ Return True if "On" or "Off"
@@ -2554,7 +2599,8 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
             self.app.ShowInfo("Missing program.", msg, icon="error")
             return "OFF"  # Prevents other methods running until turned "ON"
 
-        if not self.elevateSudo():
+        msg = "Sudo password required to reset bluetooth."
+        if not self.elevateSudo(msg=msg):
             return "?"  # Cancel button (256) or escape or 'X' on window decoration (64512)
 
         # Remove any bluetooth soft blocking
@@ -2588,7 +2634,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         self.BluetoothStatus = status
         return self.BluetoothStatus
 
-    def elevateSudo(self):
+    def elevateSudo(self, msg=None):
         """ If already sudo, validate timestamp hasn't expired.
             Otherwise get sudo password and validate.
         """
@@ -2600,7 +2646,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
             GLO['SUDO_PASSWORD'] = hc.ValidateSudoPassword(GLO['SUDO_PASSWORD'])
 
         if GLO['SUDO_PASSWORD'] is None:
-            GLO['SUDO_PASSWORD'] = self.app.GetPassword()
+            GLO['SUDO_PASSWORD'] = self.app.GetPassword(msg=msg)
             self.app.EnableMenu()
 
         return GLO['SUDO_PASSWORD']
@@ -4667,8 +4713,8 @@ b'A really secret message. Not for prying eyes.'
 
     def ShowInfo(self, title, text, icon="information", align="center"):
         """ Called from instance which has no tk reference of it's own 
-            From Application use: inst.app = self
-            From Instance us: self.app.ShowInfo()
+            From Application initialize with:   inst.app = self
+            From Instance call method with:     self.app.ShowInfo()
         """
         message.ShowInfo(self, thread=self.Refresh, icon=icon, align=align,
                          title=title, text=text, win_grp=self.win_grp)
