@@ -4665,12 +4665,12 @@ b'A really secret message. Not for prying eyes.'
         self.last_refresh_time = time.time()  # Refresh idle loop last entered time
         return password  # Will be <None> if invalid password entered
 
-    def ShowInfo(self, title, text, icon="information"):
+    def ShowInfo(self, title, text, icon="information", align="center"):
         """ Called from instance which has no tk reference of it's own 
             From Application use: inst.app = self
             From Instance us: self.app.ShowInfo()
         """
-        message.ShowInfo(self, thread=self.Refresh, icon=icon,
+        message.ShowInfo(self, thread=self.Refresh, icon=icon, align=align,
                          title=title, text=text, win_grp=self.win_grp)
 
     def Preferences(self):
