@@ -2819,11 +2819,11 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         # self.app.EnableMenu()  # 'NoneType' object has no attribute 'EnableMenu'
         return self.powerStatus
 
-    def breatheColors(self, low=6, high=30, span=5.0, step=0.25, bots=3.0, tops=0.25):
+    def breatheColors(self, low=8, high=30, span=5.0, step=0.25, bots=3.0, tops=0.25):
         """ Breathe Colors: R, R&G, G, G&B, B, B&R
 
         Best settings for nighttime:
-            low=4, high=40, span=5.0, step=0.25, bots=3.0, tops=0.5
+            low=8, high=30, span=5.0, step=0.25, bots=3.0, tops=0.25
 
         :param low: Low value (darkest) E.G. 9 (Lowest brightness before lights turn off)
         :param high: High value (brightest) E.G. 180 (About 75% brightness)
@@ -2838,6 +2838,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
             return
 
         self.already_breathing_colors = True
+        failed_count = 0  # How many times connection failed.
         v1_print("\n" + ext.ch(), _who, "Breathing colors - Starting up.")
 
         if self.device is None:
@@ -2874,10 +2875,23 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
                 tc.setRGB(sr, sg, sb, self.device, wait_for_response=True)
                 # wait_for_response takes 30 seconds when device not connected
                 # When not waiting GATT cmd used which results in 100% CPU core
+                self.powerStatus = "ON"  # Reset "?" for previous failures
+                self.connect_errors = 0
                 return self.app.isActive and self.powerStatus == "ON"
             except (pygatt.exceptions.NotConnectedError, AttributeError,
                     pygatt.exceptions.NotificationTimeout) as err:
-                self.showMessage(err)  # self.device = None & self.powerStatus = "?"
+                if self.connect_errors < 3:
+                    # Try to connect 3 times. Error after 4th time never displayed
+                    self.Connect(retry=4)  # Increments self.connect_errors on failure
+                    # APP_RESTART_TIME  TODO: Make global method in self.app.delta_str
+                    delta = round(time.time() - GLO['APP_RESTART_TIME'], 2)
+                    delta_str = "{0:>8.2f}".format(delta)  # "99999.99" format
+                    v0_print(delta_str, "|", _who, "Attempted reconnect:",
+                             self.connect_errors + 1, "time(s).")
+                else:
+                    # Attempted to connect 3 times. Error that Connect() never gave
+                    self.showMessage(err, count=self.connect_errors)
+
                 return False
 
         def oneStep(stepNdx):
@@ -2902,10 +2916,13 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
                     brightness = high - int(stepNdx * step_float)
             brightness = low if brightness < low else brightness
             brightness = high if brightness > high else brightness
-            brightness = int(brightness / num_colors)
-            sr = brightness if tr else 0
-            sg = brightness if tg else 0
-            sb = brightness if tb else 0
+            half_bright = int(brightness / num_colors)  # 1 or 2 colors
+            # Rounding can make half_bright 1 less than half
+            sr = half_bright if tr else 0
+            half_bright = brightness - half_bright if sr > 0 else half_bright
+            sg = half_bright if tg else 0
+            half_bright = brightness - half_bright if sg > 0 else half_bright
+            sb = half_bright if tb else 0
             return setColor(sr, sg, sb) and self.powerStatus == "ON"
 
         def refresh(ms):
@@ -2938,7 +2955,8 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
                     sleep_time = 0.0
                 elapsed = int((time.time() - start) * 1000)
 
-        while self.app.isActive and self.powerStatus == "ON":
+        #while self.app.isActive and self.powerStatus == "ON":  # 2025-01-26
+        while self.app.isActive:
             for i in range(step_count):
                 if not self.app.isActive:
                     v2_print(_who, "Closing down. self.app.isActive:", self.app.isActive)
@@ -2951,10 +2969,17 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
                 start_step = time.time()
                 result = oneStep(i)  # Waits for response
                 if not result:
+                    if not self.app.isActive:
+                        # 2025-01-26 If suspending, leave breathing flag active?
+                        self.already_breathing_colors = False
+                        break
+
                     # LED Light strip not connected OR Nighttime/Set Color menu options
                     #v2_print(_who, "LED Light strip not connected.")
-                    self.already_breathing_colors = False
-                    break
+                    if self.connect_errors == 3:
+                        self.connect_errors = 0
+                        self.already_breathing_colors = False
+                        break
 
                 end_step = time.time()
                 gatt_ms = int((end_step - start_step) * 1000.0)
@@ -3048,13 +3073,18 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         self.already_breathing_colors = False
         return "ON"
 
-    def Connect(self, sudo_reset=False):
+    def Connect(self, sudo_reset=False, retry=0):
         """ Connect to Bluetooth Low Energy with GATT.
+
+            Sometimes two or three attempts to connect and turn on power is required.
+            Sometimes that doesn't work and a resetBluetooth() is required followed by
+            turnOn()
 
             :param sudo_reset: bluetooth is restarted in gatttool.py using:
                 subprocess.Popen(["sudo", "systemctl", "restart", "bluetooth"]).wait()
                 subprocess.Popen([
                     "sudo", "hciconfig", self._hci_device, "reset"]).wait()
+            :param retry: Number of sequential failures to display errors.
         """
 
         _who = self.who + "Connect():"
@@ -3067,26 +3097,31 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
 
         try:
             self.device = tc.connect(GLO['LED_LIGHTS_MAC'], reset_on_start=sudo_reset)
-            self.connect_errors = 0
-        except tc.pygatt.exceptions.NotConnectedError as BLEerr:
+            self.connect_errors = 0  # Reset connect error counter
+        except tc.pygatt.exceptions.NotConnectedError as err:
             v2_print(_who, "error:")
-            v2_print(BLEerr)
+            v2_print(err)
             v2_print("Is bluetooth enabled?")
             self.device = None
             self.powerStatus = "?"
 
             # Count sequential errors and after x times ShowInfo()
             self.connect_errors += 1
-            if self.connect_errors > 0:
+            if self.connect_errors > retry:
+                self.showMessage(err, count=self.connect_errors)
                 self.connect_errors = 0  # Reset for new sequential count
-                self.showMessage(BLEerr)  # self.device = None & self.powerStatus = "?"
+            else:
+                delta = round(time.time() - GLO['APP_RESTART_TIME'], 2)
+                delta_str = "{0:>8.2f}".format(delta)  # "99999.99" format
+                v0_print(delta_str, "|", _who, "Failed to connect: ",
+                         self.connect_errors, "time(s).")
 
         if self.app:  # Prevent erroneous Resume from Suspend from running
             self.app.last_refresh_time = time.time()
 
         return self.device
 
-    def showMessage(self, err=None):
+    def showMessage(self, err=None, count=1):
         """ Show error message """
         _who = self.who + "showMessage():"
         self.device = None  # Force connect on next attempt
@@ -3129,6 +3164,8 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
             msg += "Finally, try 'View Bluetooth Devices' and look for: '"
             msg += self.ip + "'.\n\n"
 
+        if count > 0:
+            msg += "Error occurred " + str(count) + " times.\n\n"
         msg += "At command line, does 'bluetoothctl show' display your devices?\n"
         msg += "NOTE: Type 'exit' to exit the 'bluetoothctl' application.\n\n"
         msg += "Always try: 'Turn on " + self.name + "' a few times for quick fix."
@@ -4696,6 +4733,7 @@ b'A really secret message. Not for prying eyes.'
         """
         message.ShowInfo(self, thread=self.Refresh, icon=icon, align=align,
                          title=title, text=text, win_grp=self.win_grp)
+        self.last_refresh_time = time.time()  # Prevent resume from suspend
 
     def Preferences(self):
         """ Edit preferences """
@@ -4706,15 +4744,21 @@ b'A really secret message. Not for prying eyes.'
             return
 
         self.notebook = self.edit_pref_active = None
+        all_notebook = None
 
         def close(*_args):
             """ Close window painted by this pretty_column() method """
+            _who = self.who + "Preferences(): close():"
             if not self.edit_pref_active:
                 return
             #notebook.unbind("<Button-1>")  # 2024-12-21 TODO: old code, use unknown
             #self.win_grp.unregister_child(self.notebook)
             self.tt.close(self.notebook)
             self.edit_pref_active = None  # 2024-12-24 needed in homa?
+            for key in GLO:
+                if GLO[key] != all_notebook.newData[key]:
+                    v0_print(_who, "key:", key, "old:", GLO[key],
+                             "new:", all_notebook.newData[key])
             self.notebook.destroy()
             self.notebook = None
             self.EnableMenu()
@@ -4737,8 +4781,9 @@ b'A really secret message. Not for prying eyes.'
 
         self.notebook = ttk.Notebook(self)
         listTabs, listFields = glo.defineNotebook()
-        toolkit.makeNotebook(self.notebook, listTabs, listFields, GLO, "TNotebook.Tab",
-                             "Notebook.TFrame", "C.TButton", close, tt=self.tt)
+        all_notebook = toolkit.makeNotebook(
+            self.notebook, listTabs, listFields, GLO, "TNotebook.Tab",
+            "Notebook.TFrame", "C.TButton", close, tt=self.tt)
         self.edit_pref_active = True
         self.EnableMenu()
 

@@ -1562,7 +1562,7 @@ class makeNotebook:
         self.tStyle = tStyle  # Notebook Tab style "TNotebook.Tab
         self.fStyle = fStyle  # Frame style "N.TFrame"
         self.bStyle = bStyle  # Button style "C.TButton"
-        self.close = close  # Close callback
+        self.close = close  # Callback for Close button on every frame (tab)
         self.tt = tt
 
         self.who = "toolkit.py DictNotebook()."  # For debug messages
@@ -1645,23 +1645,35 @@ class makeNotebook:
             Called from add_rows() where one 'var' for each 'entry'.
             Define 'entry' (tkk.Entry) an important widget in the Notebook.
             tab_no is 1's based. tab_id is 0's based.
+
         """
         _who = self.who + "add_rows(): add_var():"
         '''
-        # (name, tab#, hide/ro/rw, input as, stored as, width, decimals, 
-                 min, max, edit callback, tooltip text)
-        # name: value
+        DATA DICTIONARY atts() tuple from listFields[]: 
+            (name, tab#, hidden/read-only/read-write, input as, stored as, width, 
+               decimals, min, max, edit callback, tooltip text)
+            name: value
+
+        LOCAL SHARED between add_var attributes for inter process communication:
+            self.bad_value_key = atts[0]
+            self.bad_value_entry = entry
+            self.bad_title = \
+                "Edit Preferences Error - HomA"  # Reused focusOut()
+            self.bad_text = "Invalid value for: " + atts[0] + "\n\n" +\
+                str(e) + "\n"  # Reused focusOut()
+            self.original_value
         '''
 
+        name_key = atts[0]  # E.G. GLO['RESUME_TEST_SECONDS']
         entry_type = atts[2]  # 'hidden', 'read-only', 'read-write'
         input_type = atts[3]  # "string", "integer", "float", "time", "list", "filename"
-        _store_type = atts[4]  # "string", "integer", "float", "time", "list"
+        store_type = atts[4]  # "string", "integer", "float", "time", "list"
         width = atts[5]
         _decimal = atts[6]
         _minimum = atts[7]
         _maximum = atts[8]
         _edit_cb = atts[9]
-        _tip_text = atts[10]  # Tooltip on entry variable too busy
+        _tip_text = atts[10]  # Tooltip on entry variable too busy only on label
 
         sticky = tk.W
         if input_type == "string" or input_type == "filename" or\
@@ -1683,12 +1695,12 @@ class makeNotebook:
 
         var.trace('w', self.trace_cb)  # capture changes to tk.XxxVar variable
 
-        def get_value():
+        def getValue():
             """ Get tk.XxxVar value. Check within bounds and data type.
                 Called from focusOut() inner function.
             """
-            _who2 = _who + " get_value():"
-            #print("\nget_value() for:", atts[0])
+            _who2 = _who + " getValue():"
+            #print("\ngetValue() for:", atts[0])
 
             try:
                 new_value = var.get()
@@ -1705,9 +1717,31 @@ class makeNotebook:
                 return None
 
             if new_value == self.original_value:
+                entry.configure(font="-weight normal")  # Turn off bold font
                 return new_value
 
             return None  # Error. Get variable again
+
+        def saveValue(val):
+            """ Save tk.XxxVar value.
+                Called from focusOut() inner function.
+            """
+            _who2 = _who + "saveValue():"
+
+            if store_type == "string" or store_type == "filename" or \
+                    store_type == "MAC-address":
+                self.newData[name_key] = str(val)
+            elif store_type == "integer":
+                self.newData[name_key] = int(val)
+            elif store_type == "float" or store_type == "time":
+                self.newData[name_key] = float(val)
+            elif store_type == "boolean":
+                self.newData[name_key] = False if val == "0" else True
+            #elif store_type == "list":
+            #    self.newData[name_key] = list(val)
+            else:
+                print(_who2, "invalid store_type:", store_type)
+                exit()
 
         def focusIn(_event):
             """ variable received focus """
@@ -1719,7 +1753,7 @@ class makeNotebook:
             entry.selection_range(0, 0)
 
             # trace will reset error condition. While error condition exists
-            # focus In/Out will spam many times and .get_value() keeps repeating error
+            # focus In/Out will spam many times and .getValue() keeps repeating error
             if self.bad_value_key != "":
                 if atts[0] != self.bad_value_key:
                     #print("<FocusIn> Refocus from:", atts[0], "to:", self.bad_value_key)
@@ -1736,7 +1770,7 @@ class makeNotebook:
                 # Save validated value to compare future changes
                 self.original_value = var.get()
             except ValueError:
-                pass  # Redoing after get_value() in focusOut()
+                pass  # Redoing after getValue() in focusOut()
 
             entry.configure(font="-weight bold")
             #self.notebook.update_idletasks()
@@ -1750,7 +1784,7 @@ class makeNotebook:
             entry.selection_range(0, 0)
 
             # trace will reset error condition. While error condition exists
-            # focus In/Out will spam many times and .get_value() keeps repeating error
+            # focus In/Out will spam many times and .getValue() keeps repeating error
             if self.bad_value_key != "":
                 if atts[0] != self.bad_value_key:
                     #print("<FocusOut> Refocus from:", atts[0], "to:", self.bad_value_key)
@@ -1759,11 +1793,14 @@ class makeNotebook:
                 return
 
             # Check value within min, max and correct data type
-            stored_value = get_value()
+            stored_value = getValue()
             if stored_value is None:  # If error, None is returned
                 return
 
             entry.configure(font="-weight normal")  # Turn off bold font
+            
+            # Save newData value
+            saveValue(stored_value)
 
         # ======================= add_var(): Mainline =======================
         state = tk.NORMAL if entry_type == "read-write" else tk.DISABLED
