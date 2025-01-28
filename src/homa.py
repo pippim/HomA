@@ -458,6 +458,9 @@ class Globals(DeviceCommonSelf):
                     f.decrypt(self.dictGlobals['SUDO_PASSWORD'].encode())
                 #v0_print(self.dictGlobals['SUDO_PASSWORD'])
 
+            # 2025-01-27 override REFRESH_MS for breatheColors() testing.
+            #GLO['REFRESH_MS'] = 10  # Override 16ms to 10ms
+
     def saveFile(self):
         """ Save dictConfig to CONFIG_FNAME = "config.json" """
         _who = self.who + "saveFile():"
@@ -587,6 +590,7 @@ class Globals(DeviceCommonSelf):
              "Laptop base ('CPU, GPU, Keyboard, Fans, Ports, etc.')"),
             ("LAPTOP_D", 6, RO, INT, INT, 3, DEC, MIN, MAX, CB,
              'Laptop display ("backlight can be turned\non/off separately from laptop base")'),
+            # Once entered, sudo password stored encrypted on disk until "forget" is run.
             ("SUDO_PASSWORD", 6, HD, STR, STR, WID, DEC, MIN, MAX, CB,
              "Sudo password required for laptop backlight"),
             ("BACKLIGHT_NAME", 6, RW, STR, STR, 30, DEC, MIN, MAX, CB,
@@ -640,6 +644,7 @@ class Computer(DeviceCommonSelf):
         self.nightlight_active = False  # Most popular color temperature app.
         self.redshift_active = False  # 2024-11-15 Not supported yet.
         self.eyesome_active = False  # Pippim color temperature & brightness.
+        self.sunlight_percent = 0  # Percentage of sunlight, 0 = nighttime.
         self.dimmer_active = False  # Pippim 2 out of 3 monitors dimmer.
         self.flux_active = False  # 2024-11-15 Not supported yet.
         self.sct_active = False  # 2024-11-15 Not supported yet.
@@ -934,8 +939,10 @@ class Computer(DeviceCommonSelf):
             if pipe.returncode == 0:
                 night_light = text.strip()
                 if night_light == "True":
+                    self.nightlight_active = True
                     return "ON"
                 elif night_light == "False":
+                    self.nightlight_active = False
                     return "OFF"
         else:
             pass  # if no `gsettings` then no GNOME Nightlight
@@ -946,20 +953,25 @@ class Computer(DeviceCommonSelf):
             v3_print("\n" + _who, "command_line_str:", command_line_str, "\n")
             f = os.popen(command_line_str)
 
-            text = f.read().splitlines()
+            text = f.read().splitlines()  # NOTE: text is a list with 1 entry
             returncode = f.close()  # https://stackoverflow.com/a/70693068/6929343
             v3_print(_who, "text:", text, "returncode:", returncode)
 
             if returncode is None and text is not None and len(text) == 1:
+                self.eyesome_active = True
                 try:
                     percent = int(text[0])
                     v3_print(_who, "eyesome percent:", percent)
+                    self.sunlight_percent = percent
                     if percent == 100:
                         return "OFF"  # 100 % sunlight
                     else:
                         return "ON"
                 except ValueError:
                     v3_print(_who, "eyesome percent VALUE ERROR:", text[0])
+
+            else:
+                self.eyesome_active = False
 
         return "ON"  # Default to always turn bias lights on
 
@@ -2464,8 +2476,16 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         self.temp_fname = None  # Temporary filename for all devices report
         self.fake_top = None  # For color chooser placement geometry
 
-        self.connect_errors = 0  # Count sequential errors for message display
-        self.already_breathing_colors = False  #
+        # Parameter & Statistics dictionaries for breathing colors fine tuning
+        self.already_breathing_colors = False  # Is breathing colors running?
+        self.connect_errors = 0  # Count sequential times auto-reconnect failed.
+        # When changing here, change in breatheColors() as well
+        self.parm = {"low": 8, "high": 30, "span": 5.0, "step": 0.25,
+                     "bots": 3.0, "tops": 0.25}  # breatheColors() parameters
+        self.stat = {
+            "gatt_ms": 0, "gatt_cnt": 0, "gatt_low": 0, "gatt_high": 0, "sleep_ms": 0,
+            "sleep_cnt": 0, "fast_ms": 0, "fast_cnt": 0, "norm_ms": 0, "norm_cnt": 0
+        }
 
     def startDevice(self):
         """ Called during startup and resume.
@@ -2819,11 +2839,8 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         # self.app.EnableMenu()  # 'NoneType' object has no attribute 'EnableMenu'
         return self.powerStatus
 
-    def breatheColors(self, low=8, high=30, span=5.0, step=0.25, bots=3.0, tops=0.25):
+    def breatheColors(self, low=6, high=30, span=4.0, step=0.275, bots=1.5, tops=0.275):
         """ Breathe Colors: R, R&G, G, G&B, B, B&R
-
-        Best settings for nighttime:
-            low=8, high=30, span=5.0, step=0.25, bots=3.0, tops=0.25
 
         :param low: Low value (darkest) E.G. 9 (Lowest brightness before lights turn off)
         :param high: High value (brightest) E.G. 180 (About 75% brightness)
@@ -2837,8 +2854,16 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
             V0_print("\n" + ext.ch(), _who, "Already running breathing colors.")
             return
 
+        # When changing here, change in __init__() as well
+        self.parm = {"low": low, "high": high, "span": span, "step": step,
+                     "bots": bots, "tops": tops}  # breatheColors() parameters
+        self.stat = {
+            "gatt_ms": 0, "gatt_cnt": 0, "gatt_low": 0, "gatt_high": 0, "sleep_ms": 0,
+            "sleep_cnt": 0, "fast_ms": 0, "fast_cnt": 0, "norm_ms": 0, "norm_cnt": 0, 
+            "fail_ms": 0, "fail_cnt": 0
+        }
+
         self.already_breathing_colors = True
-        failed_count = 0  # How many times connection failed.
         v1_print("\n" + ext.ch(), _who, "Breathing colors - Starting up.")
 
         if self.device is None:
@@ -2852,25 +2877,36 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         color_max = len(colors) - 1
         turning_up = True  # False = turning down
         step_count = int(float(span) / float(step))
-        step_float = float(high - low) / float(step_count)
-        span_ms = int(float(step) * 1000.0)  # E.G. .1 = 100ms
+        step_amount = float(high - low) / float(step_count)
+        step_ms = int(float(step) * 1000.0)  # E.G. .1 = 100ms
         bots = int(bots * 1000.0)  # E.G. 1.0 = 1000ms
         tops = int(tops * 1000.0)  # E.G. 3.0 = 3000ms
-        # low=20, high=100, span=10.0, step=0.6
-        v1_print("  low:", low, " | high:", high, " | span:", span,
-                 " | step:", step, " | bots:", bots, " | tops:", tops)
-        v1_print("  step_count:", step_count, " | step_float:", step_float,
-                 " | span_ms:", span_ms)
-        # step_count: 303  | step_float: 0.825082508251  | span_ms: 33  | bots: 1000
-        # 303 * 33 = 9999 = 10 seconds
-        gatt_mils = refresh_mils = slept_mils = extra_mils = short_mils = 0
-        gatt_count = refresh_count = slept_count = extra_count = short_count = 0
-        gatt_low = gatt_high = None
+        FAST_MS = 5
+        fast_sleep = float(FAST_MS) / 1000.0
+        FAIL_CNT = 5  # Allow 5 connection failures before giving up
 
         def setColor(sr, sg, sb):
             """ Set colors: red (sr), green (sg) and blue (sb) """
             if not self.app.isActive or not self.already_breathing_colors:
                 return False
+
+            ''' Console output with v0_print()
+= = = = = System Monitor Processor Temps & Fans = = = = =
+Seconds | CPU Temp Fan RPM | GPU Temp Fan RPM |   Time  
+-------- | ---------------- | ---------------- | --------
+6.73 | +69.0°C 3400 RPM | +73.0°C 3200 RPM |  2:48 PM
+169.70 | +73.0°C 4000 RPM | +76.0°C 3600 RPM |  2:51 PM
+225.86 | +77.0°C 4000 RPM | +76.0°C 3900 RPM |  2:52 PM
+431.93 | +76.0°C 4300 RPM | +77.0°C 4300 RPM |  2:55 PM
+629.37 | BluetoothLedLightStrip().Connect(): Failed to connect: 1 time(s).
+629.37 | BluetoothLedLightStrip().breatheColors(): Attempted reconnect: 2 time(s).
+634.58 | BluetoothLedLightStrip().Connect(): Failed to connect: 2 time(s).
+634.58 | BluetoothLedLightStrip().breatheColors(): Attempted reconnect: 3 time(s).
+635.21 | BluetoothLedLightStrip().breatheColors(): Attempted reconnect: 1 time(s).
+
+                If 3 is the most times, set the maximum to 5 times.
+                GLO['LED_LIGHTS_MAX_RECONNECTS']
+            '''
             try:
                 tc.setRGB(sr, sg, sb, self.device, wait_for_response=True)
                 # wait_for_response takes 30 seconds when device not connected
@@ -2880,9 +2916,9 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
                 return self.app.isActive and self.powerStatus == "ON"
             except (pygatt.exceptions.NotConnectedError, AttributeError,
                     pygatt.exceptions.NotificationTimeout) as err:
-                if self.connect_errors < 3:
-                    # Try to connect 3 times. Error after 4th time never displayed
-                    self.Connect(retry=4)  # Increments self.connect_errors on failure
+                if self.connect_errors < FAIL_CNT:
+                    # Try to connect 5 times. Error after 6th time never displayed
+                    self.Connect(retry=FAIL_CNT + 1)  # Increments self.connect_errors on failure
                     # APP_RESTART_TIME  TODO: Make global method in self.app.delta_str
                     delta = round(time.time() - GLO['APP_RESTART_TIME'], 2)
                     delta_str = "{0:>8.2f}".format(delta)  # "99999.99" format
@@ -2906,54 +2942,54 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
                 elif stepNdx == step_count - 1:  # Last index in range?
                     brightness = high
                 else:
-                    brightness = low + int(stepNdx * step_float)
+                    brightness = low + int(stepNdx * step_amount)
             else:
                 if stepNdx == 0:
                     brightness = high
                 elif stepNdx == step_count - 1:  # Last index in range?
                     brightness = low
                 else:
-                    brightness = high - int(stepNdx * step_float)
+                    brightness = high - int(stepNdx * step_amount)
+            # Compensate for sunlight
+            if cp.sunlight_percent > 0:
+                brightness += int((float(brightness) * cp.sunlight_percent) / 100.0)
+
             brightness = low if brightness < low else brightness
             brightness = high if brightness > high else brightness
+
+            # When two colors, each color gets half brightness
             half_bright = int(brightness / num_colors)  # 1 or 2 colors
-            # Rounding can make half_bright 1 less than half
+
+            # Integer rounding can make half_bright 1 less than true half
+            v3_print(_who, "1st half_bright:", half_bright)
             sr = half_bright if tr else 0
             half_bright = brightness - half_bright if sr > 0 else half_bright
             sg = half_bright if tg else 0
             half_bright = brightness - half_bright if sg > 0 else half_bright
             sb = half_bright if tb else 0
+            v3_print(_who, "2nd half_bright:", half_bright)
             return setColor(sr, sg, sb) and self.powerStatus == "ON"
 
         def refresh(ms):
-            """ Sleep for designated milliseconds.
-                Call self.app.Refresh() in loop
-            """
-            sleep_time = float(ms) / 1000.0
-            if sleep_time < 0.016:
-                time.sleep(sleep_time)
-                return  # Not enough time to refresh
-
-            start = time.time()
-            elapsed = 0
-            while elapsed < ms:
-                before_refresh = time.time()
+            """ Call self.app.Refresh() in loop for designated milliseconds. """
+            while ms > 0:
                 self.app.last_refresh_time = time.time()
-                self.app.Refresh(tk_after=False)  # Takes a few milliseconds?
-                refresh_seconds = time.time() - before_refresh
-                sleep_time -= refresh_seconds
-                if sleep_time <= 0.0:
-                    return  # Negative sleep time
-                elif sleep_time < 0.016:
-                    time.sleep(sleep_time)
-                    return  # Not enough time to refresh
-                elif sleep_time > 1.0:
-                    time.sleep(1.0)
-                    sleep_time -= 1.0
-                else:
-                    time.sleep(sleep_time)
-                    sleep_time = 0.0
-                elapsed = int((time.time() - start) * 1000)
+                tk_after = False if ms < GLO['REFRESH_MS'] else True
+                rst = time.time()
+                self.app.Refresh(tk_after=tk_after)
+                if not tk_after:
+                    time.sleep(fast_sleep)  # give 5 ms idle time
+                    self.app.update_idletasks()  # Give screen and mouse response
+                refresh_ms = int((time.time() - rst) * 1000)
+                ms -= refresh_ms
+                
+                if tk_after:  # tally normal refresh
+                    self.stat["norm_ms"] += refresh_ms
+                    self.stat["norm_cnt"] += 1
+                else:  # tally fast refresh
+                    self.stat["fast_ms"] += refresh_ms
+                    self.stat["fast_cnt"] += 1
+
 
         #while self.app.isActive and self.powerStatus == "ON":  # 2025-01-26
         while self.app.isActive:
@@ -2964,76 +3000,57 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
                 if not self.already_breathing_colors:
                     break  # Nighttime and Set Color can turn off breathing
 
-                self.app.update_idletasks()  # Give screen and mouse response
-
                 start_step = time.time()
-                result = oneStep(i)  # Waits for response
-                if not result:
-                    if not self.app.isActive:
-                        # 2025-01-26 If suspending, leave breathing flag active?
-                        self.already_breathing_colors = False
+                result = oneStep(i)  # Waits 30 seconds for a response
+                end_step = time.time()
+                gatt_ms = int((end_step - start_step) * 1000.0)
+
+                if result:
+                    self.stat["gatt_ms"] += gatt_ms
+                    self.stat["gatt_cnt"] += 1
+                    if self.stat["gatt_high"] == 0:  # First gatt encountered?
+                        self.stat["gatt_low"] = self.stat["gatt_high"] = gatt_ms
+                    if gatt_ms < self.stat["gatt_low"]:
+                        self.stat["gatt_low"] = gatt_ms
+                    if gatt_ms > self.stat["gatt_high"]:
+                        self.stat["gatt_high"] = gatt_ms
+                else:
+                    if not self.app.isActive:  # Shutting down?
+                        self.already_breathing_colors = False  # End this method
                         break
+                    self.stat["fail_ms"] += gatt_ms  # Time waiting for response
+                    self.stat["fail_cnt"] += 1
 
                     # LED Light strip not connected OR Nighttime/Set Color menu options
                     #v2_print(_who, "LED Light strip not connected.")
-                    if self.connect_errors == 3:
-                        self.connect_errors = 0
-                        self.already_breathing_colors = False
+                    if self.connect_errors == FAIL_CNT:  # Give up
+                        self.connect_errors = 0  # Reset self.Connect() errors
+                        self.already_breathing_colors = False  # End this method
+                        self.device = None
+                        self.powerStatus = "?"
                         break
 
-                end_step = time.time()
-                gatt_ms = int((end_step - start_step) * 1000.0)
-                gatt_mils += gatt_ms
-                gatt_count += 1
-                if gatt_low is None:
-                    gatt_low = gatt_high = gatt_ms
-                gatt_low = gatt_ms if gatt_ms < gatt_low else gatt_low
-                gatt_high = gatt_ms if gatt_ms > gatt_high else gatt_high
-
-                #self.app.Refresh()  # Could be 10 second lag for rediscovery
-                #time.sleep(span_ms/1000)
                 self.app.last_refresh_time = time.time()
-                sleep_ms = span_ms - gatt_ms
+                sleep_ms = step_ms - gatt_ms
                 sleep_ms = 0 if sleep_ms < 0 else sleep_ms
 
-                # If at bottom hold for bots, If at top hold fpr tops
-                if turning_up is False:
-                    if i == step_count - 1:
-                        sleep_ms = bots
-                        v2_print(ext.ch(), "LOWEST Brightness")
-                if turning_up is True:
-                    sleep_ms = tops if i == step_count - 1 else sleep_ms
-                    if i == step_count - 1:
+                # Override sleep_ms - at low, sleep for bots, at high, sleep for tops
+                if i == step_count - 1:  # Last step?
+                    if turning_up:
                         sleep_ms = tops
                         v2_print(ext.ch(), "HIGHEST Brightness")
+                    else:
+                        sleep_ms = bots
+                        v2_print(ext.ch(), "LOWEST Brightness")
 
-                if sleep_ms:
-                    slept_mils += sleep_ms
-                    slept_count += 1
+                if sleep_ms:  # Time for sleeping after gatt command?
+                    self.stat["sleep_ms"] += sleep_ms
+                    self.stat["sleep_cnt"] += 1
+                    refresh(sleep_ms)  # Normal / Fast Refresh in loop
 
-                if sleep_ms < 20:
-                    time.sleep(sleep_ms / 1000.0)
-                else:
-                    start_refresh = time.time()
-                    refresh(sleep_ms)
-                    refresh_ms = int((time.time() - start_refresh) * 1000.0)
-                    refresh_mils += refresh_ms
-                    refresh_count += 1
+            # End of Turning up / Turning Down steps
 
-                    if refresh_ms < sleep_ms:  # Refresh took less than sleep time?
-                        extra_count += 1
-                        extra_sleep = int(sleep_ms - refresh_ms)
-                        extra_mils += extra_sleep
-                        # 2025-01-20 TODO: Use multiple self.Refresh
-                        if extra_sleep > span_ms:
-                            v2_print(ext.ch(), "bots or tops extra_sleep:", extra_sleep)
-                        #self.app.after(extra_sleep)  Corrupted
-                        # after initially ms, then seconds, then minutes, then forever
-                    elif refresh_ms > sleep_ms:
-                        short_count += 1
-                        short_mils += refresh_ms - sleep_ms
-
-            if not self.already_breathing_colors:
+            if not self.already_breathing_colors:  # Is method ending?
                 if self.powerStatus == "ON":
                     v2_print(_who, "Forced off by Nighttime or Set Color menu option.")
                 elif self.powerStatus == "?":
@@ -3041,37 +3058,44 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
                 elif self.powerStatus == "OFF":
                     v2_print(_who, "'" + self.name + "' was manually turned off.")
                 else:
-                    v2_print(_who, "Breathing Colors invalid power",
+                    v0_print(_who, "Breathing Colors invalid power",
                              "status: '" + self.powerStatus + "'.")
-                break  # 2025-01-25 TODO: Display run statistics
+                break  # 2025-01-25 TODO: Display self.stat and self.parm
 
-            # Finished turning down? Go to next color
-            if turning_up is False:
+            if turning_up: # Finishing turning up? Begin turning down.
+                v2_print(ext.ch(), "Turning down brightness")
+            else:  # Finishing turning down? Go to next color
                 color_ndx += 1
                 color_ndx = color_ndx if color_ndx <= color_max else 0
                 v2_print(ext.ch(), "New color_ndx:", color_ndx)
-            else:
-                v2_print(ext.ch(), "Turning down brightness")
-            turning_up = True if turning_up is False else False
 
-        v1_print(_who, "is closing down. self.app.isActive:", self.app.isActive)
-        slept_avg = 0 if slept_count == 0 else slept_mils / slept_count 
-        v1_print("slept_mils:", slept_mils, " | slept_count:", slept_count,
-                 " | average:", slept_avg)
-        extra_avg = 0 if extra_count == 0 else extra_mils / extra_count 
-        v1_print("extra_mils:", extra_mils, " | extra_count:", extra_count,
-                 " | average:", extra_avg)
-        short_avg = 0 if short_count == 0 else short_mils / short_count 
-        v1_print("short_mils:", short_mils, " | short_count:", short_count,
-                 " | average:", short_avg)
-        gatt_avg = 0 if gatt_count == 0 else gatt_mils / gatt_count 
-        v1_print("gatt_mils:", gatt_mils, " | gatt_count:", gatt_count,
-                 " | average:", gatt_avg, " | low:", gatt_low, " | high:", gatt_high)
-        refresh_avg = 0 if refresh_count == 0 else refresh_mils / refresh_count 
-        v1_print("refresh_mils:", refresh_mils, " | refresh_count:", refresh_count,
-                 " | average:", refresh_avg)
+            turning_up = not turning_up
+
+        # End of while forever
+
+        v0_print("\n" + _who, "Parameters:")
+        v0_print("  low:", low, " | high:", high, " | span:", span,
+                 " | step:", step, " | bots:", bots, " | tops:", tops)
+        v0_print("  step_count:", step_count, " | step_amount:", step_amount,
+                 " | step_ms:", step_ms)
+
+        v0_print("\n" + _who, "Run Statistics:")
+        gatt_avg = 0 if self.stat["gatt_cnt"] == 0 else self.stat["gatt_ms"] / self.stat["gatt_cnt"]
+        v0_print("  gatt_ms:", self.stat["gatt_ms"], " | gatt_cnt:", self.stat["gatt_cnt"],
+                 " | average:", gatt_avg, " | low:", self.stat["gatt_low"], " | high:", self.stat["gatt_high"])
+        sleep_avg = 0 if self.stat["sleep_cnt"] == 0 else self.stat["sleep_ms"] / self.stat["sleep_cnt"]
+        v0_print("  sleep_ms:", self.stat["sleep_ms"], " | sleep_cnt:",
+                 self.stat["sleep_cnt"], " | average:", sleep_avg)
+        norm_avg = 0 if self.stat["norm_cnt"] == 0 else self.stat["norm_ms"] / self.stat["norm_cnt"]
+        v0_print("  norm_ms:", self.stat["norm_ms"], " | norm_cnt:", self.stat["norm_cnt"],
+                 " | average:", norm_avg, " | REFRESH_MS:", GLO['REFRESH_MS'])
+        fast_avg = 0 if self.stat["fast_cnt"] == 0 else self.stat["fast_ms"] / self.stat["fast_cnt"]
+        v0_print("  fast_ms:", self.stat["fast_ms"], " | fast_cnt:", self.stat["fast_cnt"],
+                 " | average:", fast_avg, " | FAST_MS:", FAST_MS, "\n")
+        fail_avg = 0 if self.stat["fail_cnt"] == 0 else self.stat["fail_ms"] / self.stat["fail_cnt"]
+        v0_print("  fail_ms:", self.stat["fail_ms"], " | fail_cnt:", self.stat["fail_cnt"],
+                 " | average:", fail_avg, " | FAIL_CNT:", FAIL_CNT, "\n")
         self.already_breathing_colors = False
-        return "ON"
 
     def Connect(self, sudo_reset=False, retry=0):
         """ Connect to Bluetooth Low Energy with GATT.
@@ -3113,7 +3137,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
             else:
                 delta = round(time.time() - GLO['APP_RESTART_TIME'], 2)
                 delta_str = "{0:>8.2f}".format(delta)  # "99999.99" format
-                v0_print(delta_str, "|", _who, "Failed to connect: ",
+                v0_print(delta_str, "|", _who, "Failed to connect:",
                          self.connect_errors, "time(s).")
 
         if self.app:  # Prevent erroneous Resume from Suspend from running
@@ -3921,6 +3945,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         cr.Get(item)  # Get current row
         name = cr.arp_dict['name']
 
+        cr.inst.powerStatus = "?" if cr.inst.powerStatus is None else cr.inst.powerStatus
         # 320 ms row highlighting fade in
         cr.FadeIn(item)
 
@@ -4182,10 +4207,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         if not self.winfo_exists():  # Second check needed June 2023
             return False  # self.close() has set to None
 
-        ''' Speedy derivative when called by CPU intensive methods '''
-        if not tk_after:
-            return self.winfo_exists()
-
         ''' Check `sensors` (if installed) every GLO['SENSOR_CHECK'] seconds '''
         sm.Sensors()
 
@@ -4195,12 +4216,17 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             night = cp.NightLightStatus()
             v2_print(_who, "cp.NightLightStatus():", night)
 
-        ''' sleep remaining time until GLO['REFRESH_MS'] expires '''
+        ''' Speedy derivative when called by CPU intensive methods '''
+        if not tk_after:
+            return self.winfo_exists()
+
+        ''' should not happen very often '''
         if self.last_refresh_time > now:
-            #v1_print(_who, "self.last_refresh_time: ",
-            #         ext.h(self.last_refresh_time), " >  now: ", ext.h(now))
+            v3_print(_who, "self.last_refresh_time: ",
+                     ext.h(self.last_refresh_time), " >  now: ", ext.h(now))
             now = self.last_refresh_time
 
+        ''' sleep remaining time until GLO['REFRESH_MS'] expires '''
         sleep = GLO['REFRESH_MS'] - int(now - self.last_refresh_time)
         sleep = sleep if sleep > 0 else 1  # Sleep minimum 1 millisecond
         if sleep == 1:
@@ -4540,6 +4566,20 @@ BluetoothLedLightStrip().TurnOn(): Device not connected!
         # TODO: process one row at a time to reduce chances of mouse-click lag
         #  OR:  Use splash message stating Refresh in progress
 
+        # 2025-01-27 Resuming from suspend, rd has become corrupted???
+        # Traceback (most recent call last):
+        #   File "./homa.py", line 6106, in <module>
+        #
+        #   File "./homa.py", line 6100, in main
+        #
+        #   File "./homa.py", line 3489, in __init__
+        #     # File Dropdown Menu
+        #   File "./homa.py", line 4229, in Refresh
+        #     v0_print(_who, "Only sleeping 1 millisecond")
+        #   File "./homa.py", line 4584, in Rediscover
+        #     # new arp_mac: 28:f1:0e:2a:1a:ed
+        # AttributeError: 'NoneType' object has no attribute 'arp_dicts'
+
         # TODO: Check rd.arp_dict entries for ip changes or new entries
         for i, rediscover in enumerate(rd.arp_dicts):
             mac = rediscover['mac']
@@ -4756,6 +4796,18 @@ b'A really secret message. Not for prying eyes.'
             self.tt.close(self.notebook)
             self.edit_pref_active = None  # 2024-12-24 needed in homa?
             for key in GLO:
+                atts_list = [x for x in all_notebook.listFields if x[0] == key]
+                atts = atts_list[0]  # Only one entry in list
+                if atts[2] != "read-write":
+                    continue  # Only update dictionary with read-write variables
+                if str(type(GLO[key])) != str(type(all_notebook.newData[key])):
+                    print(_who, "Catastrophic error for:", key)
+                    print("  type(GLO[key]):", type(GLO[key]),
+                          "type(all_notebook.newData[key]):",
+                          type(all_notebook.newData[key]))
+                    #exit()
+                    # Application().Preferences(): close(): Catastrophic error for: 0.3
+                    #   type(GLO[key]): <type 'unicode'> type(all_notebook.newData[key]): <type 'str'>
                 if GLO[key] != all_notebook.newData[key]:
                     v0_print(_who, "key:", key, "old:", GLO[key],
                              "new:", all_notebook.newData[key])
@@ -5596,9 +5648,10 @@ class SystemMonitor(DeviceCommonSelf):
             if "fan" in parts[0].lower():
                 if "fan3" in parts[0]:
                     # 2024-11-12 - Glitch "Video Fan" was replaced with "fan3" today.
+                    # 2025-01-26 noticed that "Video Fan" has returned and "fan3" gone.
                     parts[0] = "Video Fan"
                 self.curr_sensor[parts[0]] = parts[1].strip()
-                CheckFanChange(parts[0])
+                CheckFanChange(parts[0])  # Over 200 RPM change will be logged.
             if "PU" in parts[0]:
                 self.curr_sensor[parts[0]] = parts[1].strip().encode('utf-8')
 

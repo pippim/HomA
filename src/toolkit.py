@@ -1716,6 +1716,10 @@ class makeNotebook:
                 message.ShowInfo(frm, self.bad_title, self.bad_text, icon="error")
                 return None
 
+            if True is True:  # 2025-01-26 override
+                entry.configure(font="-weight normal")  # Turn off bold font
+                return new_value
+
             if new_value == self.original_value:
                 entry.configure(font="-weight normal")  # Turn off bold font
                 return new_value
@@ -1730,7 +1734,12 @@ class makeNotebook:
 
             if store_type == "string" or store_type == "filename" or \
                     store_type == "MAC-address":
-                self.newData[name_key] = str(val)
+                #if str(type(self.newData[name_key])) == "<type 'unicode'>":
+                # Converting unicode to string avoided unless int, float, etc.
+                if input_type != store_type:
+                    self.newData[name_key] = str(val)
+                else:
+                    self.newData[name_key] = val
             elif store_type == "integer":
                 self.newData[name_key] = int(val)
             elif store_type == "float" or store_type == "time":
@@ -1751,6 +1760,7 @@ class makeNotebook:
 
             # Prevent entire text turning blue when painted and with tab key
             entry.selection_range(0, 0)
+            was_bad_value = True if self.bad_value_entry else False
 
             # trace will reset error condition. While error condition exists
             # focus In/Out will spam many times and .getValue() keeps repeating error
@@ -1759,18 +1769,20 @@ class makeNotebook:
                     #print("<FocusIn> Refocus from:", atts[0], "to:", self.bad_value_key)
                     self.focus_on_bad_value()
                     self.notebook.update_idletasks()
-                    message.ShowInfo(frm, self.bad_title, self.bad_text, icon="error")
+                    #message.ShowInfo(frm, self.bad_title, self.bad_text, icon="error")
+                    # Getting double errors?
                 return
             elif self.bad_value_entry:
                 # residual bold from last error, has now been fixed
                 self.bad_value_entry.configure(font="-weight normal")
                 self.bad_value_entry = None
 
-            try:
-                # Save validated value to compare future changes
-                self.original_value = var.get()
-            except ValueError:
-                pass  # Redoing after getValue() in focusOut()
+            if not was_bad_value:
+                try:
+                    # Save validated value to compare future changes
+                    self.original_value = var.get()
+                except ValueError:
+                    pass  # Redoing after getValue() in focusOut()
 
             entry.configure(font="-weight bold")
             #self.notebook.update_idletasks()

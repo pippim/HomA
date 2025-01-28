@@ -25,6 +25,7 @@ from __future__ import with_statement  # Error handling for file opens
 #       Dec. 02 2024 - AskString support password entry with show="*".
 #       Dec. 24 2024 - .ShowInfo(), etc. enhanced ttk.Button style "S.TButton".
 #       Jan. 18 2025 - Add 'win_grp=None' to AskQuestion(), ShowInfor(), etc.
+#       Jan. 26 2025 - Delayed Text Box use ttk.Button (style="C.TButton")
 #
 #==============================================================================
 
@@ -394,8 +395,8 @@ class DelayedTextBox:
 
         ''' Show close button to abort / close window '''
         if self.abort is True:
-            close_btn = tk.Button(
-                self.msg_top, width=g.BTN_WID, text="✘ Close", command=close)
+            close_btn = ttk.Button(self.msg_top, width=g.BTN_WID, text="✘ Close", 
+                                   style="C.TButton", command=close)
             close_btn.pack()
         self.textbox.pack()
 
