@@ -123,6 +123,7 @@ except NameError:  # name 'reload' is not defined
     pass  # Python 3 already in unicode by default
 
 import trionesControl.trionesControl as tc  # Bluetooth LED Light strips
+
 # 2025-01-09 TODO: direct access to GATT bypassing trionesControl
 import pygatt
 import pygatt.exceptions
@@ -6068,6 +6069,10 @@ def discover(update=False, start=None, end=None):
 
     return discovered, instances, view_order
 
+
+v1_print("homa.py - trionesControl.trionesControl:", tc.__file__)
+v1_print("homa.py - pygatt:", pygatt.__file__)
+v1_print("homa.py - pygatt.exceptions:", pygatt.exceptions.__file__)
 
 v1_print(sys.argv[0], "- Home Automation", " | verbose1:", p_args.verbose1,
          " | verbose2:", p_args.verbose2, " | verbose3:", p_args.verbose3,
