@@ -3367,8 +3367,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         global sm  # This machines fan speed and CPU temperatures
         global ble  # Inside global ble, assign app = Application() which points here
         self.bleSaveInst = None  # For breathing colors monitoring of the real inst
-        self.bleScrollbox = None
-        self.last_red = self.last_green = self.last_blue = 0
+        self.bleScrollbox = None  # Assigned when self.breatheColors() is called.
+        self.last_red = self.last_green = self.last_blue = 0  # Display when different.
 
         ''' Future read-only display fields for .Config() screen 
         v0_print("\n")
@@ -3412,45 +3412,33 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         # Images used in PopulateTree() and/or other methods
         self.photos = None
 
-        # Right-click popup menu images
-        on = "turn_on.png"
-        off = "turn_off.png"
-        up = "up.png"
-        down = "down.png"
-        close = "close.jpeg"
+        # Right-click popup menu images common to all devices
         self.img_turn_off = ImageTk.PhotoImage(
-            Image.open(off).resize((42, 26), Image.ANTIALIAS))
+            Image.open("turn_off.png").resize((42, 26), Image.ANTIALIAS))
         self.img_turn_on = ImageTk.PhotoImage(
-            Image.open(on).resize((42, 26), Image.ANTIALIAS))
+            Image.open("turn_on.png").resize((42, 26), Image.ANTIALIAS))
         self.img_up = ImageTk.PhotoImage(
-            Image.open(up).resize((22, 26), Image.ANTIALIAS))
+            Image.open("up.png").resize((22, 26), Image.ANTIALIAS))
         self.img_down = ImageTk.PhotoImage(
-            Image.open(down).resize((22, 26), Image.ANTIALIAS))
+            Image.open("down.png").resize((22, 26), Image.ANTIALIAS))
         self.img_close = ImageTk.PhotoImage(
-            Image.open(close).resize((26, 26), Image.ANTIALIAS))
+            Image.open("close.jpeg").resize((26, 26), Image.ANTIALIAS))
 
-        # Sony TV Picture On/Off
-        picture_on = "picture_on.png"
-        picture_off = "picture_off.png"
+        # Right-click popup menu images for Sony TV Picture On/Off
         self.img_picture_on = ImageTk.PhotoImage(
-            Image.open(picture_on).resize((42, 26), Image.ANTIALIAS))
+            Image.open("picture_on.png").resize((42, 26), Image.ANTIALIAS))
         self.img_picture_off = ImageTk.PhotoImage(
-            Image.open(picture_off).resize((42, 26), Image.ANTIALIAS))
+            Image.open("picture_off.png").resize((42, 26), Image.ANTIALIAS))
 
-        # Bluetooth LED Light Strip
-        set_color = "set_color.jpeg"
-        nighttime = "nighttime.png"
-        breathing = "breathing.jpeg"
-        reset = "reset.jpeg"
+        # Right-click popup menu images for Bluetooth LED Light Strip
         self.img_set_color = ImageTk.PhotoImage(
-            Image.open(set_color).resize((26, 26), Image.ANTIALIAS))
+            Image.open("set_color.jpeg").resize((26, 26), Image.ANTIALIAS))
         self.img_nighttime = ImageTk.PhotoImage(
-            Image.open(nighttime).resize((26, 26), Image.ANTIALIAS))
+            Image.open("nighttime.png").resize((26, 26), Image.ANTIALIAS))
         self.img_breathing = ImageTk.PhotoImage(
-            Image.open(breathing).resize((26, 26), Image.ANTIALIAS))
+            Image.open("breathing.jpeg").resize((26, 26), Image.ANTIALIAS))
         self.img_reset = ImageTk.PhotoImage(
-            Image.open(reset).resize((26, 26), Image.ANTIALIAS))
-
+            Image.open("reset.jpeg").resize((26, 26), Image.ANTIALIAS))
 
         ''' Toplevel window (self) '''
         tk.Toplevel.__init__(self, master)  # https://stackoverflow.com/a/24743235/6929343
@@ -3459,8 +3447,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.configure(background="WhiteSmoke")
         self.rowconfigure(0, weight=1)  # Weight 1 = stretchable row
         self.columnconfigure(0, weight=1)  # Weight 1 = stretchable column
-        # self.xdo_os_window_id = os.popen("xdotool getactivewindow").read().strip()
-        # self.xdo_os_window_id: 92274698  # THIS CHANGES BELOW TO 102760472
         self.title("HomA - Home Automation")
         self.btn_frm = None  # Used by BuildButtonBar(), can be hidden by edit_pref
 
@@ -3525,11 +3511,10 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 ble.app = self  # For functions called from Dropdown menu
                 self.bleSaveInst = inst  # For breathing colors monitoring
 
-        ''' Save Toplevel OS window ID for minimizing window '''
+        ''' Save Toplevel OS window ID for minimizing window (must be last step) '''
         command_line_list = ["xdotool", "getactivewindow"]
         event = self.runCommand(command_line_list, forgive=False)
         self.xdo_os_window_id = event['output']
-        # self.xdo_os_window_id: 102760472  THIS CHANGED FROM ABOVE 92274698
 
         while self.Refresh():  # Run forever until quit
             pass
