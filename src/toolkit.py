@@ -29,6 +29,7 @@ from __future__ import with_statement       # Error handling for file opens
 #       May. 15 2024 - User configurable Tooltip colors and timings
 #       Sep. 03 2024 - Tooltips - Remove old splash window before new splash
 #       Dec. 29 2024 - Tooltips - ttk.Label, ttk.Frame & ttk.Entry fg/bg colors
+#       Feb. 02 2025 - Child Windows auto-assign key when <None> registered
 #
 #==============================================================================
 
@@ -1122,11 +1123,22 @@ class ProgressBars(CommonBar):
 #
 # ==============================================================================
 class ChildWindows:
-    """ Called from mserve.py for delayed textbox (dtb) or DictTreeview class
-        below.
+    """ Called by delayed textbox (dtb) or DictTreeview class below. 
+        Called from message.py ShowInfo() and AskQuestion().
+        
+        When called by message.py a child window key is not provided
+        so assign one with current time string.
 
-        Set focus in for self.toplevel to lift the child window(s)
+        Set <focus_in> for self.toplevel to lift the child window(s)
         When self.toplevel is dragged, so are the child window.
+
+        Abbreviation "it" = initial time
+                     "et" = elapsed time
+                     "st" = start time
+                     "en" = end time
+                     "el" = elapsed time
+                     "mit" = Move window initialization
+                     "rit" = Raise window initialization
 
         window.winfo_xxx see: https://wiki.tcl-lang.org/page/winfo%28%29
 
@@ -1162,8 +1174,6 @@ class ChildWindows:
 
         self.last_mit_st = 0.0
         self.last_rit_st = 0.0
-
-
 
         ''' Event log - one record for start, one record for end. '''
         self.event_log = []
@@ -1344,6 +1354,8 @@ class ChildWindows:
             :param widget: msg_top, or create_window toplevel, etc.
         """
         _who = self.who + "register_child():"
+        if key is None:
+            key = str(time.time())
         has_key = self.key_for_widget(widget)
         has_widget = self.widget_for_key(key)
         if has_key or has_widget:

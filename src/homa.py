@@ -2845,7 +2845,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         # self.app.EnableMenu()  # 'NoneType' object has no attribute 'EnableMenu'
         return self.powerStatus
 
-    def breatheColors(self, low=6, high=30, span=5.0, step=0.275, bots=1.5, tops=0.5):
+    def breatheColors(self, low=4, high=30, span=6.0, step=0.275, bots=1.5, tops=0.5):
         """ Breathe Colors: R, R&G, G, G&B, B, B&R
 
         :param low: Low value (darkest) E.G. 9 (Lowest brightness before lights turn off)
@@ -4219,7 +4219,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         if delta > GLO['RESUME_TEST_SECONDS']:  # Assume > is resume from suspend
             v0_print("\n" + "= "*4, _who, "Resuming from suspend after:",
                      tmf.days(delta), " ="*4 + "\n")
-            self.ResumeFromSuspend()  # Power on all devices
+            self.ResumeFromSuspend()  # Resume Wait + Conditionally Power on devices
             now = time.time()  # can be 15 seconds or more later
             GLO['APP_RESTART_TIME'] = now  # Reset app started time to resume time
 
@@ -4253,13 +4253,13 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         if not tk_after:
             return self.winfo_exists()
 
-        ''' should not happen very often '''
+        ''' Should not happen very often, except after suspend resume '''
         if self.last_refresh_time > now:
             v3_print(_who, "self.last_refresh_time: ",
                      ext.h(self.last_refresh_time), " >  now: ", ext.h(now))
             now = self.last_refresh_time
 
-        ''' sleep remaining time until GLO['REFRESH_MS'] expires '''
+        ''' Sleep remaining time until GLO['REFRESH_MS'] expires '''
         sleep = GLO['REFRESH_MS'] - int(now - self.last_refresh_time)
         sleep = sleep if sleep > 0 else 1  # Sleep minimum 1 millisecond
         if sleep == 1:
@@ -4295,7 +4295,13 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.isActive = False  # Signal closing down so methods return
         if self.bleSaveInst:  # Is breathing colors active?
             self.bleSaveInst.already_breathing_colors = False  # Force shutdown
+        self.update_idletasks()
+        self.after(100)
         self.SetAllPower("OFF")  # Turn off all devices except computer
+
+        ''' Close any tooltip windows that will be expired on resume '''
+        self.tt.poll_tips()
+
         cp.TurnOff()  # suspend computer
 
     def ResumeFromSuspend(self):
@@ -4328,6 +4334,8 @@ BluetoothLedLightStrip().TurnOn(): Device not connected!
 
         """
         global rd
+        rd = None  # In case rediscovery was in progress during suspend
+        self.rediscover_done = True
         _who = self.who + "ResumeFromSuspend():"
         self.isActive = True  # Application GUI is active again
 
@@ -4339,8 +4347,6 @@ BluetoothLedLightStrip().TurnOn(): Device not connected!
 
         # Set variables to force rediscovery
         now = time.time()
-        #rd = None  # Just in case rediscovery was in progress during suspend 2025-02-01
-        #self.rediscover_done = True
         # Force rediscovery immediately after resume from suspend
         self.last_rediscover_time = now - GLO['REDISCOVER_SECONDS'] * 10.0
         self.last_refresh_time = now + 1.0  # If abort, don't come back here
