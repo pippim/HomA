@@ -4314,23 +4314,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             when they finish.
 
             2025-01-17 ERROR: Resume did not work for Sony TV, Sony Light, TCL TV,
-                and TCL TV light. It did work for BLE LED Lights. Error message:
-
- 5931.54 | +94.0°C 5200 RPM | +80.0°C 5000 RPM |  6:18 AM
-Application().Suspend(): Suspending system...
-Application().SetAllPower(OFF): power status is not 'OFF': TCL.Light
-Application().SetAllPower(OFF): power status is not 'OFF': SONY.LAN
-Application().SetAllPower(OFF): power status is not 'OFF': SONY.Light
-Application().SetAllPower(OFF): power status is not 'OFF': TCL.LAN
-Application().SetAllPower(OFF): power status is not 'OFF': Bluetooth LED
-
-= = = =  Application().Refresh() Resuming from suspend after: 9 hr, 27 min  = = = =
-
-NetworkInfo().os_curl(): text: []
-NetworkInfo().os_curl(): returncode: 1792
-SonyBraviaKdlTV().TurnOn(): reply_dict['result']' should be empty: [{'status': 1792}]
-BluetoothLedLightStrip().TurnOn(): Device not connected!
-    0.06 | +42.0°C    0 RPM | +31.0°C    0 RPM |  3:56 PM
+                and TCL TV light. It did work for BLE LED Lights. Reason is resume
+                wait is 3 seconds. Increase it to 6 seconds.
 
         """
         global rd
