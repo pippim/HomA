@@ -1394,8 +1394,9 @@ class NetworkInfo(DeviceCommonSelf):
         instance = {}
 
         def test_one(cname):
-            """ Test if hs100, SonyTV, GoogleTV, etc. """
+            """ Test if hs100, SonyTV, GoogleTV, Bluetooth LED, Laptop, etc. """
             inst = cname(arp['mac'], arp['ip'], arp['name'], arp['alias'])
+            # 2025-02-02 TODO: Check if dependencies are installed.
             if not inst.isDevice(forgive=True):
                 return False
 
@@ -2492,6 +2493,8 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         self.FAST_MS = 5  # Global for breatheColors() and monitorBreatheColors()
         self.MAX_FAIL = 18  # Allow 18 connection failures before giving up
         self.red = self.green = self.blue = 0  # Current breathing colors
+        self.stepNdx = 0  # Current step index (0-based) within stepping range
+        self.monitor_color = None  # Monitor facsimile color of LED light strip
 
     def startDevice(self):
         """ Called during startup and resume.
@@ -2918,30 +2921,83 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
 
                 return False
 
+        def myMonitorColor(me, other1, other2, trace=None):
+            """ Calculate monitor color to display facsimile of LED Lights color.
+                low color is very dark. E.G Dark Red (80, 0, 0).
+                As color percentage increases gradually add color.
+
+                me is my color percentage. other1 and other2 are other two colors.
+                Percentage is fraction E.G. 1.0 = 100%, 0.5 = 50% and 0.25 = 25%
+            """
+            all_percent = me + other1 + other2
+            if all_percent > 100.0:
+                v0_print("all_percent > 100.0:", me, other1, other2, trace)
+                all_percent = 100.0
+            if me == 0.0:
+                my_col = int(all_percent * .25)
+            else:
+                my_col = int(75 + me * 180)
+                if my_col < 0:
+                    v0_print("my_col < 0:", me, other1, other2, trace)
+                    my_col = 0
+                if my_col > 255:
+                    v0_print("my_col > 255:", my_col, me, other1, other2, trace)
+                    my_col = 255
+            return int(my_col)
+
+        def _myMonitorColor2(me, other1, other2, trace=None):
+            """ Calculate monitor color to display facsimile of LED Lights color.
+                No color is very light grey (240, 240, 240).
+                As color percentage increases gradually add color (by subtracting
+                other colors)
+
+                rp, gp, bp are red, green and blue percentage as a fraction.
+                E.G. .5 = 50% and .25 = 25%
+            """
+            all_percent = me + other1 + other2
+            if all_percent > 100.0:
+                v0_print("all_percent > 100.0:", me, other1, other2, trace)
+                all_percent = 100.0
+            if me == 0.0:
+                my_col = int(100.0 - all_percent * 1.25)
+                my_col = 0 if my_col < 0 else 0  # Intentionally driven negative.
+            else:
+                my_col = int(269.0 - me * 200.0)
+                if my_col < 0:
+                    v0_print("my_col < 0:", me, other1, other2, trace)
+                    my_col = 0
+                if my_col > 255:
+                    v0_print("my_col > 255:", my_col, me, other1, other2, trace)
+                    my_col = 255
+            return int(my_col)
+
         def setColor():
             """ Calculate color and call sendCommand to Bluetooth """
             tr, tg, tb = colors[color_ndx]  # Turn on red, green, blue?
             num_colors = sum(colors[color_ndx])  # How many colors are used?
             if turning_up is True:
-                if step_ndx == 0:
+                if self.stepNdx == 0:
                     brightness = low
-                elif step_ndx == step_count - 1:  # Last index in range?
+                elif self.stepNdx == step_count - 1:  # Last index in range?
                     brightness = high
                 else:
-                    brightness = low + int(step_ndx * step_amount)
+                    brightness = low + int(self.stepNdx * step_amount)
             else:
-                if step_ndx == 0:
+                if self.stepNdx == 0:
                     brightness = high
-                elif step_ndx == step_count - 1:  # Last index in range?
+                elif self.stepNdx == step_count - 1:  # Last index in range?
                     brightness = low
                 else:
-                    brightness = high - int(step_ndx * step_amount)
+                    brightness = high - int(self.stepNdx * step_amount)
 
             brightness = low if brightness < low else brightness
             brightness = high if brightness > high else brightness
 
             if cp.sunlight_percent > 0:  # Additional brightness for sunlight % > 0
+                new_high = high + int((float(high) * cp.sunlight_percent) / 100.0)
                 brightness += int((float(brightness) * cp.sunlight_percent) / 100.0)
+            else:
+                new_high = high
 
             # When two colors, each color gets half brightness
             half_bright = int(brightness / num_colors)  # 1 or 2 colors
@@ -2954,6 +3010,32 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
             half_bright = brightness - half_bright if self.green > 0 else half_bright
             self.blue = half_bright if tb else 0
             v3_print(_who, "2nd half_bright:", half_bright)
+
+            ''' Set representative color for computer monitor display. 
+
+                No color is 240 - to increase one color, decrease the others
+
+                green_shades = ["#93fd93", "#7fe97f", "#6bd56b", "#57c157", "#43ad43",
+                "#39a339", "#258f25", "#117b11", "#006700", "#004900"
+
+https://stackoverflow.com/a/65904561/6929343
+pct_diff = 1.0 - pct
+red_color = min(255, pct_diff*2 * 255)
+green_color = min(255, pct*2 * 255)
+col = (red_color, green_color, 0)
+
+            '''
+            #rp = float(self.red) / (float(new_high) - float(new_low))  # 1.125
+            #gp = float(self.green) / (float(new_high) - float(new_low))
+            #bp = float(self.blue) / (float(new_high) - float(new_low))
+            rp = float(self.red) / float(new_high)
+            gp = float(self.green) / float(new_high)
+            bp = float(self.blue) / float(new_high)
+            rc = myMonitorColor(rp, gp, bp, "red")
+            gc = myMonitorColor(gp, rp, bp, "green")
+            bc = myMonitorColor(bp, rp, gp, "blue")
+            self.monitor_color = "#%02x%02x%02x" % (rc, gc, bc)
+
             return sendCommand() and self.powerStatus == "ON"
 
         def refresh(ms):
@@ -3027,7 +3109,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
                 self.stat["sleep_high"] = sleep_ms
 
             # Override sleep_ms - at low, sleep for bots, at high, sleep for tops
-            if step_ndx == step_count - 1:  # Last step?
+            if self.stepNdx == step_count - 1:  # Last step?
                 if turning_up:
                     sleep_ms = tops
                     v2_print(ext.ch(), "HIGHEST Brightness")
@@ -3044,7 +3126,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
 
         # Main loop until app closes or method ends
         while self.app.isActive:
-            for step_ndx in range(step_count):
+            for self.stepNdx in range(step_count):
                 if not processStep():
                     break
 
@@ -3104,7 +3186,9 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         self.app.EnableMenu()  # Disable View dropdown menu option "Breathing stats".
 
     def monitorBreatheColors(self, test=False):
-        """ Monitor statistics generated inside self.breatheColors() method. """
+        """ Format statistics generated inside self.breatheColors() method.
+            Called by Application DisplayBreathing().
+        """
         _who = self.who + "monitorBreatheColors():"
         if self.already_breathing_colors is False and test is False:
             v0_print("\n" + ext.ch(), _who, "Breathe Colors is NOT running!")
@@ -3365,10 +3449,13 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         DeviceCommonSelf.__init__(self, "Application().")  # Define self.who
 
         global sm  # This machines fan speed and CPU temperatures
+
+        ''' Bluetooth Low Energy LED Light Strip Breathing Colors '''
         global ble  # Inside global ble, assign app = Application() which points here
         self.bleSaveInst = None  # For breathing colors monitoring of the real inst
         self.bleScrollbox = None  # Assigned when self.breatheColors() is called.
         self.last_red = self.last_green = self.last_blue = 0  # Display when different.
+        self.bc = None  # circle image instance for current Breathing Color
 
         ''' Future read-only display fields for .Config() screen 
         v0_print("\n")
@@ -3469,8 +3556,11 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         ''' Big Number Calculator and Delayed Textbox (dtb) are child windows '''
         self.calculator = self.calc_top = self.dtb = None
 
-        ''' Display cmdEvents (toolkit.CustomScrolledText) as child window '''
-        self.event_top = self.event_scroll_active = None
+        ''' Display cmdEvents (toolkit.CustomScrolledText) as child window 
+            Also used to display Bluetooth devices and Breathing stats 
+        '''
+        self.event_top = self.event_scroll_active = self.event_frame = None
+        self.event_btn_frm = None
 
         ''' File/Edit/View/Tools dropdown menu bars '''
         self.file_menu = self.edit_menu = self.view_menu = self.tools_menu = None
@@ -5135,13 +5225,16 @@ b'A really secret message. Not for prying eyes.'
             Called about 3 times per second during self.Refresh() cycle.
             self.Refresh() in turn is called by bleSaveInst.breatheColors().
             bleSaveInst.monitorBreatheColors() returns formatted text lines.
-            When first_time is True, create self.
+
+            Calls DisplayCommon to create Window, Frame and Scrollbox.
         """
         _who = self.who + "DisplayBreathing():"
         title = "Bluetooth LED Breathing Colors Statistics"
         if self.bleSaveInst is None:
+            print(_who, "self.bleSaveInst is None")
             return  # Should not happen
         if self.bleSaveInst.already_breathing_colors is False:
+            print(_who, "self.bleSaveInst.already_breathing_colors is False")
             return  # Should not happen
 
         def close():
@@ -5150,13 +5243,16 @@ b'A really secret message. Not for prying eyes.'
             
         if self.bleScrollbox is None:
             self.bleScrollbox = self.DisplayCommon(_who, title, close_cb=close)
-            # Compromise tabs shared by header parameters and body dynamic statistics
+            # Tabs for static header parameters and dynamic body statistics
             tabs = ("400", "right", "550", "right", "700", "right",
-                    "750", "left", "1125", "right")  # Note "numeric" aligns commas too!
+                    "750", "left", "1125", "right")  # Note "numeric" aligns on commas when no decimals!
 
             def reset_tabs(event):
                 """ https://stackoverflow.com/a/46605414/6929343 """
                 event.widget.configure(tabs=tabs)
+
+            self.bleScrollbox.configure(tabs=tabs)
+            self.bleScrollbox.bind("<Configure>", reset_tabs)
 
             def in4(name1, value1, name2, value2):
                 """ Insert 2 parameter variable pairs into custom scrollbox """
@@ -5164,24 +5260,38 @@ b'A really secret message. Not for prying eyes.'
                 line += name2 + ":\t" + str(value2) + "\n"
                 self.bleScrollbox.insert("end", line)
 
-            self.bleScrollbox.configure(tabs=tabs)
-            self.bleScrollbox.bind("<Configure>", reset_tabs)
-            self.last_red = self.last_green = self.last_blue = 0
-
             p = self.bleSaveInst.parm  # shorthand to dictionary
             step_count = int(float(p["span"]) / float(p["step"]))
             step_value = float(p["high"] - p["low"]) / float(step_count)
-            in4("Dimmest value", p["low"], "Breathe in/out duration", p["span"])
+            in4("Dimmest value", p["low"], "Breathe duration", p["span"])
             in4("Brightest value", p["high"], "Step duration", p["step"])
-            in4("Dimmest hold seconds", p["bots"], "Number of steps", step_count)
+            in4("Dimmest hold seconds", p["bots"], "Step count", step_count)
             in4("Brightest hold seconds", p["tops"], "Step value", step_value)
             self.bleScrollbox.insert("end", "\n\n")
+
+            ''' Circle Image representing current color brightness '''
+            self.bc = img.BreathingCircle(p['low'], p['high'], step_count, 40)
+
+            self.last_red = self.last_green = self.last_blue = 0
 
         # Body is only updated when red, green or blue change
         if self.last_red == self.bleSaveInst.red and \
                 self.last_green == self.bleSaveInst.green and \
                 self.last_blue == self.bleSaveInst.blue:
             return
+
+        self.last_red = self.bleSaveInst.red
+        self.last_green = self.bleSaveInst.green
+        self.last_blue = self.bleSaveInst.blue
+
+        # Update canvas / draw square with current color
+        self.bleSaveInst.image = self.bc.makeImage(
+            self.last_red, self.last_green, self.last_blue, self.bleSaveInst.stepNdx,
+            cp.sunlight_percent
+        )
+        # https://stackoverflow.com/a/48722664/6929343
+        # circle with faded edges to represent breathing.
+        # Need # of steps and step ndx.
 
         # Delete dynamic lines in custom scrollbox
         self.bleScrollbox.delete(6.0, "end")
@@ -5195,25 +5305,33 @@ b'A really secret message. Not for prying eyes.'
 
         self.bleScrollbox.highlight_pattern("Function", "yellow")
         self.bleScrollbox.highlight_pattern("Milliseconds", "yellow")
-        self.bleScrollbox.highlight_pattern("Count", "yellow")
+        self.bleScrollbox.highlight_pattern("Count", "yellow", upper_and_lower=False)
         self.bleScrollbox.highlight_pattern("Average", "yellow")
         self.bleScrollbox.highlight_pattern("Lowest", "yellow")
         self.bleScrollbox.highlight_pattern("Highest", "yellow")
 
-        self.last_red = self.bleSaveInst.red
-        self.last_green = self.bleSaveInst.green
-        self.last_blue = self.bleSaveInst.blue
+        ''' Button frame background shows color 
+            Keep color range 80 to 
+        '''
+        self.event_btn_frm.configure(bg=self.bleSaveInst.monitor_color)
 
     def DisplayCommon(self, _who, title, x=None, y=None, width=1200, height=500,
                       close_cb=None):
-        """ Common method for DisplayBluetooth, DisplayErrors(), DisplayTimings() """
+        """ Common method for DisplayBluetooth(), DisplayErrors(), DisplayTimings()
+                DisplayBreathing()
+
+            Caller has 90 heading rows, 10 footer rows and 10 columns to use. For
+                example, DisplayBreathing() uses 4 heading rows and 5 columns.
+
+        """
 
         if self.event_scroll_active and self.event_top:
             self.event_top.focus_force()
             self.event_top.lift()
             return
 
-        self.event_top = scrollbox = self.event_scroll_active = None
+        self.event_top = self.event_frame = scrollbox = self.event_scroll_active = None
+        self.event_btn_frm = None
 
         def close(*_args):
             """ Close window painted by this pretty_column() method """
@@ -5245,22 +5363,27 @@ b'A really secret message. Not for prying eyes.'
         self.event_top.protocol("WM_DELETE_WINDOW", close)
 
         ''' frame - Holds scrollable text entry and button(s) '''
-        frame = ttk.Frame(self.event_top, borderwidth=g.FRM_BRD_WID,
-                          padding=(2, 2, 2, 2), relief=tk.RIDGE)
-        frame.grid(column=0, row=0, sticky=tk.NSEW)
+        self.event_frame = ttk.Frame(self.event_top, borderwidth=g.FRM_BRD_WID,
+                                     padding=(2, 2, 2, 2), relief=tk.RIDGE)
+        self.event_frame.grid(column=0, row=0, sticky=tk.NSEW)
         ha_font = (None, g.MON_FONT)  # ms_font = mserve, ha_font = HomA
 
-        close_btn = ttk.Button(
-            frame, width=7, text="✘ Close", style="C.TButton", command=close)
-        close_btn.grid(row=1, column=0, padx=10, pady=5, sticky=tk.E)
-
         scrollbox = toolkit.CustomScrolledText(
-            frame, state="normal", font=ha_font, borderwidth=15, relief=tk.FLAT)
+            self.event_frame, state="normal", font=ha_font, borderwidth=15, relief=tk.FLAT)
         toolkit.scroll_defaults(scrollbox)  # Default tab stops are too wide
-        scrollbox.config(tabs=("5m", "10m", "15m"))
-        scrollbox.grid(row=0, column=0, padx=3, pady=3, sticky=tk.NSEW)
-        frame.rowconfigure(0, weight=1)
-        frame.columnconfigure(0, weight=1)  # 2024-07-13 - Was column 1
+        scrollbox.config(tabs=("50", "100", "150"))
+        scrollbox.grid(row=90, column=0, columnspan=10, padx=3, pady=3, sticky=tk.NSEW)
+        # 90 rows available for headings, 10 rows available for footers
+        self.event_frame.rowconfigure(90, weight=1)
+        self.event_frame.columnconfigure(0, weight=1)
+
+        self.event_btn_frm = tk.Frame(self.event_frame, borderwidth=g.FRM_BRD_WID,
+                                      relief=tk.RIDGE)
+        self.event_btn_frm.grid(row=100, column=0, sticky=tk.NSEW)
+        self.event_btn_frm.columnconfigure(0, weight=1)
+        close_btn = ttk.Button(
+            self.event_btn_frm, width=7, text="✘ Close", style="C.TButton", command=close)
+        close_btn.grid(row=0, column=0, padx=10, pady=5, sticky=tk.E)
 
         # Foreground colors
         scrollbox.tag_config('red', foreground='red')
