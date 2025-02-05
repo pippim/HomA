@@ -30,6 +30,7 @@ from __future__ import with_statement       # Error handling for file opens
 #       Sep. 03 2024 - Tooltips - Remove old splash window before new splash
 #       Dec. 29 2024 - Tooltips - ttk.Label, ttk.Frame & ttk.Entry fg/bg colors
 #       Feb. 02 2025 - Child Windows auto-assign key when <None> registered
+#       Feb. 05 2025 - Create Tooltips().zap_tip_window() call before suspend
 #
 #==============================================================================
 
@@ -5594,6 +5595,28 @@ class ToolTips(CommonTip):
             elif prefix_only and str(s['widget']).startswith(str(widget)):
                 return i  # Test prefix and it matches
         return None
+
+    def zap_tip_window(self, widget, flush_log=True):
+        """ When suspending system.  Caller needs top.update() afterwards.
+
+        :param widget: either button or parent / grandparent of button. 
+        :param flush_log: empty self.log_list for all events.
+        """
+
+        for self.tips_index, self.dict in enumerate(self.tips_list):
+            self.dict_to_fields()  # Dictionary to easy names
+            if not str(self.widget).startswith(str(widget)):
+                continue  # Exact widget nor widget group match....
+            if self.tip_window is None:
+                continue  # Widget hasn't painted tooltip window
+            d_print("Destroying widget's tip_window:", str(widget)[-4:])
+            self.tip_window.destroy()
+            self.reset_tip()
+            self.fields_to_dict()
+            self.tips_list[self.tips_index] = self.dict
+
+        if flush_log:
+            self.log_list = []  # Flush out log list for new events
 
     def line_dump(self):
         """ Dump out selected data from tooltips list in printed format.

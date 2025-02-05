@@ -2926,7 +2926,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
                 low color is very dark. E.G Dark Red (80, 0, 0).
                 As color percentage increases gradually add color.
 
-                me is my color percentage. other1 and other2 are other two colors.
+                'me' is my color percentage. 'other1' and 'other2' are the other two.
                 Percentage is fraction E.G. 1.0 = 100%, 0.5 = 50% and 0.25 = 25%
             """
             all_percent = me + other1 + other2
@@ -3011,23 +3011,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
             self.blue = half_bright if tb else 0
             v3_print(_who, "2nd half_bright:", half_bright)
 
-            ''' Set representative color for computer monitor display. 
-
-                No color is 240 - to increase one color, decrease the others
-
-                green_shades = ["#93fd93", "#7fe97f", "#6bd56b", "#57c157", "#43ad43",
-                "#39a339", "#258f25", "#117b11", "#006700", "#004900"
-
-https://stackoverflow.com/a/65904561/6929343
-pct_diff = 1.0 - pct
-red_color = min(255, pct_diff*2 * 255)
-green_color = min(255, pct*2 * 255)
-col = (red_color, green_color, 0)
-
-            '''
-            #rp = float(self.red) / (float(new_high) - float(new_low))  # 1.125
-            #gp = float(self.green) / (float(new_high) - float(new_low))
-            #bp = float(self.blue) / (float(new_high) - float(new_low))
+            ''' Set LED facsimile color for computer monitor display. '''
             rp = float(self.red) / float(new_high)
             gp = float(self.green) / float(new_high)
             bp = float(self.blue) / float(new_high)
@@ -3573,6 +3557,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.sensors_devices_btn = None
         self.sensors_btn_text = "🌡  Sensors"  # (U+1F321) when Devices active
         self.devices_btn_text = "🗲  Devices"  # (U+1F5F2) when Sensors active
+        self.suspend_btn = None  # Suspend button on button bar to control tooltip
         self.usingDevicesTreeview = True  # Startup uses Devices Treeview
         self.BuildButtonBar(self.sensors_btn_text)
 
@@ -3964,8 +3949,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             text, "nw")
 
         ''' Suspend Button U+1F5F2  🗲 '''
-        device_button(0, 2, "🗲 Suspend", self.Suspend,
-                      "Power off all devices except suspend computer.", "ne")
+        self.suspend_btn = device_button(
+            0, 2, "🗲 Suspend", self.Suspend,
+            "Power off all devices except suspend computer.", "ne")
 
         ''' Help Button - ⧉ Help - Videos and explanations on pippim.com
             https://www.pippim.com/programs/HomA.html#HelpMusicLocationTree '''
@@ -3989,6 +3975,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         """
         _who = self.who + "SensorsDevicesToggle()"
         show_devices = show_sensors = False
+
+        # Immediately get rid of tooltip
+        self.tt.zap_tip_window(self.sensors_devices_btn)
 
         # Get current button state and toggle it for next time.
         if self.sensors_devices_btn['text'] == self.sensors_btn_text:
@@ -4137,6 +4126,12 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 menu.entryconfig(name + " Picture On ", state=tk.NORMAL)
             else:
                 pass  # power_saving_mode == "?"
+
+        if cr.arp_dict['type_code'] == GLO['LAPTOP_D']:
+            # Laptop display has instant power status check time. Pippim
+            # movie.sh script can wake up laptop displayed turned off, so
+            # double check it
+            cr.inst.getPower()
 
         if cr.inst.powerStatus != "ON":
             menu.entryconfig("Turn On " + name, state=tk.NORMAL)
@@ -4346,7 +4341,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         return self.winfo_exists()  # Go back to caller as success or failure
 
     def Suspend(self, *_args):
-        """ Suspend system. """
+        """ Power off devices and suspend system. """
 
         _who = self.who + "Suspend():"
         v0_print(_who, "Suspending system...")
@@ -4367,16 +4362,20 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             v0_print(_who, "Aborting suspend. Device rediscovery in progress.")
             return
 
+        ''' Move mouse away from suspend button to close tooltip window '''
+        #command_line_list = ["xdotool", "mousemove_relative", "--", "-200", "-200"]
+        #_event = self.runCommand(command_line_list, _who)  # def runCommand
+        #self.tt.poll_tips()  # Begin fading any suspend tooltip window
+
         self.isActive = False  # Signal closing down so methods return
         if self.bleSaveInst:  # Is breathing colors active?
             self.bleSaveInst.already_breathing_colors = False  # Force shutdown
         self.update_idletasks()
-        self.after(100)
+        self.after(100)  # Time for Breathing colors to shutdown
+
         self.SetAllPower("OFF")  # Turn off all devices except computer
-
-        ''' Close any tooltip windows that will be expired on resume '''
-        self.tt.poll_tips()
-
+        self.tt.zap_tip_window(self.suspend_btn)  # Delete tooltips window
+        self.update_idletasks()  # Necessary to prevent zap causing reboot?
         cp.TurnOff()  # suspend computer
 
     def ResumeFromSuspend(self):
@@ -5322,6 +5321,8 @@ b'A really secret message. Not for prying eyes.'
 
             Caller has 90 heading rows, 10 footer rows and 10 columns to use. For
                 example, DisplayBreathing() uses 4 heading rows and 5 columns.
+
+            2025-02-04 TODO: create self.event_scrollbox instead of 'return scrollbox'
 
         """
 
