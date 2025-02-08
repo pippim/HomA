@@ -1572,7 +1572,7 @@ class makeNotebook:
         self.listTabs = listTabs  # Tuples List: (Tab Name, Tool Tip)
         self.listFields = listFields
         self.dictData = dictData
-        self.tStyle = tStyle  # Notebook Tab style "TNotebook.Tab
+        self.tStyle = tStyle  # Notebook Tab style "TNotebook.Tab"
         self.fStyle = fStyle  # Frame style "N.TFrame"
         self.bStyle = bStyle  # Button style "C.TButton"
         self.close = close  # Callback for Close button on every frame (tab)
@@ -1594,7 +1594,7 @@ class makeNotebook:
         self.add_tabs()  # Add notebook tabs with frames and rows
 
     def add_tabs(self):
-        """ Populate Notebook. """
+        """ Populate Notebook. Each tab has it's own Help and Close button. """
 
         tab_no = 1  # 1's based tab number matching dictionary
         for name, tip in self.listTabs:

@@ -227,7 +227,7 @@ def init(caller=None, appname="mserve"):
 def web_help(id_name):
     # noinspection SpellCheckingInspection
     """
-        g.HELP defined in global_variables.py imported as g.  It contains:
+        g.HELP_URL defined in global_variables.py imported as g.  It contains:
         https://www.pippim.com/programs/mserve.html#
 
     :param id_name: E.G. "HelpT", "HelpB" and "HelpS" used above

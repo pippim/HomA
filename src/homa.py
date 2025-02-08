@@ -53,6 +53,7 @@ except IndexError:  # list index out of range
     caller = "homa.py"
     import global_variables as g
     g.init(appname="homa")
+    g.HELP_URL = "https://www.pippim.com/programs/homa.html#"
 
 import sys
 PYTHON_VERSION = sys.version
@@ -2975,6 +2976,9 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
             """ Calculate color and call sendCommand to Bluetooth """
             tr, tg, tb = colors[color_ndx]  # Turn on red, green, blue?
             num_colors = sum(colors[color_ndx])  # How many colors are used?
+            if True is False:  # Dummy to make pycharm happy
+                _myMonitorColor2(1, 2, 3)
+
             if turning_up is True:
                 if self.stepNdx == 0:
                     brightness = low
@@ -3600,8 +3604,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         def ForgetPassword():
             """ Clear sudo password for extreme caution """
             GLO['SUDO_PASSWORD'] = None  # clear global password in homa
-            command_line_list = ["sudo", "-K"]
+            command_line_list = ["sudo", "-K"]  # clear password in linux
             self.runCommand(command_line_list)
+            self.EnableMenu()
 
         mb = tk.Menu(self)
         self.config(menu=mb)
@@ -3954,11 +3959,11 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             "Power off all devices except suspend computer.", "ne")
 
         ''' Help Button - ⧉ Help - Videos and explanations on pippim.com
-            https://www.pippim.com/programs/HomA.html#HelpMusicLocationTree '''
+            https://www.pippim.com/programs/HomA.html#Introduction '''
         help_text = "Open new window in default web browser for\n"
         help_text += "videos and explanations on using this screen.\n"
         help_text += "https://www.pippim.com/programs/HomA.html#\n"
-        device_button(0, 3, "⧉ Help", lambda: g.web_help("HelpMusicLocationTree"),
+        device_button(0, 3, "⧉ Help", lambda: g.web_help("Introduction"),
                       help_text, "ne")
 
         ''' ✘ Close Button '''
@@ -4070,6 +4075,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
             menu.add_separator()
 
+            menu.add_command(label="View Breathing Statistics", font=g.FONT,
+                             image=self.img_reset, compound=tk.LEFT,
+                             command=self.DisplayBreathing, state=tk.DISABLED)
             menu.add_command(label="Reset Bluetooth", font=g.FONT,
                              image=self.img_reset, compound=tk.LEFT,
                              command=cr.inst.resetBluetooth, state=tk.DISABLED)
@@ -4086,15 +4094,16 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             menu.entryconfig(name_string, state=state)
             menu.entryconfig("Nighttime brightness", state=state)
             if cr.inst.already_breathing_colors:
+                menu.entryconfig("View Breathing Statistics", state=tk.NORMAL)
                 state = tk.DISABLED  # Override if breathing colors already running
             menu.entryconfig("Breathing colors", state=state)
-
-            menu.add_separator()
 
             if cr.inst.device is None:
                 menu.entryconfig("Reset Bluetooth", state=tk.NORMAL)
             else:
                 menu.entryconfig("Reset Bluetooth", state=tk.DISABLED)
+
+            menu.add_separator()
 
         menu.add_command(label="Turn On " + name, font=g.FONT, state=tk.DISABLED,
                          image=self.img_turn_on, compound=tk.LEFT,
@@ -4362,20 +4371,23 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             v0_print(_who, "Aborting suspend. Device rediscovery in progress.")
             return
 
-        ''' Move mouse away from suspend button to close tooltip window '''
+        ''' Move mouse away from suspend button to close tooltip window 
+            No longer needed because Tooltips().zap_tip_window() was created.
+        '''
         #command_line_list = ["xdotool", "mousemove_relative", "--", "-200", "-200"]
         #_event = self.runCommand(command_line_list, _who)  # def runCommand
-        #self.tt.poll_tips()  # Begin fading any suspend tooltip window
 
+        self.tt.zap_tip_window(self.suspend_btn)  # Delete tooltips window
         self.isActive = False  # Signal closing down so methods return
         if self.bleSaveInst:  # Is breathing colors active?
             self.bleSaveInst.already_breathing_colors = False  # Force shutdown
         self.update_idletasks()
         self.after(100)  # Time for Breathing colors to shutdown
+        self.tt.zap_tip_window(self.suspend_btn)  # Delete tooltips window
 
         self.SetAllPower("OFF")  # Turn off all devices except computer
         self.tt.zap_tip_window(self.suspend_btn)  # Delete tooltips window
-        self.update_idletasks()  # Necessary to prevent zap causing reboot?
+        self.tt.poll_tips()
         cp.TurnOff()  # suspend computer
 
     def ResumeFromSuspend(self):
@@ -4918,8 +4930,6 @@ b'A really secret message. Not for prying eyes.'
             _who = self.who + "Preferences(): close():"
             if not self.edit_pref_active:
                 return
-            #notebook.unbind("<Button-1>")  # 2024-12-21 TODO: old code, use unknown
-            #self.win_grp.unregister_child(self.notebook)
             self.tt.close(self.notebook)
             self.edit_pref_active = None  # 2024-12-24 needed in homa?
             for key in GLO:
@@ -5241,7 +5251,8 @@ b'A really secret message. Not for prying eyes.'
             self.bleScrollbox = None
             
         if self.bleScrollbox is None:
-            self.bleScrollbox = self.DisplayCommon(_who, title, close_cb=close)
+            self.bleScrollbox = self.DisplayCommon(_who, title, close_cb=close,
+                                                   help="ViewBreathingStats")
             # Tabs for static header parameters and dynamic body statistics
             tabs = ("400", "right", "550", "right", "700", "right",
                     "750", "left", "1125", "right")  # Note "numeric" aligns on commas when no decimals!
@@ -5309,13 +5320,11 @@ b'A really secret message. Not for prying eyes.'
         self.bleScrollbox.highlight_pattern("Lowest", "yellow")
         self.bleScrollbox.highlight_pattern("Highest", "yellow")
 
-        ''' Button frame background shows color 
-            Keep color range 80 to 
-        '''
+        ''' Button frame background shows monitor facsimile color of LED lights '''
         self.event_btn_frm.configure(bg=self.bleSaveInst.monitor_color)
 
     def DisplayCommon(self, _who, title, x=None, y=None, width=1200, height=500,
-                      close_cb=None):
+                      close_cb=None, help=None):
         """ Common method for DisplayBluetooth(), DisplayErrors(), DisplayTimings()
                 DisplayBreathing()
 
@@ -5340,6 +5349,7 @@ b'A really secret message. Not for prying eyes.'
                 return
             scrollbox.unbind("<Button-1>")  # 2024-12-21 TODO: old code, use unknown
             self.win_grp.unregister_child(self.event_top)
+            self.tt.close(self.event_top)
             self.event_scroll_active = None
             self.event_top.destroy()
             self.event_top = None
@@ -5382,9 +5392,35 @@ b'A really secret message. Not for prying eyes.'
                                       relief=tk.RIDGE)
         self.event_btn_frm.grid(row=100, column=0, sticky=tk.NSEW)
         self.event_btn_frm.columnconfigure(0, weight=1)
+
+
+        def button_func(row, column, txt, command, tt_text, tt_anchor):
+            """ Function to combine ttk.Button, .grid() and tt.add_tip() """
+            # font=
+            widget = ttk.Button(self.event_btn_frm, text=txt, width=len(txt),
+                                command=command, style="C.TButton")
+            widget.grid(row=row, column=column, padx=5, pady=5, sticky=tk.E)
+            if tt_text is not None and tt_anchor is not None:
+                self.tt.add_tip(widget, tt_text, anchor=tt_anchor)
+            return widget
+
+        if help is not None:
+            help_btn = ttk.Button(
+                self.event_btn_frm, width=7, text="⧉ Help", style="C.TButton")
+            help_btn.grid(row=0, column=0, padx=10, pady=5, sticky=tk.E)
+
+            ''' Help Button - ⧉ Help - Videos and explanations on pippim.com
+                https://www.pippim.com/programs/HomA.html#Introduction '''
+            help_text = "Open new window in default web browser for\n"
+            help_text += "videos and explanations on using this screen.\n"
+            help_text += "https://www.pippim.com/programs/HomA.html#\n"
+            button_func(0, 0, "⧉ Help", lambda: g.web_help(help),
+                          help_text, "ne")
+
         close_btn = ttk.Button(
             self.event_btn_frm, width=7, text="✘ Close", style="C.TButton", command=close)
-        close_btn.grid(row=0, column=0, padx=10, pady=5, sticky=tk.E)
+        close_btn.grid(row=0, column=1, padx=10, pady=5, sticky=tk.E)
+        button_func(0, 1, "✘ Close", close, "Close this window.", "ne")
 
         # Foreground colors
         scrollbox.tag_config('red', foreground='red')
