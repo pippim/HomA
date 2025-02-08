@@ -1609,14 +1609,16 @@ class makeNotebook:
             button_frm = None  # TODO: Define this properly
 
             def help():
-                """ help method opens help window in browser with help_text """
-                #help_url = "https://www.pippim.com/programs/HomA.html#EditPreferences"
+                """ help method opens new browser window with HomA webpage. """
+                # g.HELP_URL =  "https://www.pippim.com/programs/homa.html#"
+                # g.listHelp[1] = "EditPreferences"
+                # tb_name = "Sony TV"
                 ndx = self.notebook.index(self.notebook.select())
                 tb_name = self.listTabs[ndx][0]
-                help_base = self.listHelp[1] + tb_name  # can't use 'name' argument above
+                help_base = self.listHelp[1] + tb_name
                 help_base = help_base.replace(" ", "_")
-                # TODO: granular help to current notebook tab rather than whole notebook
-                #print("help_base:", help_base)
+                # help_base = "EditPreferencesSony_TV"
+                #help_url = "https://www.pippim.com/programs/homa.html#EditPreferencesSony_TV"
                 g.web_help(help_base)
 
             def button_func(column, txt, command, tt_text, tt_anchor):
@@ -1732,6 +1734,17 @@ class makeNotebook:
 
         var.trace('w', self.trace_cb)  # capture changes to tk.XxxVar variable
 
+        def error(msg_e):
+            """ Display error message """
+            self.bad_value_key = atts[0]
+            self.bad_value_entry = entry
+            self.focus_on_bad_value()
+            self.bad_title = \
+                "Edit Preferences Error - HomA"  # Reused focusOut()
+            self.bad_text = "Invalid value for: " + atts[0] + "\n\n" + \
+                            str(msg_e) + "\n"  # Reused focusOut()
+            message.ShowInfo(frm, self.bad_title, self.bad_text, icon="error")
+
         def getValue():
             """ Get tk.XxxVar value. Check within bounds and data type.
                 Called from focusOut() inner function.
@@ -1743,15 +1756,16 @@ class makeNotebook:
                 new_value = var.get()
                 self.bad_value_key = ""
             except ValueError as e:
-                self.bad_value_key = atts[0]
-                self.bad_value_entry = entry
-                self.focus_on_bad_value()
-                self.bad_title = \
-                    "Edit Preferences Error - HomA"  # Reused focusOut()
-                self.bad_text = "Invalid value for: " + atts[0] + "\n\n" +\
-                    str(e) + "\n"  # Reused focusOut()
-                message.ShowInfo(frm, self.bad_title, self.bad_text, icon="error")
+                error(e)
                 return None
+
+            if store_type == "list":  # Enclosed with []?
+                if not new_value.startswith("[") or \
+                        not new_value.endswith("]") or \
+                        new_value.count("[") != 1 or \
+                        new_value.count("]") != 1:
+                    error("List must start with '[' and end with ']' only once.")
+                    return None
 
             if True is True:  # 2025-01-26 override
                 entry.configure(font="-weight normal")  # Turn off bold font
@@ -1770,7 +1784,7 @@ class makeNotebook:
             _who2 = _who + "saveValue():"
 
             if store_type == "string" or store_type == "filename" or \
-                    store_type == "MAC-address":
+                    store_type == "MAC-address" or store_type == "list":
                 #if str(type(self.newData[name_key])) == "<type 'unicode'>":
                 # Converting unicode to string avoided unless int, float, etc.
                 if input_type != store_type:

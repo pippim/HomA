@@ -503,14 +503,19 @@ class Globals(DeviceCommonSelf):
             ("Smart Plug",
              "Variables improving performance of HomA\n"
              "communicating with TP-Link Smart Plugs."),
+            ("LED Lights",
+             "Variables for Bluetooth Low Energy (BLE)\n"
+             "LED Light Strips from Happy Lighting."),
             ("Miscellaneous",
-             "Variables for 'sensors' temperature monitor\n"
-             "and Countdown Timer."),
-            ("Power",
-             "Define how the computer is turned on or\n"
-             "it is resumed / woken up."),
+             "Variables for 'sensors' temperature and\n"
+             "fan speed monitor plus Countdown Timer."),
+            ("Refresh",
+             "Define how the often HomA checks mouse clicks\n"
+             "and runs automatic network device rediscovery."),
             ("Computer",
-             "Laptop backlight display control codes.")
+             "Laptop backlight display control codes.\n"
+             "Define how the computer is suspended and\n"
+             "device code types excluded on resume.")
         ]
 
         HD = "hidden"
@@ -531,35 +536,35 @@ class Globals(DeviceCommonSelf):
             #   edit callback, tooltip text
             ("SONY_PWD", 1, RW, STR, STR, 10, DEC, MIN, MAX, CB,
              "Password for Sony REST API"),
-            ("CONFIG_FNAME", 5, RO, STR, STR, WID, DEC, MIN, MAX, CB,
+            ("CONFIG_FNAME", 6, RO, STR, STR, WID, DEC, MIN, MAX, CB,
              "Configuration filename"),
-            ("DEVICES_FNAME", 5, RO, STR, STR, WID, DEC, MIN, MAX, CB,
+            ("DEVICES_FNAME", 6, RO, STR, STR, WID, DEC, MIN, MAX, CB,
              "discovered network devices filename"),
-            ("VIEW_ORDER_FNAME", 5, RO, STR, STR, WID, DEC, MIN, MAX, CB,
+            ("VIEW_ORDER_FNAME", 6, RO, STR, STR, WID, DEC, MIN, MAX, CB,
              "Network Devices Treeview display order filename"),
             # Timeouts improve device interface performance
-            ("PLUG_TIME", 3, RW, FLOAT, STR, 5, DEC, MIN, MAX, CB,
+            ("PLUG_TIME", 3, RW, FLOAT, STR, 6, DEC, MIN, MAX, CB,
              "Smart plug timeout to turn power on/off"),
-            ("CURL_TIME", 1, RW, FLOAT, STR, 5, DEC, MIN, MAX, CB,
+            ("CURL_TIME", 1, RW, FLOAT, STR, 6, DEC, MIN, MAX, CB,
              "A longer time means this is not\na Sony TV or Sony TV disconnected"),
-            ("ADB_CON_TIME", 2, RW, FLOAT, STR, 5, DEC, MIN, MAX, CB,
+            ("ADB_CON_TIME", 2, RW, FLOAT, STR, 6, DEC, MIN, MAX, CB,
              "Android TV test if connected timeout"),
-            ("ADB_PWR_TIME", 2, RW, FLOAT, STR, 5, DEC, MIN, MAX, CB,
+            ("ADB_PWR_TIME", 2, RW, FLOAT, STR, 6, DEC, MIN, MAX, CB,
              "Android TV test power state timeout"),
-            ("ADB_KEY_TIME", 2, RW, FLOAT, STR, 5, DEC, MIN, MAX, CB,
+            ("ADB_KEY_TIME", 2, RW, FLOAT, STR, 6, DEC, MIN, MAX, CB,
              "Android keyevent KEYCODE_SLEEP\nor KEYCODE_WAKEUP timeout"),
-            ("ADB_MAGIC_TIME", 2, RW, FLOAT, STR, 5, DEC, MIN, MAX, CB,
+            ("ADB_MAGIC_TIME", 2, RW, FLOAT, STR, 6, DEC, MIN, MAX, CB,
              "Android TV Wake on Lan Magic Packet wait time."),
             # Application timings and global working variables
             ("APP_RESTART_TIME", 0, HD, TM, TM, 18, DEC, MIN, MAX, CB,
              "Time HomA was started or resumed.\nUsed for elapsed time printing."),
-            ("REFRESH_MS", 5, RW, INT, INT, 3, DEC, MIN, MAX, CB,
+            ("REFRESH_MS", 6, RW, INT, INT, 3, DEC, MIN, MAX, CB,
              "Refresh tooltip fades 60 frames per second"),
-            ("REDISCOVER_SECONDS", 5, RW, INT, INT, 3, DEC, MIN, MAX, CB,
+            ("REDISCOVER_SECONDS", 6, RW, INT, INT, 3, DEC, MIN, MAX, CB,
              "Check devices changes every x seconds"),
-            ("RESUME_TEST_SECONDS", 5, RW, INT, INT, 3, DEC, MIN, MAX, CB,
+            ("RESUME_TEST_SECONDS", 6, RW, INT, INT, 3, DEC, MIN, MAX, CB,
              "> x seconds disappeared means system resumed"),
-            ("RESUME_DELAY_RESTART", 5, RW, INT, INT, 3, DEC, MIN, MAX, CB,
+            ("RESUME_DELAY_RESTART", 6, RW, INT, INT, 3, DEC, MIN, MAX, CB,
              "Pause x seconds after resuming from suspend"),
             ("LED_LIGHTS_MAC", 4, RW, MAC, STR, 17, DEC, MIN, MAX, CB,
              "Bluetooth Low Energy LED Light Strip address"),
@@ -570,21 +575,22 @@ class Globals(DeviceCommonSelf):
             ("BLUETOOTH_SCAN_TIME", 4, RW, INT, INT, 3, DEC, MIN, MAX, CB,
              'Number of seconds to perform bluetooth scan.\n'
              'A longer time may discover more devices.'),
-            ("TIMER_SEC", 4, RW, INT, INT, 5, DEC, MIN, MAX, CB,
+            ("TIMER_SEC", 5, RW, INT, INT, 6, DEC, MIN, MAX, CB,
              "Tools Dropdown Menubar - Countdown Timer default"),
-            ("TIMER_ALARM", 4, RW, FNAME, STR, 30, DEC, MIN, MAX, CB,
+            ("TIMER_ALARM", 5, RW, FNAME, STR, 30, DEC, MIN, MAX, CB,
              ".wav sound file to play when timer ends."),
             ("LOG_EVENTS", 0, HD, BOOL, BOOL, 1, DEC, MIN, MAX, CB,
              "Override runCommand events'\nlogging and --verbose3 printing"),
             ("EVENT_ERROR_COUNT", 0, HD, INT, INT, 9, 0, MIN, MAX, CB,
              "To enable/disable View Dropdown menu 'Discovery errors'"),
             # 2024-12-29 TODO: SENSOR_XXX should be FLOAT not STR?
-            ("SENSOR_CHECK", 4, RW, FLOAT, FLOAT, 6, DEC, MIN, MAX, CB,
+            ("SENSOR_CHECK", 5, RW, FLOAT, FLOAT, 7, DEC, MIN, MAX, CB,
              "Check `sensors`, CPU/GPU temperature\nand Fan speeds every x seconds"),
-            ("SENSOR_LOG", 4, RW, FLOAT, FLOAT, 9, DEC, MIN, MAX, CB,
+            ("SENSOR_LOG", 5, RW, FLOAT, FLOAT, 9, DEC, MIN, MAX, CB,
              "Log `sensors` every x seconds.\nLog more if Fan RPM speed changes"),
-            ("FAN_GRANULAR", 4, RW, INT, INT, 5, DEC, MIN, MAX, CB,
-             "Skip logging if Fan RPM changes <= FAN_GRANULAR"),
+            ("FAN_GRANULAR", 5, RW, INT, INT, 6, DEC, MIN, MAX, CB,
+             "Only log when Fan RPM speed changes > 'FAN_GRANULAR'.\n"
+             "Avoids excessive up/down minor fan speed logging."),
             # Device type global identifier hard-coded in "inst.type_code"
             ("HS1_SP", 3, RO, INT, INT, 2, DEC, MIN, MAX, CB,
              "TP-Link Kasa WiFi Smart Plug HS100,\nHS103 or HS110 using hs100.sh"),  #
@@ -592,28 +598,28 @@ class Globals(DeviceCommonSelf):
              "Sony Bravia KDL Android TV using REST API `curl`"),
             ("TCL_TV", 2, RO, INT, INT, 2, DEC, MIN, MAX, CB,
              "TCL Google Android TV using adb after `wakeonlan`"),
-            ("BLE_LS", 2, RO, INT, INT, 2, DEC, MIN, MAX, CB,
+            ("BLE_LS", 4, RO, INT, INT, 2, DEC, MIN, MAX, CB,
              "Bluetooth LED Light Strip"),
-            ("DESKTOP", 6, RO, INT, INT, 3, DEC, MIN, MAX, CB,
-             "Desktop Computer, Tower, NUC, Raspberry Pi, etc."),
-            ("LAPTOP_B", 6, RO, INT, INT, 3, DEC, MIN, MAX, CB,
-             "Laptop base ('CPU, GPU, Keyboard, Fans, Ports, etc.')"),
-            ("LAPTOP_D", 6, RO, INT, INT, 3, DEC, MIN, MAX, CB,
-             'Laptop display ("backlight can be turned\non/off separately from laptop base")'),
-            # Once entered, sudo password stored encrypted on disk until "forget" is run.
-            ("SUDO_PASSWORD", 6, HD, STR, STR, WID, DEC, MIN, MAX, CB,
-             "Sudo password required for laptop backlight"),
-            ("BACKLIGHT_NAME", 6, RW, STR, STR, 30, DEC, MIN, MAX, CB,
+            ("BACKLIGHT_NAME", 7, RW, STR, STR, 30, DEC, MIN, MAX, CB,
              "E.G. 'intel_backlight', 'nvidia_backlight', etc."),
-            ("BACKLIGHT_ON", 6, RW, STR, STR, 2, DEC, MIN, MAX, CB,
+            ("BACKLIGHT_ON", 7, RW, STR, STR, 2, DEC, MIN, MAX, CB,
              "Sudo tee echo 'x' to\n'/sys/class/backlight/intel_backlight/bl_power'"),
-            ("BACKLIGHT_OFF", 6, RW, STR, STR, 2, DEC, MIN, MAX, CB,
+            ("BACKLIGHT_OFF", 7, RW, STR, STR, 2, DEC, MIN, MAX, CB,
              "Sudo tee echo 'x' to\n'/sys/class/backlight/intel_backlight/bl_power'"),
             # Power all On/Off controls
-            ("POWER_OFF_CMD_LIST", 6, RW, STR, LIST, 30, DEC, MIN, MAX, CB,
+            ("POWER_OFF_CMD_LIST", 7, RW, STR, LIST, 30, DEC, MIN, MAX, CB,
              'Run "Turn Off" for Computer'),
-            ("POWER_ALL_EXCL_LIST", 6, RW, STR, LIST, 20, DEC, MIN, MAX, CB,
-             'Exclude devices when powering all "ON" / "OFF"')
+            ("POWER_ALL_EXCL_LIST", 7, RW, STR, LIST, 20, DEC, MIN, MAX, CB,
+             'Exclude devices when powering all "ON" / "OFF"'),
+            # Once entered, sudo password stored encrypted on disk until "forget" is run.
+            # ("SUDO_PASSWORD", 7, HD, STR, STR, WID, DEC, MIN, MAX, CB,
+            # "Sudo password required for laptop backlight"),  # HD Hidden NOT working yet.
+            ("DESKTOP", 7, RO, INT, INT, 3, DEC, MIN, MAX, CB,
+             "Desktop Computer, Tower, NUC, Raspberry Pi, etc."),
+            ("LAPTOP_B", 7, RO, INT, INT, 3, DEC, MIN, MAX, CB,
+             "Laptop base ('CPU, GPU, Keyboard, Fans, Ports, etc.')"),
+            ("LAPTOP_D", 7, RO, INT, INT, 3, DEC, MIN, MAX, CB,
+             'Laptop display ("backlight can be turned\non/off separately from laptop base")')
         ]
 
         help_id    = "https://www.pippim.com/programs/homa.html#"
@@ -3023,14 +3029,19 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
             self.blue = half_bright if tb else 0
             v3_print(_who, "2nd half_bright:", half_bright)
 
-            ''' Set LED facsimile color for computer monitor display. '''
-            rp = float(self.red) / float(new_high)
+            ''' Override red+green has too much green '''
+            if self.red and self.green:
+                self.green = int(self.green / 2)  # turns olive into yellow
+                self.red = int(brightness - self.green)
+
+            ''' Set LED facsimile color for computer monitor display '''
+            rp = float(self.red) / float(new_high)  # rp = red percentage
             gp = float(self.green) / float(new_high)
             bp = float(self.blue) / float(new_high)
-            rc = myMonitorColor(rp, gp, bp, "red")
+            rc = myMonitorColor(rp, gp, bp, "red")  # rc = red color
             gc = myMonitorColor(gp, rp, bp, "green")
             bc = myMonitorColor(bp, rp, gp, "blue")
-            self.monitor_color = "#%02x%02x%02x" % (rc, gc, bc)
+            self.monitor_color = "#%02x%02x%02x" % (rc, gc, bc)  # Hex = #f9f9f9
 
             return sendCommand() and self.powerStatus == "ON"
 
@@ -4330,15 +4341,17 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         ''' Check `sensors` (if installed) every GLO['SENSOR_CHECK'] seconds '''
         sm.Sensors()
 
+        ''' Speedy derivative when called by CPU intensive methods. Also  
+            called by waiting messages within first rediscovery process when
+            a second rediscovery will break things. '''
+        if not tk_after:
+            return self.winfo_exists()
+
         ''' Rediscover devices every GLO['REDISCOVER_SECONDS'] '''
         if int(now - self.last_rediscover_time) > GLO['REDISCOVER_SECONDS']:
             self.Rediscover(auto=True)  # Check for changes in IP addresses, etc
             night = cp.NightLightStatus()
             v2_print(_who, "cp.NightLightStatus():", night)
-
-        ''' Speedy derivative when called by CPU intensive methods '''
-        if not tk_after:
-            return self.winfo_exists()
 
         ''' Should not happen very often, except after suspend resume '''
         if self.last_refresh_time > now:
@@ -4720,15 +4733,20 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.RefreshAllPowerStatuses(auto=auto)
         GLO['LOG_EVENTS'] = True  # Reset to log events as required
 
+        # If error on BLE, arp_dicts is 'NoneType'
+        # 2025-01-31 Resuming from suspend sometimes rd is None
+        #   File "./homa.py", line 4299, in Refresh
+        #     self.Rediscover(auto=True)  # Check for changes in IP addresses, etc
+        #   File "./homa.py", line 4668, in Rediscover
+        #     for i, rediscover in enumerate(rd.arp_dicts):
+        # AttributeError: 'NoneType' object has no attribute 'arp_dicts'
+        if rd is None:
+            resetRediscovery()
+            return
+
         # TODO: Check rd.arp_dict entries for ip changes or new entries
         for i, rediscover in enumerate(rd.arp_dicts):
             if not self.isActive:
-                # 2025-01-31 Resuming from suspend sometimes rd is None
-                #   File "./homa.py", line 4299, in Refresh
-                #     self.Rediscover(auto=True)  # Check for changes in IP addresses, etc
-                #   File "./homa.py", line 4668, in Rediscover
-                #     for i, rediscover in enumerate(rd.arp_dicts):
-                # AttributeError: 'NoneType' object has no attribute 'arp_dicts'
                 resetRediscovery()
                 return
 
@@ -4918,9 +4936,17 @@ b'A really secret message. Not for prying eyes.'
             From Application initialize with:   inst.app = self
             From Instance call method with:     self.app.ShowInfo()
         """
-        message.ShowInfo(self, thread=self.Refresh, icon=icon, align=align,
+        def thread_safe():
+            """ Prevent self.Refresh rerunning a second rediscovery during
+                Bluetooth connect error message waiting for acknowledgement
+            """
+            self.last_refresh_time = time.time()  # Prevent resume from suspend
+            self.last_rediscover_time = self.last_refresh_time
+            self.Refresh(tk_after=False)
+            self.after(10)
+
+        message.ShowInfo(self, thread=thread_safe, icon=icon, align=align,
                          title=title, text=text, win_grp=self.win_grp)
-        self.last_refresh_time = time.time()  # Prevent resume from suspend
 
     def Preferences(self):
         """ Edit preferences """
@@ -4939,23 +4965,35 @@ b'A really secret message. Not for prying eyes.'
             if not self.edit_pref_active:
                 return
             self.tt.close(self.notebook)
-            self.edit_pref_active = None  # 2024-12-24 needed in homa?
+            self.edit_pref_active = None
             for key in GLO:
                 atts_list = [x for x in all_notebook.listFields if x[0] == key]
+                if len(atts_list) != 1:
+                    v0_print(_who, "if len(atts_list) != 1:", len(atts_list),
+                             " | key:", key)
+                    continue  # Redacted SUDO_PASSWORD crashes on next command
                 atts = atts_list[0]  # Only one entry in list
                 if atts[2] != "read-write":
                     continue  # Only update dictionary with read-write variables
-                if str(type(GLO[key])) != str(type(all_notebook.newData[key])):
-                    print(_who, "Catastrophic error for:", key)
-                    print("  type(GLO[key]):", type(GLO[key]),
-                          "type(all_notebook.newData[key]):",
-                          type(all_notebook.newData[key]))
-                    #exit()
-                    # Application().Preferences(): close(): Catastrophic error for: 0.3
-                    #   type(GLO[key]): <type 'unicode'> type(all_notebook.newData[key]): <type 'str'>
-                if GLO[key] != all_notebook.newData[key]:
-                    v0_print(_who, "key:", key, "old:", GLO[key],
-                             "new:", all_notebook.newData[key])
+                glo_type = str(type(GLO[key]))  # Can be <type 'unicode'> then new can be
+                new_type = str(type(all_notebook.newData[key]))  # <type 'str'> no error.
+                if glo_type != new_type:
+                    if "'unicode'" not in glo_type and "'str'" not in new_type:
+                        v0_print(_who, "Catastrophic error for:", key)
+                        v0_print("  type(GLO[key]):", glo_type,
+                                 " | type(all_notebook.newData[key]):", new_type)
+                        continue  # Cannot populate dictionary with new value
+                if GLO[key] == all_notebook.newData[key]:
+                    continue  # No changes
+
+                v0_print(_who, "key:", key, "\n  | old:", GLO[key],
+                         " | new:", all_notebook.newData[key],
+                         "\n  |", atts)
+                # Example of bad list entered:
+                # Application().Preferences(): close(): key: POWER_OFF_CMD_LIST 
+                #   | old: ['systemctl', 'suspend']  | new: ['systemctl', 'suspend' 
+                #   | ('POWER_OFF_CMD_LIST', 7, 'read-write', 'string', 'list', 30, 
+                #   None, None, None, None, 'Run "Turn Off" for Computer')
             self.notebook.destroy()
             self.notebook = None
             self.EnableMenu()

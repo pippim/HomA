@@ -102,7 +102,7 @@ CFG_DECIMAL_PLACES = 0  # 0 decimal place, eg "38 MB"
 CFG_DIVISOR_AMT = 1000000  # Divide by million
 CFG_DIVISOR_UOM = "MB"  # Unit of Measure becomes Megabyte
 
-HELP_URL = "https://www.pippim.com/programs/mserve.html#"
+HELP_URL = "https://www.pippim.com/programs/mserve.html#"  # Default, HomA will change
 
 
 def init(caller=None, appname="mserve"):
