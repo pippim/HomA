@@ -485,7 +485,9 @@ class Globals(DeviceCommonSelf):
         """ defineNotebook models global data variables in dictionary. Used by
             Edit Preferences in HomA and makeNotebook() in toolkit.py.
 
-            2025-01-01 TODO: Don't allow Suspend when Edit Preferences is active.
+            2025-01-01 TODO: Don't allow Suspend when Edit Preferences is active
+                because the Devices Treeview may show as active when it really
+                isn't. Plus any changes will be lost.
 
             https://stackoverflow.com/questions/284234/notebook-widget-in-tkinter
         """
@@ -507,7 +509,7 @@ class Globals(DeviceCommonSelf):
             ("Power",
              "Define how the computer is turned on or\n"
              "it is resumed / woken up."),
-            ("Computer",  # Only display when chassis = 'Laptop'
+            ("Computer",
              "Laptop backlight display control codes.")
         ]
 
@@ -614,7 +616,13 @@ class Globals(DeviceCommonSelf):
              'Exclude devices when powering all "ON" / "OFF"')
         ]
 
-        return listTabs, listFields
+        help_id    = "https://www.pippim.com/programs/homa.html#"
+        help_tag   = "EditPreferences"
+        help_text  = "Open new window in default web browser for\n"
+        help_text += "explanations of fields in HomA preferences."
+        listHelp   = [help_id, help_tag, help_text]
+
+        return listTabs, listFields, listHelp
 
 
 class Computer(DeviceCommonSelf):
@@ -3959,10 +3967,10 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             "Power off all devices except suspend computer.", "ne")
 
         ''' Help Button - ⧉ Help - Videos and explanations on pippim.com
-            https://www.pippim.com/programs/HomA.html#Introduction '''
+            https://www.pippim.com/programs/homa.html#Introduction '''
         help_text = "Open new window in default web browser for\n"
         help_text += "videos and explanations on using this screen.\n"
-        help_text += "https://www.pippim.com/programs/HomA.html#\n"
+        help_text += "https://www.pippim.com/programs/homa.html#\n"
         device_button(0, 3, "⧉ Help", lambda: g.web_help("Introduction"),
                       help_text, "ne")
 
@@ -4969,9 +4977,9 @@ b'A really secret message. Not for prying eyes.'
         style.map('TEntry', lightcolor=[('focus', 'LemonChiffon')])  # Not working
 
         self.notebook = ttk.Notebook(self)
-        listTabs, listFields = glo.defineNotebook()
+        listTabs, listFields, listHelp = glo.defineNotebook()
         all_notebook = toolkit.makeNotebook(
-            self.notebook, listTabs, listFields, GLO, "TNotebook.Tab",
+            self.notebook, listTabs, listFields, listHelp, GLO, "TNotebook.Tab",
             "Notebook.TFrame", "C.TButton", close, tt=self.tt)
         self.edit_pref_active = True
         self.EnableMenu()
@@ -5393,7 +5401,6 @@ b'A really secret message. Not for prying eyes.'
         self.event_btn_frm.grid(row=100, column=0, sticky=tk.NSEW)
         self.event_btn_frm.columnconfigure(0, weight=1)
 
-
         def button_func(row, column, txt, command, tt_text, tt_anchor):
             """ Function to combine ttk.Button, .grid() and tt.add_tip() """
             # font=
@@ -5410,12 +5417,12 @@ b'A really secret message. Not for prying eyes.'
             help_btn.grid(row=0, column=0, padx=10, pady=5, sticky=tk.E)
 
             ''' Help Button - ⧉ Help - Videos and explanations on pippim.com
-                https://www.pippim.com/programs/HomA.html#Introduction '''
+                https://www.pippim.com/programs/homa.html#Introduction '''
             help_text = "Open new window in default web browser for\n"
             help_text += "videos and explanations on using this screen.\n"
-            help_text += "https://www.pippim.com/programs/HomA.html#\n"
+            help_text += "https://www.pippim.com/programs/homa.html#\n"
             button_func(0, 0, "⧉ Help", lambda: g.web_help(help),
-                          help_text, "ne")
+                        help_text, "ne")
 
         close_btn = ttk.Button(
             self.event_btn_frm, width=7, text="✘ Close", style="C.TButton", command=close)

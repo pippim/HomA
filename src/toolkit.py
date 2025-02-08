@@ -1565,18 +1565,19 @@ class CustomScrolledText(scrolledtext.ScrolledText):
 # ==============================================================================
 class makeNotebook:
     """ Data Dictionary controlled notebook. """
-    def __init__(self, notebook, listTabs, listFields, dictData,
+    def __init__(self, notebook, listTabs, listFields, listHelp, dictData,
                  tStyle=None, fStyle=None, bStyle=None, close=None, tt=None):
 
-        self.notebook = notebook
-        self.listTabs = listTabs  # Tuples List: (Tab Name, Tool Tip)
-        self.listFields = listFields
-        self.dictData = dictData
+        self.notebook = notebook  # tkk.Notebook instance created in caller
+        self.listTabs = listTabs  # Tuples List: [(Tab Name, Tool Tip), (ditto)]
+        self.listFields = listFields  # Dictionary List: [{many}, {many}]
+        self.listHelp = listHelp  # Help List: [help_id, help_tag, help_text]
+        self.dictData = dictData  # Variables in Preferences Name/Value pairs
         self.tStyle = tStyle  # Notebook Tab style "TNotebook.Tab"
         self.fStyle = fStyle  # Frame style "N.TFrame"
         self.bStyle = bStyle  # Button style "C.TButton"
         self.close = close  # Callback for Close button on every frame (tab)
-        self.tt = tt
+        self.tt = tt  # Tooltips instance
 
         self.who = "toolkit.py DictNotebook()."  # For debug messages
 
@@ -1594,7 +1595,9 @@ class makeNotebook:
         self.add_tabs()  # Add notebook tabs with frames and rows
 
     def add_tabs(self):
-        """ Populate Notebook. Each tab has it's own Help and Close button. """
+        """ Populate Notebook Tabs. Each tab has it's own button frame containing
+            Help and Close buttons. Call self.add_rows() to add fields for the tab.
+        """
 
         tab_no = 1  # 1's based tab number matching dictionary
         for name, tip in self.listTabs:
@@ -1603,15 +1606,36 @@ class makeNotebook:
             frame = ttk.Frame(self.notebook, width=200, height=200, padding=[20, 20])
             # 2024-12-29 - tooltip gets focus moving mouse between fields
             #self.tt_add(frame, tip, "ne")
+            button_frm = None  # TODO: Define this properly
+
+            def help():
+                """ help method opens help window in browser with help_text """
+                #help_url = "https://www.pippim.com/programs/HomA.html#EditPreferences"
+                ndx = self.notebook.index(self.notebook.select())
+                tb_name = self.listTabs[ndx][0]
+                help_base = self.listHelp[1] + tb_name  # can't use 'name' argument above
+                help_base = help_base.replace(" ", "_")
+                # TODO: granular help to current notebook tab rather than whole notebook
+                #print("help_base:", help_base)
+                g.web_help(help_base)
+
+            def button_func(column, txt, command, tt_text, tt_anchor):
+                """ Function to combine ttk.Button, .grid() and tt.add_tip() """
+                # font=
+                widget = ttk.Button(frame, text=txt, width=len(txt),
+                                    command=command, style=self.bStyle)
+                widget.grid(row=100, column=column, padx=10, pady=5, sticky=tk.E)
+                if self.tt is not None and \
+                        tt_text is not None and tt_anchor is not None:
+                    self.tt.add_tip(widget, tt_text, anchor=tt_anchor)
+                return widget
 
             self.add_rows(frame, tab_no)  # Add label: Entry fields to frame
 
-            close_btn = ttk.Button(frame, width=7, text="✘ Close",
-                                   style=self.bStyle, command=self.close)
-            close_btn.grid(row=100, column=1, columnspan=2, padx=10, pady=5,
-                           sticky=tk.E)
-            tt_text = "Close Preferences.\nAny changes made will be lost."
-            self.tt_add(close_btn, tt_text, "ne", tool_type='button')
+            if len(self.listHelp) == 3:
+                button_func(0, "⧉ Help", help, self.listHelp[2], "sw")
+            msg = "Close notebook."
+            button_func(1, "✘ Close", self.close, msg, "sw")
 
             self.notebook.add(frame, text=name, compound=tk.TOP)
             #     notebook.add(frame, style=tStyle, text=name, compound=tk.TOP)
@@ -1620,7 +1644,7 @@ class makeNotebook:
 
         self.notebook.grid(row=0, column=0, padx=3, pady=3, sticky=tk.NSEW)
         self.notebook.update()
-        self.notebook.enable_traversal()
+        self.notebook.enable_traversal()  # <Tab> moves forward, <Shift>+<Tab> moves back
 
     def add_rows(self, frm, tab_no):
         """ Add rows to Notebook frame """
