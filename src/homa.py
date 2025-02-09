@@ -617,18 +617,52 @@ class Globals(DeviceCommonSelf):
             ("DESKTOP", 7, RO, INT, INT, 3, DEC, MIN, MAX, CB,
              "Desktop Computer, Tower, NUC, Raspberry Pi, etc."),
             ("LAPTOP_B", 7, RO, INT, INT, 3, DEC, MIN, MAX, CB,
-             "Laptop base ('CPU, GPU, Keyboard, Fans, Ports, etc.')"),
+             "Laptop base (CPU, GPU, Keyboard, Fans, Ports, etc.)"),
             ("LAPTOP_D", 7, RO, INT, INT, 3, DEC, MIN, MAX, CB,
-             'Laptop display ("backlight can be turned\non/off separately from laptop base")')
+             'Laptop display (backlight can be turned\n'
+             'on/off separately from laptop base)')
         ]
 
-        help_id    = "https://www.pippim.com/programs/homa.html#"
+        help_id    = "https://www.pippim.com/programs/homa.html#"  # same as g.HELP_URL
         help_tag   = "EditPreferences"
-        help_text  = "Open new window in default web browser for\n"
-        help_text += "explanations of fields in HomA preferences."
+        help_text  = "Open a new window in your default web browser for\n"
+        help_text += "explanations of fields in this Preferences Tab."
         listHelp   = [help_id, help_tag, help_text]
 
         return listTabs, listFields, listHelp
+
+    def updateNewGlobal(self, key, new_value):
+        """ Validate a new dictionary field. """
+        _who = self.who + "updateNewGlobal():"
+        _listTabs, listFields, _listHelp = self.defineNotebook()
+        for atts in listFields:
+            if atts[0] == key:
+                break
+        else:
+            v0_print("Bad key passed:", key, new_value)
+            return False
+
+        # atts = (name, tab#, ro/rw, input as, stored as, width, decimals, min, max,
+        #         edit callback, tooltip text)
+        stored_type = atts[4]
+        if stored_type == "list":
+            new_value = new_value.replace("u'", '"').replace("'", '"')
+            # u 'suspend' -> "suspend"
+            try:
+                new_list = json.loads(new_value)
+            except ValueError:
+                v0_print("Bad list passed:", key, new_value)
+                return False
+
+            if key == "POWER_ALL_EXCL_LIST":  # List longer for future device types
+                if not set(new_list).issubset([10, 20, 30, 40, 50, 60, 70, 100, 110, 120]):
+                    v0_print("Bad list passed:", key, new_value)
+                    return False
+
+            new_value = new_list  # Passed all tests
+
+        GLO[key] = new_value
+        return True
 
 
 class Computer(DeviceCommonSelf):
@@ -4966,15 +5000,17 @@ b'A really secret message. Not for prying eyes.'
                 return
             self.tt.close(self.notebook)
             self.edit_pref_active = None
-            for key in GLO:
-                atts_list = [x for x in all_notebook.listFields if x[0] == key]
-                if len(atts_list) != 1:
-                    v0_print(_who, "if len(atts_list) != 1:", len(atts_list),
-                             " | key:", key)
-                    continue  # Redacted SUDO_PASSWORD crashes on next command
-                atts = atts_list[0]  # Only one entry in list
+            #for key in GLO:
+            #    atts_list = [x for x in all_notebook.listFields if x[0] == key]
+            #    if len(atts_list) != 1:
+            #        v0_print(_who, "if len(atts_list) != 1:", len(atts_list),
+            #                 " | key:", key)
+            #        continue  # Redacted SUDO_PASSWORD crashes on next command
+            #    atts = atts_list[0]  # Only one entry in list
+            for atts in all_notebook.listFields:
                 if atts[2] != "read-write":
                     continue  # Only update dictionary with read-write variables
+                key = atts[0]
                 glo_type = str(type(GLO[key]))  # Can be <type 'unicode'> then new can be
                 new_type = str(type(all_notebook.newData[key]))  # <type 'str'> no error.
                 if glo_type != new_type:
@@ -4986,14 +5022,12 @@ b'A really secret message. Not for prying eyes.'
                 if GLO[key] == all_notebook.newData[key]:
                     continue  # No changes
 
-                v0_print(_who, "key:", key, "\n  | old:", GLO[key],
+                v1_print(_who, "key:", key, "\n  | old:", GLO[key],
                          " | new:", all_notebook.newData[key],
                          "\n  |", atts)
-                # Example of bad list entered:
-                # Application().Preferences(): close(): key: POWER_OFF_CMD_LIST 
-                #   | old: ['systemctl', 'suspend']  | new: ['systemctl', 'suspend' 
-                #   | ('POWER_OFF_CMD_LIST', 7, 'read-write', 'string', 'list', 30, 
-                #   None, None, None, None, 'Run "Turn Off" for Computer')
+
+                _success = glo.updateNewGlobal(key, all_notebook.newData[key])
+
             self.notebook.destroy()
             self.notebook = None
             self.EnableMenu()
