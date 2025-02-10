@@ -17,8 +17,8 @@ warnings.filterwarnings("ignore", "ResourceWarning")  # PIL python 3 unclosed fi
 #       homa_common.py (Home Automation) - Common Python Functions Module
 #
 #       2024-11-24 - Creation date.
-#       2024-12-08 - Port GetMouseLocation() to monitor.py get_mouse_location()
-#       2025-02-10 - Support Python 3 shebang in parent
+#       2024-12-08 - Port GetMouseLocation() to monitor.py get_mouse_location().
+#       2025-02-10 - Support Python 3 shebang in parent.
 #
 # ==============================================================================
 

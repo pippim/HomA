@@ -19,7 +19,7 @@ warnings.filterwarnings("ignore", "ResourceWarning")  # PIL python 3 unclosed fi
 #       2024-10-02 - Creation date.
 #       2024-12-01 - Create GitHub repo. Add dropdown menus and Big Number Calc.
 #       2025-01-08 - Create Bluetooth LED Light Strip support.
-#       2025-02-10 - Support Python 3 shebang
+#       2025-02-10 - Support Python 3 shebang.
 #
 # ==============================================================================
 
