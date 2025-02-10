@@ -10,6 +10,7 @@ Description: HomA Application Indicator - Systray Python Module
 from __future__ import print_function  # Must be first import
 from __future__ import with_statement  # Error handling for file opens
 import warnings  # 'warnings' advises which commands aren't supported
+warnings.filterwarnings("ignore", "ResourceWarning")  # PIL python 3 unclosed file
 
 # ==============================================================================
 #

@@ -805,6 +805,34 @@ def mmm_taskbar_icon(toplevel, hgt, out_c, fill_c, m1c, m2c, m3c):
     toplevel.tk.call('wm', 'iconphoto', toplevel._w, png_img)
 
 
+def tk_image(fname, wid, hgt):
+    """
+    https://github.com/python-pillow/Pillow/issues/477
+    Fixed in 2017: https://github.com/python-pillow/Pillow/pull/551
+
+    Python 3 gives ResourceWarning for PIL image processing for:
+
+    ImageTk.PhotoImage(Image.open("bias.jpg").resize((300, 180), Image.ANTIALIAS))
+    
+    /usr/lib/python3/dist-packages/PIL/Image.py:1528: ResourceWarning: 
+    unclosed file <_io.BufferedReader name='turn_off.png'>
+        self.load()
+
+    :param fname: filename sony.jpg, bias.jpg, etc.
+    :param wid: desired width
+    :param hgt: desired height
+    :return: Pillow photo image suitable for Tkinter treeview, buttons, menus, etc.
+    """
+    # ORIGINAL still gets error even though it shouldn't?
+    with Image.open(fname) as safe:
+        return ImageTk.PhotoImage(safe.resize((wid, hgt), Image.ANTIALIAS))
+    # HAMMER METHOD still gets error even though it shouldn't?
+    #raw = Image.open(fname)
+    #photo = ImageTk.PhotoImage(raw.resize((wid, hgt), Image.ANTIALIAS))
+    #raw.close()  # Still generates Resource Warning :(
+    #return photo
+
+
 class RoundedButton(tk.Canvas):
     """
         Create rounded button.

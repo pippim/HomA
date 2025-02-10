@@ -154,14 +154,18 @@ https://github.com/MikeCoder96/HappyLighting-py/blob/master/LEDStripController/B
 
     payload = bytearray() 
     payload.append(0x56)
-    #payload.append(r)  # Getting error. Use chr(r) instead
-    #payload.append(g)
-    #payload.append(b)
 
     # BELOW 3: Expected type 'int' (matched generic type '_T'), got 'str' instead
-    payload.append(chr(r))
-    payload.append(chr(g))
-    payload.append(chr(b))
+    # Python 3 error: TypeError: an integer is required
+    try:
+        payload.append(chr(r))
+        payload.append(chr(g))
+        payload.append(chr(b))
+    except TypeError:
+        payload.append(r)  # Original trionesControl.py code
+        payload.append(g)
+        payload.append(b)
+
     payload.append(int(10 * 255 / 100) & 0xFF)  # from HappyLighting-py
     payload.append(0xF0)
     payload.append(0xAA)

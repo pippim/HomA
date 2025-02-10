@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 Author: pippim.com
@@ -10,6 +10,7 @@ Description: HomA - Home Automation - Main **homa** Python Module
 from __future__ import print_function  # Must be first import
 from __future__ import with_statement  # Error handling for file opens
 import warnings  # 'warnings' advises which methods aren't supported
+warnings.filterwarnings("ignore", "ResourceWarning")  # PIL python 3 unclosed file
 
 # ==============================================================================
 #
@@ -21,19 +22,35 @@ import warnings  # 'warnings' advises which methods aren't supported
 #
 # ==============================================================================
 
-warnings.simplefilter('default')  # in future Python versions.
-
+# 2025-02-10 various tests to make warnings go away
+#warnings.simplefilter('default')  # in future Python versions.
+#warnings.simplefilter("ignore", ResourceWarning)  # PIL python 3 unclosed file
+#warnings.filterwarnings("ignore", "ResourceWarning")  # PIL python 3 unclosed file
+# /usr/lib/python3/dist-packages/Xlib/xauth.py:42: ResourceWarning: unclosed file
+#       <_io.BufferedReader name='/home/<USER>/.X authority'>
+#   raw = open(filename, 'rb').read()
+# ./homa.py:1104: ResourceWarning: unclosed file <_io.TextIOWrapper name=4 encoding='UTF-8'>
+#   for device in os.popen('arp -a'):
+# /usr/lib/python3/dist-packages/PIL/Image.py:1528: ResourceWarning: unclosed file
+#       <_io.BufferedReader name='turn_off.png'>
+#   self.load()
 '''
     REQUIRES:
     
     python(3)-appdirs
-    python(3)-xlib        # imported as Xlib.X
-    python(3)-ttkwidgets  # Also stored as subdirectory in ~/python/ttkwidgets
+    python(3)-xlib  # imported as Xlib.X
+    python(3)-ttkwidgets  # Also stored as subdirectory in ~/HomA/ttkwidgets
+    trionesControl   # Also stored as subdirectory in ~/HomA/ttkwidgets 
+    gatttool   # Also stored as subdirectory in ~/HomA/ttkwidgets 
+
     xdotool  # To minimize window
     systemctl  # To suspend. Or suitable replacement like `suspend` external command
     adb  # Android debugging bridge for Google Android TV's
     curl  # For Sony Bravia KDL professional displays (TV's)
+    bluez-tools  # For bluetooth communications including hci tools
 
+    Gatttool REQUIRES:
+    python(3)-serial
 '''
 
 ''' check configuration. '''
@@ -101,7 +118,7 @@ import logging
 import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument('-f', '--fast', action='store_true')  # Fast startup
-parser.add_argument('-s', '--silent', action='store_true')  # Suppress info
+parser.add_argument('-s', '--silent', action='store_true')  # No info printing
 parser.add_argument('-v', '--verbose1', action='store_true')  # Print Overview
 parser.add_argument('-vv', '--verbose2', action='store_true')  # Print Functions
 parser.add_argument('-vvv', '--verbose3', action='store_true')  # Print Commands
@@ -140,48 +157,6 @@ import timefmt as tmf  # Time formatting, ago(), days(), hh_mm_ss(), etc.
 from calc import Calculator  # Big Number calculator
 
 import homa_common as hc  # hc.ValidateSudoPassword()
-
-#SONY_PWD = "123"  # Sony TV REST API password
-#CONFIG_FNAME = "config.json"  # Future configuration file.
-#DEVICES_FNAME = "devices.json"  # mirrors ni.arp_dicts[{}, {}, ... {}]
-#VIEW_ORDER_FNAME = "view_order.json"  # Read into ni.view_order[mac1, mac2, ... mac9]
-
-# Timeouts improve device interface performance
-#PLUG_TIME = "2.0"  # Smart plug timeout to turn power on/off
-#CURL_TIME = "0.2"  # Anything longer means not a Sony TV or disconnected
-#ADB_CON_TIME = "0.3"  # Android TV Test if connected timeout
-#ADB_PWR_TIME = "2.0"  # Android TV Test if power state is on. Test increment .5 sec
-#ADB_KEY_TIME = "5.0"  # Android keyevent KEYCODE_SLEEP or KEYCODE_WAKEUP timeout
-#ADB_MAGIC_TIME = "0.2"  # Android TV Magic Packet wait time.
-
-#APP_RESTART_TIME = time.time()  # Time started or resumed. Use for elapsed time print
-#REFRESH_MS = 16  # Refresh tooltip fades 60 frames per second
-#REDISCOVER_SECONDS = 60  # Check devices changes every x seconds
-#RESUME_TEST_SECONDS = 10  # > x seconds disappeared means system resumed
-#RESUME_DELAY_RESTART = 3  # Pause x seconds after resuming from suspend
-#TIMER_SEC = 600  # Tools Dropdown Menubar - Countdown Timer default
-#TIMER_ALARM = "Alarm_01.wav"  # From: https://www.pippim.com/programs/tim-ta.html
-#LOG_EVENTS = True  # Override runCommand event logging / --verbose3 printing
-#EVENT_ERROR_COUNT = 0  # To enable/disable View Dropdown menu "Discovery errors"
-
-#SENSOR_CHECK = 1.0  # Check `sensors` (CPU/GPU temp & fan speeds) every x seconds
-#SENSOR_LOG = 3600.0  # Log `sensors` every x seconds. Log more if fan speed changes
-#FAN_GRANULAR = 200  # Skip logging when fan changes <= FAN_GRANULAR
-
-# Device type global identifier hard-coded in "inst.type_code"
-#HS1_SP = 10  # TP-Link Kasa WiFi Smart Plug HS100, HS103 or HS110 using hs100.sh
-#KDL_TV = 20  # Sony Bravia KDL Android TV using REST API (curl)
-#TCL_TV = 30  # TCL Google Android TV using adb (after wakeonlan)
-#DESKTOP = 100  # Desktop Computer, Tower, NUC, Raspberry Pi, etc.
-#LAPTOP_B = 110  # Laptop base (CPU, GPU, Keyboard, Fans, Ports, etc.)
-#LAPTOP_D = 120  # Laptop display (Can be turned on/off separate from base)
-#SUDO_PASSWORD = None  # Sudo password required for laptop backlight
-#BACKLIGHT_NAME = os.popen("ls /sys/class/backlight").read().strip()  # intel_backlight
-#BACKLIGHT_ON = "0"  # Sudo echo to "/sys/class/backlight/intel_backlight/bl_power"
-#BACKLIGHT_OFF = "4"  # ... will control laptop display backlight power On/Off.
-
-#POWER_OFF_CMD_LIST = ["systemctl", "suspend"]  # When calling "Turn Off" for Computer()
-#POWER_ALL_EXCL_LIST = [DESKTOP, LAPTOP_B, LAPTOP_D]  # Exclude when powering "All"
 
 
 class DeviceCommonSelf:
@@ -291,11 +266,16 @@ class DeviceCommonSelf:
         self.cmdString = ' '.join(command_line_list)
         self.cmdStart = time.time()
 
+        # Python 3 error: https://stackoverflow.com/a/58696973/6929343
         pipe = sp.Popen(self.cmdCommand, stdout=sp.PIPE, stderr=sp.PIPE)
         text, err = pipe.communicate()  # This performs .wait() too
+        #pipe.stdout.close()  # Added 2025-02-09 for python3 error
+        #pipe.stderr.close()
 
-        self.cmdOutput = text.strip()
-        self.cmdError = err.strip()
+        #self.cmdOutput = text.strip()  # Python 2 uses strings
+        #self.cmdError = err.strip()
+        self.cmdOutput = text.decode().strip()  # Python 3 uses bytes
+        self.cmdError = err.decode().strip()
         self.cmdReturncode = pipe.returncode
         self.cmdDuration = time.time() - self.cmdStart
         return self.logEvent(_who, forgive=forgive, log=log)
@@ -309,8 +289,12 @@ class DeviceCommonSelf:
         """
 
         # GLO['LOG_EVENTS'] global variable is set during auto rediscovery
-        if GLO['LOG_EVENTS'] is False:
-            log = False  # Auto rediscovery has turned off logging
+        try:
+            if GLO['LOG_EVENTS'] is False:
+                log = False  # Auto rediscovery has turned off logging
+        except NameError:
+            pass  # Early on, GLO is not defined so assume logging is on
+
         if log:
             v3_print("\n" + who,  "'" + self.cmdString + "'")
             o = self.cmdOutput if isinstance(self.cmdOutput, str) else '\n'.join(self.cmdOutput)
@@ -376,6 +360,15 @@ class Globals(DeviceCommonSelf):
         v2_print(self.who, "Dependencies:", self.requires)
         v2_print(self.who, "Installed?  :", self.installed)
 
+        command_line_list = ["ls", "/sys/class/backlight"]
+        event = self.runCommand(command_line_list, self.who)
+
+        if event['returncode'] != 0:
+            backlight_name = ""  # Empty string for now
+        else:
+            backlight_name = event['output'].strip()
+        #popen("")
+
         # Usage: glo = Globals()
         #        GLO = glo.dictGlobals
         #        GLO['APP_RESTART_TIME'] = time.time()
@@ -424,7 +417,7 @@ class Globals(DeviceCommonSelf):
 
             "SUDO_PASSWORD": None,  # Sudo password required for laptop backlight
             # 2025-01-04 TODO: get backlight with runCommand()
-            "BACKLIGHT_NAME": os.popen("ls /sys/class/backlight").read().strip(),  # intel_backlight
+            "BACKLIGHT_NAME": backlight_name,  # intel_backlight
             "BACKLIGHT_ON": "0",  # Sudo echo to "/sys/class/backlight/intel_backlight/bl_power"
             "BACKLIGHT_OFF": "4",  # ... will control laptop display backlight power On/Off.
             # Power all On/Off controls
@@ -961,7 +954,8 @@ class Computer(DeviceCommonSelf):
         # original data, and typically appears as seemingly random characters.
         # Base64 encoding is specified in full in RFC 1421 and RFC 2045.
 
-        return base64.urlsafe_b64encode(key[:32])
+        #return base64.urlsafe_b64encode(key[:32])  # Python 2
+        return base64.urlsafe_b64encode(key[:32].encode('utf-8'))  # Python 3
 
     def NightLightStatus(self, forgive=False):
         """ Return True if "On" or "Off"
@@ -988,8 +982,9 @@ class Computer(DeviceCommonSelf):
             text, err = pipe.communicate()  # This performs .wait() too
 
             v3_print(_who, "Results from '" + command_line_str + "':")
-            v3_print(_who, "text: '" + text.strip() + "'")
-            v3_print(_who, "err: '" + err.strip() + "'  | pipe.returncode:",
+            # 2025-02-09 add .decode() for Python 3
+            v3_print(_who, "text: '" + text.decode().strip() + "'")
+            v3_print(_who, "err: '" + err.decode().strip() + "'  | pipe.returncode:",
                      pipe.returncode)
 
             if pipe.returncode == 0:
@@ -1087,7 +1082,17 @@ class NetworkInfo(DeviceCommonSelf):
         v3_print("\n===========================  arp -a  ===========================")
         # Format: 'SONY.LAN (192.168.0.19) at ac:9b:0a:df:3f:d9 [ether] on enp59s0'
         self.devices = []
-        for device in os.popen('arp -a'):
+        command_line_list = ["arp", "-a"]
+        event = self.runCommand(command_line_list, _who)
+
+        if event['returncode'] != 0:
+            devices = []  # Empty list for now
+        else:
+            devices = event['output'].split("\n")
+
+        #print("TEST devices:", devices)
+        #for device in os.popen('arp -a'):  # Generates python 3 error unclosed resource
+        for device in devices:
             self.devices.append(device)
             v3_print(device, end="")
 
@@ -1095,7 +1100,14 @@ class NetworkInfo(DeviceCommonSelf):
         v3_print("\n========================  getent hosts  ========================")
         # Format: '192.168.0.19    SONY.LAN Sony Bravia KDL TV Ethernet  ac:9b:0a:df:3f:d9'
         self.hosts = []
-        for host in os.popen('getent hosts'):
+        command_line_list = ["getent", "hosts"]
+        event = self.runCommand(command_line_list, _who)
+
+        if event['returncode'] != 0:
+            hosts = []  # Empty list for now
+        else:
+            hosts = event['output'].split("\n")
+        for host in hosts:
             self.hosts.append(host)
             v3_print(host, end="")
 
@@ -2456,9 +2468,9 @@ Application().Rediscover(): FOUND NEW INSTANCE or REDISCOVERED LOST INSTANCE:
         text, err = pipe.communicate()  # This performs .wait() too
 
         v3_print(_who, "Results from '" + command_line_str + "':")
-        Reply = text.strip()
+        Reply = text.decode().strip()  # 2025-02-09 add decode() for Python 3
         v3_print(_who, "Reply: '" + Reply + "' | type:", type(Reply), len(Reply))
-        v3_print(_who, "err: '" + err.strip() + "'  | pipe.returncode:",
+        v3_print(_who, "err: '" + err.decode().strip() + "'  | pipe.returncode:",
                  pipe.returncode)
 
         if not pipe.returncode == 0:
@@ -2748,7 +2760,11 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
 
         ''' run command with os.popen() because sp.Popen() fails on ">" '''
         # 2025-01-15 TODO: Log to cmdEvents
-        os.popen(self.cmdString)
+        f = os.popen(self.cmdString)
+
+        returncode = f.close()  # https://stackoverflow.com/a/70693068/6929343
+        self.cmdReturncode = returncode
+
 
         self.app.ResumeWait(timer=GLO['BLUETOOTH_SCAN_TIME'], alarm=False,
                             title="Scanning Bluetooth Devices", abort=False)
@@ -3496,7 +3512,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.bleSaveInst = None  # For breathing colors monitoring of the real inst
         self.bleScrollbox = None  # Assigned when self.breatheColors() is called.
         self.last_red = self.last_green = self.last_blue = 0  # Display when different.
-        self.bc = None  # circle image instance for current Breathing Color
+        self.bc = None  # NOT USED - circle image instance for current Breathing Color
 
         ''' Future read-only display fields for .Config() screen 
         v0_print("\n")
@@ -3541,32 +3557,21 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.photos = None
 
         # Right-click popup menu images common to all devices
-        self.img_turn_off = ImageTk.PhotoImage(
-            Image.open("turn_off.png").resize((42, 26), Image.ANTIALIAS))
-        self.img_turn_on = ImageTk.PhotoImage(
-            Image.open("turn_on.png").resize((42, 26), Image.ANTIALIAS))
-        self.img_up = ImageTk.PhotoImage(
-            Image.open("up.png").resize((22, 26), Image.ANTIALIAS))
-        self.img_down = ImageTk.PhotoImage(
-            Image.open("down.png").resize((22, 26), Image.ANTIALIAS))
-        self.img_close = ImageTk.PhotoImage(
-            Image.open("close.jpeg").resize((26, 26), Image.ANTIALIAS))
+        self.img_turn_off = img.tk_image("turn_off.png", 42, 26)
+        self.img_turn_on = img.tk_image("turn_on.png", 42, 26)
+        self.img_up = img.tk_image("up.png", 22, 26)
+        self.img_down = img.tk_image("down.png", 22, 26)
+        self.img_close = img.tk_image("close.jpeg", 26, 26)
 
         # Right-click popup menu images for Sony TV Picture On/Off
-        self.img_picture_on = ImageTk.PhotoImage(
-            Image.open("picture_on.png").resize((42, 26), Image.ANTIALIAS))
-        self.img_picture_off = ImageTk.PhotoImage(
-            Image.open("picture_off.png").resize((42, 26), Image.ANTIALIAS))
+        self.img_picture_on = img.tk_image("picture_on.png", 42, 26)
+        self.img_picture_off = img.tk_image("picture_off.png", 42, 26)
 
         # Right-click popup menu images for Bluetooth LED Light Strip
-        self.img_set_color = ImageTk.PhotoImage(
-            Image.open("set_color.jpeg").resize((26, 26), Image.ANTIALIAS))
-        self.img_nighttime = ImageTk.PhotoImage(
-            Image.open("nighttime.png").resize((26, 26), Image.ANTIALIAS))
-        self.img_breathing = ImageTk.PhotoImage(
-            Image.open("breathing.jpeg").resize((26, 26), Image.ANTIALIAS))
-        self.img_reset = ImageTk.PhotoImage(
-            Image.open("reset.jpeg").resize((26, 26), Image.ANTIALIAS))
+        self.img_set_color = img.tk_image("set_color.jpeg", 26, 26)
+        self.img_nighttime = img.tk_image("nighttime.png", 26, 26)
+        self.img_breathing = img.tk_image("breathing.jpeg", 26, 26)
+        self.img_reset = img.tk_image("reset.jpeg", 26, 26)
 
         ''' Toplevel window (self) '''
         tk.Toplevel.__init__(self, master)  # https://stackoverflow.com/a/24743235/6929343
@@ -3612,8 +3617,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         ''' When devices displayed show sensors button and vice versa. '''
         self.sensors_devices_btn = None
-        self.sensors_btn_text = "🌡  Sensors"  # (U+1F321) when Devices active
-        self.devices_btn_text = "🗲  Devices"  # (U+1F5F2) when Sensors active
+        self.sensors_btn_text = u"🌡  Sensors"  # (U+1F321) when Devices active
+        self.devices_btn_text = u"🗲  Devices"  # (U+1F5F2) when Sensors active
         self.suspend_btn = None  # Suspend button on button bar to control tooltip
         self.usingDevicesTreeview = True  # Startup uses Devices Treeview
         self.BuildButtonBar(self.sensors_btn_text)
@@ -3984,6 +3989,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         def device_button(row, column, txt, command, tt_text, tt_anchor):
             """ Function to combine ttk.Button, .grid() and tt.add_tip() """
             # font=
+            txt = toolkit.normalize_tcl(txt)  # Python 3 lose 🌡 (U+1F321)
             widget = ttk.Button(self.btn_frm, text=txt, width=len(txt),
                                 command=command, style="C.TButton")
             widget.grid(row=row, column=column, padx=5, pady=5, sticky=tk.E)
@@ -3992,7 +3998,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             return widget
 
         ''' Minimize Button - U+1F847 🡇  -OR-  U+25BC ▼ '''
-        device_button(0, 0, "▼  Minimize", self.MinimizeApp,
+        device_button(0, 0, u"▼  Minimize", self.MinimizeApp,
                       "Quickly and easily minimize HomA.", "nw")
 
         # noinspection SpellCheckingInspection
@@ -4008,7 +4014,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         ''' Suspend Button U+1F5F2  🗲 '''
         self.suspend_btn = device_button(
-            0, 2, "🗲 Suspend", self.Suspend,
+            0, 2, u"🗲 Suspend", self.Suspend,
             "Power off all devices except suspend computer.", "ne")
 
         ''' Help Button - ⧉ Help - Videos and explanations on pippim.com
@@ -4016,13 +4022,13 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         help_text = "Open new window in default web browser for\n"
         help_text += "videos and explanations on using this screen.\n"
         help_text += "https://www.pippim.com/programs/homa.html#\n"
-        device_button(0, 3, "⧉ Help", lambda: g.web_help("Introduction"),
+        device_button(0, 3, u"⧉ Help", lambda: g.web_help("Introduction"),
                       help_text, "ne")
 
-        ''' ✘ Close Button '''
+        ''' ✘ CLOSE BUTTON  '''
         self.bind("<Escape>", self.CloseApp)
         self.protocol("WM_DELETE_WINDOW", self.CloseApp)
-        device_button(0, 4, "✘ Close", self.CloseApp,
+        device_button(0, 4, u"✘ Close", self.CloseApp,
                       "Close HomA and all windows HomA opened.", "ne")
 
     def SensorsDevicesToggle(self):
@@ -4038,19 +4044,19 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.tt.zap_tip_window(self.sensors_devices_btn)
 
         # Get current button state and toggle it for next time.
-        if self.sensors_devices_btn['text'] == self.sensors_btn_text:
+        if "Sensors" in self.sensors_devices_btn['text']:
             show_sensors = True
-            self.sensors_devices_btn['text'] = self.devices_btn_text
+            self.sensors_devices_btn['text'] = toolkit.normalize_tcl(self.devices_btn_text)
             self.tt.set_text(self.sensors_devices_btn, "Show Network Devices.")
             self.usingDevicesTreeview = False
-        elif self.sensors_devices_btn['text'] == self.devices_btn_text:
+        elif "Devices" in self.sensors_devices_btn['text']:
             show_devices = True
-            self.sensors_devices_btn['text'] = self.sensors_btn_text
+            self.sensors_devices_btn['text'] = toolkit.normalize_tcl(self.sensors_btn_text)
             self.tt.set_text(self.sensors_devices_btn, "Show Temperatures and Fans.")
             self.usingDevicesTreeview = True
         else:
-            v0_print("Invalid Button self.sensors_devices_btn['text']:",
-                     self.sensors_devices_btn['text'])
+            print("Invalid Button self.sensors_devices_btn['text']:",
+                  self.sensors_devices_btn['text'])
             exit()
 
         self.EnableMenu()  # NORMAL/DISABLED options for view Sensors/Devices
@@ -4068,7 +4074,13 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.BuildButtonBar(self.sensors_btn_text)
 
     def RightClick(self, event):
-        """ Mouse right button click. Popup menu overtop of treeview. """
+        """ Mouse right button click. Popup menu on selected treeview row.
+
+            NOTE: Sub windows are designed to steal focus and lift however,
+                  multiple right clicks will eventually cause menu to appear.
+                  After selecting an option though, the green highlighting
+                  stays in place because fadeOut() never runs.
+        """
         item = self.tree.identify_row(event.y)
 
         if item is None:
@@ -4078,17 +4090,13 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         except ValueError:
             return  # Clicked on empty row
 
-        def ClosePopup(*_event):
-            """ Close popup menu on focus out or selection """
+        def _closePopup(*_event):
+            """ Close popup menu on focus out or selecting an option """
             cr.FadeOut(item)
             menu.unpost()
+            self.last_refresh_time = time.time()
 
-        menu = tk.Menu(self)
-        menu.bind("<FocusIn>", self.FocusIn)
-        menu.bind("<Motion>", self.Motion)
-
-        menu.post(event.x_root, event.y_root)
-
+        ''' Highlight selected treeview row '''
         cr = TreeviewRow(self)  # Make current row instances
         cr.Get(item)  # Get current row
         name = cr.arp_dict['name']
@@ -4096,6 +4104,24 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         cr.inst.powerStatus = "?" if cr.inst.powerStatus is None else cr.inst.powerStatus
         # 320 ms row highlighting fade in
         cr.FadeIn(item)
+
+        ''' If View Breathing Statistics is running, color options are disabled.
+            Message cannot be displayed when menu painted because it causes focus out. '''
+        if self.bleScrollbox and cr.arp_dict['type_code'] == GLO['BLE_LS']:
+            title = "View stats disables colors"  # 2025-02-09 - Doesn't work properly.
+        else:
+            title = None
+
+        if title:
+            menu = tk.Menu(self, title=title)  # 2025-02-09 Causes blank selectable bar
+            # Once blank bar is clicked the title appears with window close decoration.
+        else:
+            menu = tk.Menu(self)
+
+        menu.bind("<FocusIn>", self.FocusIn)
+        menu.bind("<Motion>", self.Motion)
+
+        menu.post(event.x_root, event.y_root)
 
         if cr.arp_dict['type_code'] == GLO['KDL_TV']:
             # Sony TV has power save mode to turn picture off and listen to music
@@ -4151,6 +4177,15 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 state = tk.DISABLED  # Override if breathing colors already running
             menu.entryconfig("Breathing colors", state=state)
 
+            ''' If View Breathing Statistics is running, must close window first 
+                Hard to get here because View lifts itself and steals focus.
+            '''
+            if self.bleScrollbox:
+                menu.entryconfig(name_string, state=tk.DISABLED)
+                menu.entryconfig("Nighttime brightness", state=tk.DISABLED)
+                menu.entryconfig("Breathing colors", state=tk.DISABLED)
+                menu.entryconfig("View Breathing Statistics", state=tk.DISABLED)
+
             if cr.inst.device is None:
                 menu.entryconfig("Reset Bluetooth", state=tk.NORMAL)
             else:
@@ -4172,12 +4207,12 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                          image=self.img_down, compound=tk.LEFT,
                          command=lambda: self.MoveRowDown(cr))
         menu.add_separator()
-        menu.add_command(label="Close menu", font=g.FONT, command=ClosePopup,
+        menu.add_command(label="Close menu", font=g.FONT, command=_closePopup,
                          image=self.img_close, compound=tk.LEFT)
 
         menu.tk_popup(event.x_root, event.y_root)
 
-        menu.bind("<FocusOut>", ClosePopup)
+        menu.bind("<FocusOut>", _closePopup)
 
         # Enable Turn On/Off menu options depending on current power status.
         if cr.arp_dict['type_code'] == GLO['KDL_TV']:
@@ -4209,6 +4244,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         # Reset last rediscovery time. Some methods can take 10 seconds to timeout
         self.last_refresh_time = time.time()
+        menu.update()  # 2025-02-09 will this force title to appear?
 
     def PictureOn(self, cr):
         """ Mouse right button click selected "<name> Picture On". """
@@ -4225,6 +4261,20 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         text = "  " + str(resp)
         cr.tree.item(cr.item, text=text)
         cr.tree.update_idletasks()
+
+    def viewStatsIsRunning(self, cr):
+        """ Options are disabled when viewStatsIsRunning.  2025-02-09 - NOT USED.
+
+            NOTE: Sub windows are designed to steal focus and lift however,
+                  multiple right clicks will eventually cause menu to appear.
+                  After selecting an option though, the green highlighting
+                  stays in place because fadeOut() never runs.
+        """
+        if self.bleScrollbox is None:
+            return  # View Breathing Statistics isn't running
+
+        if cr.arp_dict['type_code'] != GLO['BLE_LS']:
+            return  # Right-click not on Bluetooth LED
 
     def setColor(self, cr):
         """ Mouse right button click selected "Set LED Lights Color".
@@ -4383,9 +4433,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         ''' Rediscover devices every GLO['REDISCOVER_SECONDS'] '''
         if int(now - self.last_rediscover_time) > GLO['REDISCOVER_SECONDS']:
-            self.Rediscover(auto=True)  # Check for changes in IP addresses, etc
             night = cp.NightLightStatus()
             v2_print(_who, "cp.NightLightStatus():", night)
+            self.Rediscover(auto=True)  # Check for new network devices
 
         ''' Should not happen very often, except after suspend resume '''
         if self.last_refresh_time > now:
@@ -4711,6 +4761,19 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         """
 
         _who = self.who + "Rediscover():"
+        global rd  # global instance that allows rentry to split job into slices
+
+        ''' Calling a second time when first time is still running?
+            Happens during message wait calling self.Refresh() calling us.
+        '''
+        if rd is not None and self.rediscover_done is False:
+            v2_print("\n" + _who, "Phase II starting.")
+        if rd is not None and self.rediscover_done is True:
+            v0_print(_who, "Phase II finished but rd is not None!!!")
+        if rd is None and self.rediscover_done is True:
+            v2_print("\n" + _who, "Phase I starting.")
+        if rd is None and self.rediscover_done is False:
+            v0_print(_who, "'rd' instance disappeared after Phase I.")
 
         # Disable calling from File Dropdown Menubar
         self.file_menu.entryconfig("Rediscover now", state=tk.DISABLED)
@@ -4739,7 +4802,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         GLO['LOG_EVENTS'] = True if auto is False else False
 
         # Start looping create rd
-        global rd  # global variable that allows rentry to split job into slices
         if rd is None:
             ext.t_init("Creating instance rd = NetworkInfo()")
             rd = NetworkInfo()  # rd. class is newer instance ni. class
@@ -4764,7 +4826,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         v2_print(_who, "Rediscovery count:", len(rd.arp_dicts))
 
         # Refresh power status for all device instances in ni.arp_dicts
-        self.RefreshAllPowerStatuses(auto=auto)
+        self.RefreshAllPowerStatuses(auto=auto)  # When auto false, rows highlighted
         GLO['LOG_EVENTS'] = True  # Reset to log events as required
 
         # If error on BLE, arp_dicts is 'NoneType'
@@ -5000,17 +5062,13 @@ b'A really secret message. Not for prying eyes.'
                 return
             self.tt.close(self.notebook)
             self.edit_pref_active = None
-            #for key in GLO:
-            #    atts_list = [x for x in all_notebook.listFields if x[0] == key]
-            #    if len(atts_list) != 1:
-            #        v0_print(_who, "if len(atts_list) != 1:", len(atts_list),
-            #                 " | key:", key)
-            #        continue  # Redacted SUDO_PASSWORD crashes on next command
-            #    atts = atts_list[0]  # Only one entry in list
+
+            ''' Update GLO[key] with new value '''
             for atts in all_notebook.listFields:
                 if atts[2] != "read-write":
-                    continue  # Only update dictionary with read-write variables
-                key = atts[0]
+                    continue  # Only update read-write variables
+
+                key = atts[0]  # E.G. 'SONY_PWD'
                 glo_type = str(type(GLO[key]))  # Can be <type 'unicode'> then new can be
                 new_type = str(type(all_notebook.newData[key]))  # <type 'str'> no error.
                 if glo_type != new_type:
@@ -5018,7 +5076,8 @@ b'A really secret message. Not for prying eyes.'
                         v0_print(_who, "Catastrophic error for:", key)
                         v0_print("  type(GLO[key]):", glo_type,
                                  " | type(all_notebook.newData[key]):", new_type)
-                        continue  # Cannot populate dictionary with new value
+                        continue  # Cannot populate dictionary with corrupt new value
+
                 if GLO[key] == all_notebook.newData[key]:
                     continue  # No changes
 
@@ -5324,7 +5383,7 @@ b'A really secret message. Not for prying eyes.'
             return  # Should not happen
         if self.bleSaveInst.already_breathing_colors is False:
             print(_who, "self.bleSaveInst.already_breathing_colors is False")
-            return  # Should not happen
+            return  # 2025-02-09 calling "Nighttime" when DisplayBreathing() is running
 
         def close():
             """ Close callback """
@@ -5359,8 +5418,8 @@ b'A really secret message. Not for prying eyes.'
             in4("Brightest hold seconds", p["tops"], "Step value", step_value)
             self.bleScrollbox.insert("end", "\n\n")
 
-            ''' Circle Image representing current color brightness '''
-            self.bc = img.BreathingCircle(p['low'], p['high'], step_count, 40)
+            ''' Circle Image representing current color brightness - NOT USED '''
+            # self.bc = img.BreathingCircle(p['low'], p['high'], step_count, 40)
 
             self.last_red = self.last_green = self.last_blue = 0
 
@@ -5374,11 +5433,11 @@ b'A really secret message. Not for prying eyes.'
         self.last_green = self.bleSaveInst.green
         self.last_blue = self.bleSaveInst.blue
 
-        # Update canvas / draw square with current color
-        self.bleSaveInst.image = self.bc.makeImage(
-            self.last_red, self.last_green, self.last_blue, self.bleSaveInst.stepNdx,
-            cp.sunlight_percent
-        )
+        # NOT USED - Update canvas / draw square with current color
+        #self.bleSaveInst.image = self.bc.makeImage(
+        #    self.last_red, self.last_green, self.last_blue, self.bleSaveInst.stepNdx,
+        #    cp.sunlight_percent
+        #)
         # https://stackoverflow.com/a/48722664/6929343
         # circle with faded edges to represent breathing.
         # Need # of steps and step ndx.
@@ -5734,19 +5793,19 @@ class TreeviewRow(DeviceCommonSelf):
 
         # TV's are 16/9 = 1.8. Treeview uses 300/180 image = 1.7.
         if type_code == GLO['HS1_SP']:  # TP-Line Kasa Smart Plug HS100 image
-            photo = ImageTk.PhotoImage(Image.open("bias.jpg").resize((300, 180), Image.ANTIALIAS))
+            photo = img.tk_image("bias.jpg", 300, 180)
         elif type_code == GLO['KDL_TV']:  # Sony Bravia KDL TV image
-            photo = ImageTk.PhotoImage(Image.open("sony.jpg").resize((300, 180), Image.ANTIALIAS))
+            photo = img.tk_image("sony.jpg", 300, 180)
         elif type_code == GLO['TCL_TV']:  # TCL / Google Android TV image
-            photo = ImageTk.PhotoImage(Image.open("tcl.jpg").resize((300, 180), Image.ANTIALIAS))
+            photo = img.tk_image("tcl.jpg", 300, 180)
         elif type_code == GLO['BLE_LS']:  # Bluetooth Low Energy LED Light Strip
-            photo = ImageTk.PhotoImage(Image.open("led_lights.jpg").resize((300, 180), Image.ANTIALIAS))
+            photo = img.tk_image("led_lights.jpg", 300, 180)
         elif type_code == GLO['DESKTOP']:  # Desktop computer image
-            photo = ImageTk.PhotoImage(Image.open("computer.jpg").resize((300, 180), Image.ANTIALIAS))
+            photo = img.tk_image("computer.jpg", 300, 180)
         elif type_code == GLO['LAPTOP_B']:  # Laptop Base image
-            photo = ImageTk.PhotoImage(Image.open("laptop_b.jpg").resize((300, 180), Image.ANTIALIAS))
+            photo = img.tk_image("laptop_b.jpg", 300, 180)
         elif type_code == GLO['LAPTOP_D']:  # Laptop Display image
-            photo = ImageTk.PhotoImage(Image.open("laptop_d.jpg").resize((300, 180), Image.ANTIALIAS))
+            photo = img.tk_image("laptop_d.jpg", 300, 180)
         else:
             v0_print(_who, "Unknown 'type_code':", type_code)
             photo = None
@@ -6007,7 +6066,8 @@ class SystemMonitor(DeviceCommonSelf):
                 self.curr_sensor[parts[0]] = parts[1].strip()
                 CheckFanChange(parts[0])  # Over 200 RPM change will be logged.
             if "PU" in parts[0]:
-                self.curr_sensor[parts[0]] = parts[1].strip().encode('utf-8')
+                # 2025-02-09 For python 3 degree in bytes use str(+66.0°C)
+                self.curr_sensor[parts[0]] = str(parts[1].strip())
 
         if not dell_found:
             return  # Not an Alienware 17R3 or similar DELL machine
@@ -6182,7 +6242,7 @@ class SystemMonitor(DeviceCommonSelf):
         def opt(key):
             """ Return optional key or N/A if not found. """
             try:
-                return sensor[key]
+                return sensor[key]  # in Python 3, value is bytes
             except KeyError:
                 return "N/A"
 
@@ -6283,6 +6343,7 @@ def discover(update=False, start=None, end=None):
             ni.arp_dicts[i] = arp  # Update arp list
 
     return discovered, instances, view_order
+
 
 
 v1_print("homa.py - trionesControl.trionesControl:", tc.__file__)

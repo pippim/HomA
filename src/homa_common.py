@@ -10,6 +10,7 @@ Description: homa_common.py - Common Python Functions Module
 from __future__ import print_function  # Must be first import
 from __future__ import with_statement  # Error handling for file opens
 import warnings  # 'warnings' advises which commands aren't supported
+warnings.filterwarnings("ignore", "ResourceWarning")  # PIL python 3 unclosed file
 
 # ==============================================================================
 #
@@ -155,7 +156,9 @@ Defaults	env_reset, timestamp_timeout=120
                     stdin=cmd1.stdout, stdout=sp.PIPE)
 
     output = cmd2.stdout.read().decode()
-    #print("output:", output)
+    cmd2.communicate()  # 2025-02-10 Python 3 ResourceWarning: unclosed file
+    cmd1.communicate()  # 2025-02-10 Python 3 ResourceWarning: unclosed file
+
     if output.startswith("total"):
         return text
     else:

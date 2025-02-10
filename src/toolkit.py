@@ -1472,7 +1472,10 @@ class ChildWindows:
         # re search in "<WIDTH> x <HEIGHT> + <X> + <Y>" string (no spaces or <>)
         position_info = re.split('[x+]', geometry_info)
         # https://stackoverflow.com/a/50716478/6929343
-        return map(int, position_info)
+        #return map(int, position_info)
+        # Above worked for Python 2.7.12 but breaks in Python 3.5
+        # https://stackoverflow.com/a/7368801/6929343
+        return list(map(int, position_info))
 
 
 # ==============================================================================
