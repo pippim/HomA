@@ -18,6 +18,7 @@ warnings.filterwarnings("ignore", "ResourceWarning")  # PIL python 3 unclosed fi
 #
 #       2024-11-24 - Creation date.
 #       2024-12-08 - Port GetMouseLocation() to monitor.py get_mouse_location()
+#       2025-02-10 - Support Python 3 shebang in parent
 #
 # ==============================================================================
 
@@ -257,6 +258,10 @@ def MoveHere(title, pos='top_right', adjust=0, new_window=True):
     # Get program window's geometry
     all_windows = sp.check_output(['wmctrl', '-lG']).splitlines()
     for window in all_windows:
+        #print("type(title):", type(title))
+        #print("type(window):", type(window))
+        # Python 3 window is type bytes
+        window = str(window)
         if title in window:
             break
     else:
@@ -266,8 +271,14 @@ def MoveHere(title, pos='top_right', adjust=0, new_window=True):
     if len(parts) < 6:
         return False
 
+    #print("parts:", parts)  # Python 3:
+    # parts: ["b'0x05600018", '0', '4144', '126', '1200', '740',
+    # '       N/A', 'HomA', '-', 'Home', "Automation'"]
+    if "b'" in parts[0]:
+        parts[0] = parts[0][2:]
+    #print("parts:", parts)  # Python 3:
+
     wId, _wStrange, _wX, _wY, wWidth, wHeight = parts[0:6]
-    #print(_who, "wId, wWidth, wHeight:", wId, wWidth, wHeight)
 
     xPos, yPos = GetMouseLocation()  # Get current mouse location
     # Adjust x-offset using window's width

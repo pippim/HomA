@@ -19,6 +19,7 @@ warnings.filterwarnings("ignore", "ResourceWarning")  # PIL python 3 unclosed fi
 #       2024-10-02 - Creation date.
 #       2024-12-01 - Create GitHub repo. Add dropdown menus and Big Number Calc.
 #       2025-01-08 - Create Bluetooth LED Light Strip support.
+#       2025-02-10 - Support Python 3 shebang
 #
 # ==============================================================================
 
@@ -472,9 +473,11 @@ class Globals(DeviceCommonSelf):
             f = Fernet(cp.crypto_key)  # Encrypt sudo password when storing
             try:
                 enc = f.encrypt(GLO['SUDO_PASSWORD'].encode())  # convert to bytes
+                # Works first time in Python 3, but second time (after save & restart)
+                # it generates attribute error below.
             except AttributeError:
                 # AttributeError: 'bytes' object has no attribute 'encode'
-                v0_print(_who, "AttributeError: 'bytes' object has no attribute 'encode'")
+                #v0_print(_who, "AttributeError: 'bytes' object has no attribute 'encode'")
                 enc = f.encrypt(GLO['SUDO_PASSWORD'])  # already in bytes
             if PYTHON_VER == "3":
                 # noinspection SpellCheckingInspection
@@ -3578,12 +3581,18 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         # Images used in PopulateTree() and/or other methods
         self.photos = None
 
+        # Button images
+        self.img_suspend = img.tk_image("lightning_bolt.png", 26, 26)
+        self.img_flame = img.tk_image("flame.png", 26, 26)  # Sensors
+        self.img_help = img.tk_image("help.png", 26, 26)
+        self.img_wifi = img.tk_image("wifi.png", 26, 26)  # Devices
+
         # Right-click popup menu images common to all devices
         self.img_turn_off = img.tk_image("turn_off.png", 42, 26)
         self.img_turn_on = img.tk_image("turn_on.png", 42, 26)
         self.img_up = img.tk_image("up.png", 22, 26)
-        self.img_down = img.tk_image("down.png", 22, 26)
-        self.img_close = img.tk_image("close.jpeg", 26, 26)
+        self.img_down = img.tk_image("down.png", 22, 26)  # Move down & Minimize
+        self.img_close = img.tk_image("close.jpeg", 26, 22)  # Also close button
 
         # Right-click popup menu images for Sony TV Picture On/Off
         self.img_picture_on = img.tk_image("picture_on.png", 42, 26)
@@ -3639,8 +3648,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         ''' When devices displayed show sensors button and vice versa. '''
         self.sensors_devices_btn = None
-        self.sensors_btn_text = u"🌡  Sensors"  # (U+1F321) when Devices active
-        self.devices_btn_text = u"🗲  Devices"  # (U+1F5F2) when Sensors active
+        self.sensors_btn_text = "Sensors"  # when Devices active
+        self.devices_btn_text = "Devices"  # when Sensors active
         self.suspend_btn = None  # Suspend button on button bar to control tooltip
         self.usingDevicesTreeview = True  # Startup uses Devices Treeview
         self.BuildButtonBar(self.sensors_btn_text)
@@ -4008,50 +4017,59 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         style.configure("C.TButton", font=g.MED_FONT)
 
-        def device_button(row, column, txt, command, tt_text, tt_anchor):
+        def device_button(row, column, txt, command, tt_text, tt_anchor, pic=None):
             """ Function to combine ttk.Button, .grid() and tt.add_tip() """
             # font=
             txt = toolkit.normalize_tcl(txt)  # Python 3 lose 🌡 (U+1F321)
-            widget = ttk.Button(self.btn_frm, text=txt, width=len(txt),
-                                command=command, style="C.TButton")
+            # above was python 3 short term fix, use an image for permanent fix
+            if pic:
+                widget = ttk.Button(self.btn_frm, text=" "+txt, width=len(txt)+2,
+                                    command=command, style="C.TButton",
+                                    image=pic, compound="left")
+            else:
+                widget = ttk.Button(self.btn_frm, text=txt, width=len(txt),
+                                    command=command, style="C.TButton")
             widget.grid(row=row, column=column, padx=5, pady=5, sticky=tk.E)
             if tt_text is not None and tt_anchor is not None:
                 self.tt.add_tip(widget, tt_text, anchor=tt_anchor)
             return widget
 
         ''' Minimize Button - U+1F847 🡇  -OR-  U+25BC ▼ '''
-        device_button(0, 0, u"▼  Minimize", self.MinimizeApp,
-                      "Quickly and easily minimize HomA.", "nw")
+        device_button(0, 0, "Minimize", self.MinimizeApp,
+                      "Quickly and easily minimize HomA.", "nw", self.img_down)
 
         # noinspection SpellCheckingInspection
         ''' 🌡 (U+1F321) Sensors Button  -OR-  🗲 (U+1F5F2) Devices Button '''
         if toggle_text == self.sensors_btn_text:
             text = "Show Temperatures and Fans."
+            pic_image = self.img_flame
         else:
             text = "Show Network Devices."
+            pic_image = self.img_wifi
 
         self.sensors_devices_btn = device_button(
             0, 1, toggle_text, self.SensorsDevicesToggle,
-            text, "nw")
+            text, "nw", pic_image)
 
         ''' Suspend Button U+1F5F2  🗲 '''
         self.suspend_btn = device_button(
-            0, 2, u"🗲 Suspend", self.Suspend,
-            "Power off all devices except suspend computer.", "ne")
+            #0, 2, u"🗲 Suspend", self.Suspend,
+            0, 2, "Suspend", self.Suspend,
+            "Power off all devices except suspend computer.", "ne", self.img_suspend)
 
         ''' Help Button - ⧉ Help - Videos and explanations on pippim.com
             https://www.pippim.com/programs/homa.html#Introduction '''
         help_text = "Open new window in default web browser for\n"
         help_text += "videos and explanations on using this screen.\n"
         help_text += "https://www.pippim.com/programs/homa.html#\n"
-        device_button(0, 3, u"⧉ Help", lambda: g.web_help("Introduction"),
-                      help_text, "ne")
+        device_button(0, 3, "Help", lambda: g.web_help("Introduction"),
+                      help_text, "ne", self.img_help)
 
         ''' ✘ CLOSE BUTTON  '''
         self.bind("<Escape>", self.CloseApp)
         self.protocol("WM_DELETE_WINDOW", self.CloseApp)
-        device_button(0, 4, u"✘ Close", self.CloseApp,
-                      "Close HomA and all windows HomA opened.", "ne")
+        device_button(0, 4, "Close", self.CloseApp,
+                      "Close HomA and all windows HomA opened.", "ne", pic=self.img_close)
 
     def SensorsDevicesToggle(self):
         """ Sensors / Devices toggle button clicked.
@@ -4069,11 +4087,13 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         if "Sensors" in self.sensors_devices_btn['text']:
             show_sensors = True
             self.sensors_devices_btn['text'] = toolkit.normalize_tcl(self.devices_btn_text)
+            self.sensors_devices_btn['image'] = self.img_wifi
             self.tt.set_text(self.sensors_devices_btn, "Show Network Devices.")
             self.usingDevicesTreeview = False
         elif "Devices" in self.sensors_devices_btn['text']:
             show_devices = True
             self.sensors_devices_btn['text'] = toolkit.normalize_tcl(self.sensors_btn_text)
+            self.sensors_devices_btn['image'] = self.img_flame
             self.tt.set_text(self.sensors_devices_btn, "Show Temperatures and Fans.")
             self.usingDevicesTreeview = True
         else:
@@ -5554,33 +5574,26 @@ b'A really secret message. Not for prying eyes.'
         self.event_btn_frm.grid(row=100, column=0, sticky=tk.NSEW)
         self.event_btn_frm.columnconfigure(0, weight=1)
 
-        def button_func(row, column, txt, command, tt_text, tt_anchor):
+        def button_func(row, column, txt, command, tt_text, tt_anchor, pic):
             """ Function to combine ttk.Button, .grid() and tt.add_tip() """
-            # font=
-            widget = ttk.Button(self.event_btn_frm, text=txt, width=len(txt),
-                                command=command, style="C.TButton")
+            widget = ttk.Button(self.event_btn_frm, text=" "+txt, width=len(txt)+2,
+                                command=command, style="C.TButton",
+                                image=pic, compound="left")
             widget.grid(row=row, column=column, padx=5, pady=5, sticky=tk.E)
             if tt_text is not None and tt_anchor is not None:
                 self.tt.add_tip(widget, tt_text, anchor=tt_anchor)
             return widget
 
         if help is not None:
-            help_btn = ttk.Button(
-                self.event_btn_frm, width=7, text="⧉ Help", style="C.TButton")
-            help_btn.grid(row=0, column=0, padx=10, pady=5, sticky=tk.E)
-
             ''' Help Button - ⧉ Help - Videos and explanations on pippim.com
                 https://www.pippim.com/programs/homa.html#Introduction '''
-            help_text = "Open new window in default web browser for\n"
+            help_text  = "Open new window in default web browser for\n"
             help_text += "videos and explanations on using this screen.\n"
             help_text += "https://www.pippim.com/programs/homa.html#\n"
-            button_func(0, 0, "⧉ Help", lambda: g.web_help(help),
-                        help_text, "ne")
+            button_func(0, 0, "Help", lambda: g.web_help(help),
+                        help_text, "ne", self.img_help)
 
-        close_btn = ttk.Button(
-            self.event_btn_frm, width=7, text="✘ Close", style="C.TButton", command=close)
-        close_btn.grid(row=0, column=1, padx=10, pady=5, sticky=tk.E)
-        button_func(0, 1, "✘ Close", close, "Close this window.", "ne")
+        button_func(0, 1, "Close", close, "Close this window.", "ne", self.img_close)
 
         # Foreground colors
         scrollbox.tag_config('red', foreground='red')

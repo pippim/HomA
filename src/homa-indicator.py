@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 Author: pippim.com
@@ -18,6 +18,7 @@ warnings.filterwarnings("ignore", "ResourceWarning")  # PIL python 3 unclosed fi
 #
 #       2024-11-18 - Creation date.
 #       2024-12-08 - Use monitor.Monitors() for monitor aware window positions
+#       2025-02-10 - Support Python 3 shebang
 #
 # ==============================================================================
 
