@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Author: pippim.com
-License: GNU GPLv3. (c) 2024
+License: GNU GPLv3. (c) 2024-2025
 Source: This repository
 Description: HomA Application Indicator - Systray Python Module
 """

@@ -1,8 +1,8 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
 Author: pippim.com
-License: GNU GPLv3. (c) 2024
+License: GNU GPLv3. (c) 2024-2025
 Source: This repository
 Description: HomA - Home Automation - Main **homa** Python Module
 """
@@ -57,6 +57,7 @@ warnings.filterwarnings("ignore", "ResourceWarning")  # PIL python 3 unclosed fi
 ''' check configuration. '''
 import inspect
 import os
+os.environ["SUDO_PROMPT"] = ""  # Change prompt "[sudo] password for <USER>:"
 
 try:
     filename = inspect.stack()[1][1]  # If there is a parent, it must be 'h'
@@ -101,7 +102,7 @@ except ImportError:  # Python 2
 
     PYTHON_VER = "2"
 
-print("PYTHON_VER", PYTHON_VER)
+# print("PYTHON_VER", PYTHON_VER)
 
 from PIL import Image, ImageTk, ImageDraw, ImageFont
 
@@ -4798,8 +4799,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         """ Automatically call 'arp -a' to check on network changes.
             Job split into many slices of 16ms until done.
             Caller sleeps between calls using GLO['REDISCOVER_SECONDS'].
-
-            2024-12-01 - TODO: Mouse motion resets last rediscovery time
         """
 
         _who = self.who + "Rediscover():"
@@ -6399,7 +6398,7 @@ ble = BluetoothLedLightStrip()  # Must follow GLO dictionary and before ni insta
 cp = Computer()  # cp = Computer Platform
 ni = NetworkInfo()  # ni = global class instance used everywhere
 ni.adb_reset(background=True)  # When TCL TV is communicating this is necessary
-rd = NetworkInfo()  # rd = Rediscovery instance for app.Rediscover() & app.Discover()
+rd = None  # rd = Rediscovery instance for app.Rediscover() & app.Discover()
 sm = None  # sm = System Monitor - fan speed and CPU temperatures
 
 SAVE_CWD = ""  # Saved current working directory. Will change to program directory.
