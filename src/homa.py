@@ -100,6 +100,8 @@ except ImportError:  # Python 2
 
     PYTHON_VER = "2"
 
+print("PYTHON_VER", PYTHON_VER)
+
 from PIL import Image, ImageTk, ImageDraw, ImageFont
 
 import signal  # Shutdown signals
@@ -466,13 +468,33 @@ class Globals(DeviceCommonSelf):
         """ Save dictConfig to CONFIG_FNAME = "config.json" """
         _who = self.who + "saveFile():"
 
-        f = Fernet(cp.crypto_key)  # Encrypt sudo password when storing
         if GLO['SUDO_PASSWORD'] is not None:
-            GLO['SUDO_PASSWORD'] = f.encrypt(GLO['SUDO_PASSWORD'].encode())
+            f = Fernet(cp.crypto_key)  # Encrypt sudo password when storing
+            try:
+                enc = f.encrypt(GLO['SUDO_PASSWORD'].encode())  # convert to bytes
+            except AttributeError:
+                # AttributeError: 'bytes' object has no attribute 'encode'
+                v0_print(_who, "AttributeError: 'bytes' object has no attribute 'encode'")
+                enc = f.encrypt(GLO['SUDO_PASSWORD'])  # already in bytes
+            if PYTHON_VER == "3":
+                # noinspection SpellCheckingInspection
+                '''
+                Fix issue with `bytes` being used in encryption under python 3:
+                    TypeError: b'gAAAAABnqjSvXmfPODPXGfmBcnRnas4oI22xMbKxTP-JZGA-6
+                    -819AmJoV7kEh59d-RnKLK2HZVGwb3YppZsvgzOZcUZDsZmAg==' 
+                    is not JSON serializable
+                
+                See: https://stackoverflow.com/a/40060181/6929343
+                '''
+                GLO['SUDO_PASSWORD'] = enc.decode('utf8').replace("'", '"')
+            else:  # In Python 2 a string is a string, not bytes
+                GLO['SUDO_PASSWORD'] = enc
         GLO['LOG_EVENTS'] = True  # Don't want to store False value
         GLO['EVENT_ERROR_COUNT'] = 0  # Don't want to store last error count
+
         with open(g.USER_DATA_DIR + os.sep + GLO['CONFIG_FNAME'], "w") as f:
             f.write(json.dumps(self.dictGlobals))
+
 
     def defineNotebook(self):
         """ defineNotebook models global data variables in dictionary. Used by
