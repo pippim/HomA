@@ -23,18 +23,6 @@ warnings.filterwarnings("ignore", "ResourceWarning")  # PIL python 3 unclosed fi
 #
 # ==============================================================================
 
-# 2025-02-10 various tests to make warnings go away
-#warnings.simplefilter('default')  # in future Python versions.
-#warnings.simplefilter("ignore", ResourceWarning)  # PIL python 3 unclosed file
-#warnings.filterwarnings("ignore", "ResourceWarning")  # PIL python 3 unclosed file
-# /usr/lib/python3/dist-packages/Xlib/xauth.py:42: ResourceWarning: unclosed file
-#       <_io.BufferedReader name='/home/<USER>/.X authority'>
-#   raw = open(filename, 'rb').read()
-# ./homa.py:1104: ResourceWarning: unclosed file <_io.TextIOWrapper name=4 encoding='UTF-8'>
-#   for device in os.popen('arp -a'):
-# /usr/lib/python3/dist-packages/PIL/Image.py:1528: ResourceWarning: unclosed file
-#       <_io.BufferedReader name='turn_off.png'>
-#   self.load()
 '''
     REQUIRES:
     
@@ -2573,6 +2561,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
 
         # Parameter & Statistics dictionaries for breathing colors fine tuning
         self.already_breathing_colors = False  # Is breathing colors running?
+        self.powered_off_breathing = False  # Did TurnOff shut down breathing colors?
         self.connect_errors = 0  # Count sequential times auto-reconnect failed.
         # When changing here, change in breatheColors() as well
         self.parm = {}  # breatheColors() parameters
@@ -2954,8 +2943,12 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
             v0_print("\n" + ext.ch(), _who, "Already running breathing colors.")
             return
         if self.device is None:
-            self.showMessage()  # Bluetooth device not connected to computer
+            # 2025-02-11 Resuming from suspend when device not connected.
+            err = "Cannot start 'Breathe Colors'. Turn on first."
+            self.showMessage(err=err, count=0)  # Bluetooth device not connected to computer
             return self.powerStatus
+
+        # TODO: Multiple profiles in list[dict{LOW, HIGH, SPAN, STEP, BOTS, TOPS}...]
 
         # Parameters, Statistics and Color controls
         self.parm = {"low": low, "high": high, "span": span, "step": step,
@@ -3326,6 +3319,9 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
             Sometimes that doesn't work and a resetBluetooth() is required followed by
             turnOn()
 
+            NOTE: Original design of tc.connect is to wait 30 seconds. This was changed to
+            waiting 1 second with 18 retries.
+
             :param sudo_reset: bluetooth is restarted in gatttool.py using:
                 subprocess.Popen(["sudo", "systemctl", "restart", "bluetooth"]).wait()
                 subprocess.Popen([
@@ -3361,6 +3357,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
                 delta_str = "{0:>8.2f}".format(delta)  # "99999.99" format
                 v1_print(delta_str, "|", _who, "Failed to connect:",
                          self.connect_errors, "time(s).")
+                # TODO: log event
 
         if self.app:  # Prevent erroneous Resume from Suspend from running
             self.app.last_refresh_time = time.time()
@@ -3377,7 +3374,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
             self.app.refreshDeviceStatusForInst(self)
 
         # 2025-01-24 message appears multiple times in code
-        if str(err) is not "None":
+        if err is not None:
             msg = str(err) + "\n\n"
         else:
             msg = ""  # No gatttool error message
@@ -3462,14 +3459,26 @@ $ ps aux | grep gatttool | grep -v grep | wc -l
         v2_print("\n" + _who, "Send GATT cmd to:", self.name)
 
         if self.device is None:
-            self.Connect()
+            self.Connect()  # 2025-02-10 TODO: Connect in loop
 
         try:
             tc.powerOn(self.device)
             self.powerStatus = "ON"  # Can be "ON", "OFF" or "?"
-            return self.powerStatus
+            # 2025-02-10 TODO: Save breathing colors status and restore when turning on
+            v0_print(_who, "self.suspendPowerOff:", self.suspendPowerOff)
+            # BluetoothLedLightStrip().TurnOn(): self.suspendPowerOff: 1
+            # BluetoothLedLightStrip().TurnOn(): self.suspendPowerOff: 2
+
+            # If suspend turned off power, start breathing
+            if self.suspendPowerOff:
+                self.breatheColors()  # Restart breathing
+                self.suspendPowerOff = 0
+
+            return self.powerStatus  # Success !
+
         except pygatt.exceptions.NotConnectedError as err:
             v1_print(_who, err)
+
         except AttributeError:
             v1_print(_who, "AttributeError: self.device:", self.device)
 
@@ -4305,20 +4314,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         cr.tree.item(cr.item, text=text)
         cr.tree.update_idletasks()
 
-    def viewStatsIsRunning(self, cr):
-        """ Options are disabled when viewStatsIsRunning.  2025-02-09 - NOT USED.
-
-            NOTE: Sub windows are designed to steal focus and lift however,
-                  multiple right clicks will eventually cause menu to appear.
-                  After selecting an option though, the green highlighting
-                  stays in place because fadeOut() never runs.
-        """
-        if self.bleScrollbox is None:
-            return  # View Breathing Statistics isn't running
-
-        if cr.arp_dict['type_code'] != GLO['BLE_LS']:
-            return  # Right-click not on Bluetooth LED
-
     def setColor(self, cr):
         """ Mouse right button click selected "Set LED Lights Color".
             Note if cr.device in error a 10 second timeout can occur.
@@ -4430,6 +4425,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         _who = self.who + "Refresh()"
         self.update_idletasks()
         if not self.winfo_exists():
+            self.isActive = False
             return False  # self.close() has destroyed window
 
         ''' Is system shutting down? '''
@@ -4456,9 +4452,10 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         ''' Always give time slice to tooltips - requires sql.py color config '''
         self.tt.poll_tips()  # Tooltips fade in and out. self.info piggy backing
-        self.update()  # process events in queue. E.G. message.ShowInfo()
+        self.update()  # process pending tk events in queue
 
         if not self.winfo_exists():  # Second check needed June 2023
+            self.isActive = False
             return False  # self.close() has set to None
 
         ''' Displaying statistics for Bluetooth LED Light Strip breathing colors? '''
@@ -4472,7 +4469,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             called by waiting messages within first rediscovery process when
             a second rediscovery will break things. '''
         if not tk_after:
-            return self.winfo_exists()
+            if not self.winfo_exists():  # Second check needed June 2023
+                self.isActive = False
+            return self.isActive
 
         ''' Rediscover devices every GLO['REDISCOVER_SECONDS'] '''
         if int(now - self.last_rediscover_time) > GLO['REDISCOVER_SECONDS']:
@@ -4501,37 +4500,32 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         """ Power off devices and suspend system. """
 
         _who = self.who + "Suspend():"
-        v0_print(_who, "Suspending system...")
 
-        ''' Is countdown already running? '''
-        if self.dtb:  # Cannot suspend when countdown timer is running.
-            message.ShowInfo(self, thread=self.Refresh, win_grp=self.win_grp,
-                             icon='warning', title="Cannot Suspend now.",
-                             text="Countdown timer must be closed.")
-            v0_print(_who, "Aborting suspend. Countdown timer active.")
-            return
+        self.suspend_btn['state'] = tk.NORMAL  # 2025-02-11 color was staying blue
 
-        ''' Is rediscovery in progress? '''
+        ''' Is it ok to suspend? '''
+        msg = None
+        if self.dtb:  # Cannot suspend when resume countdown timer is running.
+            msg = "Countdown timer is running."
         if not self.rediscover_done:  # Cannot suspend during rediscovery.
-            message.ShowInfo(self, thread=self.Refresh, win_grp=self.win_grp,
-                             icon='warning', title="Cannot Suspend now.",
-                             text="Device rediscovery is in progress for a few seconds.")
-            v0_print(_who, "Aborting suspend. Device rediscovery in progress.")
+            msg = "Device rediscovery is in progress for a few seconds."
+        if msg:  # Cannot suspend when other jobs are active
+            self.ShowInfo("Cannot Suspend now.", msg, icon="error")
+            v0_print(_who, "Aborting suspend.", msg)
             return
 
+        v0_print(_who, "Suspending system...")
         ''' Move mouse away from suspend button to close tooltip window 
             No longer needed because Tooltips().zap_tip_window() was created.
-        '''
-        #command_line_list = ["xdotool", "mousemove_relative", "--", "-200", "-200"]
-        #_event = self.runCommand(command_line_list, _who)  # def runCommand
+        command_line_list = ["xdotool", "mousemove_relative", "--", "-200", "-200"]
+        _event = self.runCommand(command_line_list, _who)  # def runCommand
+        '''  # 2025-02-11 No longer needed but nice bit of code to recycle someday.
 
-        self.tt.zap_tip_window(self.suspend_btn)  # Delete tooltips window
-        self.isActive = False  # Signal closing down so methods return
+        self.isActive = False  # Signal closing so methods shut down elegantly.
         if self.bleSaveInst:  # Is breathing colors active?
             self.bleSaveInst.already_breathing_colors = False  # Force shutdown
         self.update_idletasks()
-        self.after(100)  # Time for Breathing colors to shutdown
-        self.tt.zap_tip_window(self.suspend_btn)  # Delete tooltips window
+        self.after(100)  # Extra time (besides power off time) for Breathing Colors
 
         self.SetAllPower("OFF")  # Turn off all devices except computer
         self.tt.zap_tip_window(self.suspend_btn)  # Delete tooltips window
@@ -5061,17 +5055,21 @@ b'A really secret message. Not for prying eyes.'
         password = hc.ValidateSudoPassword(answer.string)
         if password is None:
             msg = "Invalid sudo password!\n\n"
-            message.ShowInfo(
-                self, text=msg, thread=self.Refresh,
-                title="Invalid sudo password", icon="error", win_grp=self.win_grp)
+            self.ShowInfo("Invalid sudo password", msg, icon="error")
+            #message.ShowInfo(
+            #    self, text=msg, thread=self.Refresh,
+            #    title="Invalid sudo password", icon="error", win_grp=self.win_grp)
 
         self.last_refresh_time = time.time()  # Refresh idle loop last entered time
         return password  # Will be <None> if invalid password entered
 
     def ShowInfo(self, title, text, icon="information", align="center"):
-        """ Called from instance which has no tk reference of it's own 
+        """ Show message with thread safe refresh that doesn't invoke rediscovery.
+
+            Can be called from instance which has no tk reference of it's own
             From Application initialize with:   inst.app = self
             From Instance call method with:     self.app.ShowInfo()
+            #ShowInfo(self, title, text, icon="information", align="center")
         """
         def thread_safe():
             """ Prevent self.Refresh rerunning a second rediscovery during
@@ -5081,6 +5079,7 @@ b'A really secret message. Not for prying eyes.'
             self.last_rediscover_time = self.last_refresh_time
             self.Refresh(tk_after=False)
             self.after(10)
+            self.update()  # Suspend button stays blue after mouseover ends>?
 
         message.ShowInfo(self, thread=thread_safe, icon=icon, align=align,
                          title=title, text=text, win_grp=self.win_grp)
@@ -5152,7 +5151,8 @@ b'A really secret message. Not for prying eyes.'
         listTabs, listFields, listHelp = glo.defineNotebook()
         all_notebook = toolkit.makeNotebook(
             self.notebook, listTabs, listFields, listHelp, GLO, "TNotebook.Tab",
-            "Notebook.TFrame", "C.TButton", close, tt=self.tt)
+            "Notebook.TFrame", "C.TButton", close, tt=self.tt,
+            help_btn_image=self.img_help, close_btn_image=self.img_close)
         self.edit_pref_active = True
         self.EnableMenu()
 
@@ -6336,13 +6336,15 @@ def v3_print(*args, **kwargs):
         
 
 def discover(update=False, start=None, end=None):
-    """ Return list of all macs and their types discovered. 
-        :param update: If True update ni.arp_dicts
+    """ Test arp devices for device type using .isDevice() by mac address.
+
+        :param update: If True, update ni.arp_dicts entry with type_code
         :param start: ni.arp_dicts starting index for loop
-        :param end: ni.arp_dicts ending index (before) for loop
+        :param end: ni.arp_dicts ending index (ends just before passed value)
+        :returns: list of known device instances
     """
-    global ni  # NetworkInformation() class instance used everywhere
     _who = "homa.py discover()"
+    global ni  # NetworkInformation() class instance used everywhere
     discovered = []  # List of discovered devices in arp dictionary format
     instances = []  # List of instances shadowing each discovered device
     view_order = []  # Order of macs discovered
@@ -6357,27 +6359,22 @@ def discover(update=False, start=None, end=None):
         end = len(ni.arp_dicts)  # Not tested as of 2024-11-10
 
     for i, arp in enumerate(ni.arp_dicts[start:end]):
-        # arp dictionary = {
-        # "mac": mac, "ip": ip, "name": name, "alias": alias, "type_code": 99}
+        # arp = {"mac": mac, "ip": ip, "name": name, "alias": alias, "type_code": 99}
         v2_print("\nTest for device type using 'arp' dictionary:", arp)
 
-        instance = ni.test_for_instance(arp)
-        if len(instance) == 0:
-            continue
+        # Get class instance information rebuilt at run time and never saved to disk
+        instance = ni.test_for_instance(arp)  # test against known device types
+        if not bool(instance):  # Is instance an empty dictionary?
+            continue  # No instance found, perhaps it's a router or smart phone, etc.
 
-        discovered.append(arp)  # Saved to disk
-
-        # Get class instance information
-        #instances.append({"mac": arp['mac'], "instance": inst})
-        instances.append(instance)
-        arp['type_code'] = instance['instance'].type_code
-        view_order.append(arp['mac'])
-        # Instance always rebuilt at run time and never saved to disk
+        arp['type_code'] = instance['instance'].type_code  # type_code unknown until now
+        discovered.append(arp)  # list of arp dictionaries are saved to disk
+        instances.append(instance)  # instance = {"mac": arp['mac'], "instance": inst}
+        view_order.append(arp['mac'])  # treeview ordered by MAC address saved to disk
         if update:
-            ni.arp_dicts[i] = arp  # Update arp list
+            ni.arp_dicts[i] = arp  # Update arp list with type_code found in instance
 
     return discovered, instances, view_order
-
 
 
 v1_print("homa.py - trionesControl.trionesControl:", tc.__file__)

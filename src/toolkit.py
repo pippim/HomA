@@ -1569,7 +1569,8 @@ class CustomScrolledText(scrolledtext.ScrolledText):
 class makeNotebook:
     """ Data Dictionary controlled notebook. """
     def __init__(self, notebook, listTabs, listFields, listHelp, dictData,
-                 tStyle=None, fStyle=None, bStyle=None, close=None, tt=None):
+                 tStyle=None, fStyle=None, bStyle=None, close=None, tt=None,
+                 help_btn_image=None, close_btn_image=None):
 
         self.notebook = notebook  # tkk.Notebook instance created in caller
         self.listTabs = listTabs  # Tuples List: [(Tab Name, Tool Tip), (ditto)]
@@ -1581,6 +1582,8 @@ class makeNotebook:
         self.bStyle = bStyle  # Button style "C.TButton"
         self.close = close  # Callback for Close button on every frame (tab)
         self.tt = tt  # Tooltips instance
+        self.help_btn_image = help_btn_image
+        self.close_btn_image = close_btn_image
 
         self.who = "toolkit.py DictNotebook()."  # For debug messages
 
@@ -1624,11 +1627,14 @@ class makeNotebook:
                 #help_url = "https://www.pippim.com/programs/homa.html#EditPreferencesSony_TV"
                 g.web_help(help_base)
 
-            def button_func(column, txt, command, tt_text, tt_anchor):
+            def button_func(column, txt, command, tt_text, tt_anchor, pic=None):
                 """ Function to combine ttk.Button, .grid() and tt.add_tip() """
-                # font=
-                widget = ttk.Button(frame, text=txt, width=len(txt),
-                                    command=command, style=self.bStyle)
+                txt = normalize_tcl(txt)  # Python 3 lose 🌡 (U+1F321)
+                # above was python 3 short term fix, use an image for permanent fix
+                widget = ttk.Button(frame, text=txt, width=len(txt), compound="left",
+                                    image=pic, command=command, style=self.bStyle)
+                #widget = ttk.Button(frame, text=txt, width=len(txt),
+                #                    command=command, style=self.bStyle)
                 widget.grid(row=100, column=column, padx=10, pady=5, sticky=tk.E)
                 if self.tt is not None and \
                         tt_text is not None and tt_anchor is not None:
@@ -1637,10 +1643,13 @@ class makeNotebook:
 
             self.add_rows(frame, tab_no)  # Add label: Entry fields to frame
 
-            if len(self.listHelp) == 3:
-                button_func(0, "⧉ Help", help, self.listHelp[2], "sw")
+            if len(self.listHelp) == 3:  # Optional help button passed?
+                btn_txt = "Help" if self.help_btn_image else "⧉ Help"
+                button_func(0, btn_txt, help, self.listHelp[2], "sw", self.help_btn_image)
+
             msg = "Close notebook."
-            button_func(1, "✘ Close", self.close, msg, "sw")
+            btn_txt = "Close" if self.close_btn_image else "✘ Close"
+            button_func(1, btn_txt, self.close, msg, "sw", self.close_btn_image)
 
             self.notebook.add(frame, text=name, compound=tk.TOP)
             #     notebook.add(frame, style=tStyle, text=name, compound=tk.TOP)
