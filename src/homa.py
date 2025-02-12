@@ -3594,7 +3594,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         # Button images
         self.img_suspend = img.tk_image("lightning_bolt.png", 26, 26)
         self.img_flame = img.tk_image("flame.png", 26, 26)  # Sensors
-        self.img_help = img.tk_image("help.png", 26, 26)
+        self.img_help = img.tk_image("mag_glass.png", 26, 26)
         self.img_wifi = img.tk_image("wifi.png", 26, 26)  # Devices
 
         # Right-click popup menu images common to all devices
@@ -3602,7 +3602,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.img_turn_on = img.tk_image("turn_on.png", 42, 26)
         self.img_up = img.tk_image("up.png", 22, 26)
         self.img_down = img.tk_image("down.png", 22, 26)  # Move down & Minimize
-        self.img_close = img.tk_image("close.jpeg", 26, 22)  # Also close button
+        self.img_close = img.tk_image("close.png", 26, 26)  # Also close button
 
         # Right-click popup menu images for Sony TV Picture On/Off
         self.img_picture_on = img.tk_image("picture_on.png", 42, 26)

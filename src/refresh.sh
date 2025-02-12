@@ -66,13 +66,13 @@ cp -r ~/HomA/Alarm_01.wav .
 cp -r ~/HomA/bias.jpg .
 cp -r ~/HomA/breathing.jpeg .
 cp -L ~/HomA/calc.py .  # symlink
-cp -r ~/HomA/close.jpeg .
+cp -r ~/HomA/close.png .
 cp -r ~/HomA/computer.jpg .
 cp -r ~/HomA/down.png .
 cp -L ~/HomA/external.py .  # symlink
 cp -r ~/HomA/flame.png .
 cp -L ~/HomA/global_variables.py .  # symlink
-cp -r ~/HomA/help.png .
+cp -r ~/HomA/mag_glass.png .
 cp -r ~/HomA/homa_common.py .
 cp -r ~/HomA/homa-indicator.py .
 cp -r ~/HomA/homa.py .
@@ -111,13 +111,13 @@ git add Alarm_01.wav
 git add bias.jpg
 git add breathing.jpeg
 git add calc.py
-git add close.jpeg
+git add close.png
 git add computer.jpg
 git add down.png
 git add external.py
 git add flame.png
 git add global_variables.py
-git add help.png
+git add mag_glass.png
 git add homa_common.py
 git add homa-indicator.py
 git add homa.py

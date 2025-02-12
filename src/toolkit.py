@@ -5147,6 +5147,10 @@ class ToolTips(CommonTip):
                 if self.print_error:
                     print(self.who + ".process_tip():",
                           "self.tip.window doesn't exist")
+                    try:
+                        print(self.widget['text'])
+                    except KeyError:
+                        pass  # Some parents don't have text attribute
                 return
 
         ''' Pending event to start displaying tooltip balloon? '''
