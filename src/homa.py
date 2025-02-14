@@ -132,10 +132,9 @@ try:
 except NameError:  # name 'reload' is not defined
     pass  # Python 3 already in unicode by default
 
-import trionesControl.trionesControl as tc  # Bluetooth LED Light strips
-
-# 2025-01-09 TODO: direct access to GATT bypassing trionesControl
-import pygatt
+# Vendor libraries preinstalled in subdirectories (ttkwidgets not used)
+import trionesControl.trionesControl as tc  # Bluetooth LED Light strips wrapper
+import pygatt  # Bluetooth Low Energy (BLE) communication
 import pygatt.exceptions
 
 # Pippim libraries
@@ -147,7 +146,6 @@ import image as img  # Image processing. E.G. Create Taskbar icon
 import external as ext  # Call external functions, programs, etc.
 import timefmt as tmf  # Time formatting, ago(), days(), hh_mm_ss(), etc.
 from calc import Calculator  # Big Number calculator
-
 import homa_common as hc  # hc.ValidateSudoPassword()
 
 
@@ -2931,12 +2929,12 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
     def breatheColors(self, low=4, high=30, span=6.0, step=0.275, bots=1.5, tops=0.5):
         """ Breathe Colors: R, R&G, G, G&B, B, B&R
 
-        :param low: Low value (darkest) E.G. 9 (Lowest brightness before lights turn off)
-        :param high: High value (brightest) E.G. 180 (About 75% brightness)
-        :param span: Float seconds for one way transition E.G. 3.0 (3 second breath)
-        :param step: Float seconds to hold each step E.G. 0.33 (would be 90 steps)
-        :param bots: Float seconds to hold bottom step E.G. 1.0 (hold bottom 1 second)
-        :param tops: Float seconds to hold top step E.G. 3.0 (hold top 3 seconds)
+        :param low: Low value (darkest) E.G. 4 (Too low and lights might turn off)
+        :param high: High value (brightest) E.G. 30 (Max is 255 which is too bright)
+        :param span: Float seconds for one way transition E.G. 6.0 = 6 second breathe
+        :param step: Float seconds to hold each step E.G. 0.275 = 21 steps if span is 6
+        :param bots: Float seconds to hold bottom step E.G. 1.5 = hold dimmest 1.5 secs
+        :param tops: Float seconds to hold top step E.G. 0.5 = hold brightest .5 seconds
         """
         _who = self.who + "breatheColors():"
         if self.already_breathing_colors:  # Should not happen but check anyway
@@ -2959,7 +2957,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
             "fast_ms": 0, "fast_cnt": 0, "norm_ms": 0, "norm_cnt": 0, 
             "fail_ms": 0, "fail_cnt": 0
         }
-        colors = (  # Cycle Red, Green, Blue: R, R+G, G, G+B, B, B+R
+        colors = (  # Cycle colors R=Red, G=Green, B=Blue: (R, R+G, G, G+B, B, B+R)
             (True, False, False), (True, True, False), (False, True, False),
             (False, True, True), (False, False, True), (True, False, True)
         )
@@ -2990,7 +2988,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
                 self.connect_errors = 0
                 return self.app.isActive and self.powerStatus == "ON"
             except (pygatt.exceptions.NotConnectedError, AttributeError,
-                    pygatt.exceptions.NotificationTimeout) as err:
+                    pygatt.exceptions.NotificationTimeout) as gatt_err:
                 if self.connect_errors < self.MAX_FAIL:
                     # Try to connect 5 times. Error after 6th time never displayed
                     self.Connect(retry=self.MAX_FAIL + 1)  # Increments self.connect_errors on failure
@@ -3001,7 +2999,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
                              self.connect_errors + 1, "time(s).")
                 else:
                     # Attempted to connect 3 times. Error that Connect() never gave
-                    self.showMessage(err, count=self.connect_errors)
+                    self.showMessage(gatt_err, count=self.connect_errors)
 
                 return False
 
@@ -3259,7 +3257,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         v2_print(self.monitorBreatheColors(test=True))
 
         self.already_breathing_colors = False
-        self.app.EnableMenu()  # Disable View dropdown menu option "Breathing stats".
+        self.app.EnableMenu()  # Disable "View" dropdown menu option "Breathing stats".
 
     def monitorBreatheColors(self, test=False):
         """ Format statistics generated inside self.breatheColors() method.
@@ -3464,8 +3462,7 @@ $ ps aux | grep gatttool | grep -v grep | wc -l
         try:
             tc.powerOn(self.device)
             self.powerStatus = "ON"  # Can be "ON", "OFF" or "?"
-            # 2025-02-10 TODO: Save breathing colors status and restore when turning on
-            v0_print(_who, "self.suspendPowerOff:", self.suspendPowerOff)
+            v1_print(_who, "self.suspendPowerOff:", self.suspendPowerOff)
             # BluetoothLedLightStrip().TurnOn(): self.suspendPowerOff: 1
             # BluetoothLedLightStrip().TurnOn(): self.suspendPowerOff: 2
 
@@ -3567,7 +3564,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         self.isActive = True  # Set False when exiting or suspending
         self.requires = ['arp', 'getent', 'timeout', 'curl', 'adb', 'hs100.sh', 'aplay',
-                         'ps', 'grep']
+                         'ps', 'grep', 'xdotool', 'wmctrl']
         self.installed = []
         self.CheckDependencies(self.requires, self.installed)
 
@@ -3594,7 +3591,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         # Button images
         self.img_suspend = img.tk_image("lightning_bolt.png", 26, 26)
         self.img_flame = img.tk_image("flame.png", 26, 26)  # Sensors
-        self.img_help = img.tk_image("mag_glass.png", 26, 26)
+        self.img_mag_glass = img.tk_image("mag_glass.png", 26, 26)
         self.img_wifi = img.tk_image("wifi.png", 26, 26)  # Devices
 
         # Right-click popup menu images common to all devices
@@ -3621,7 +3618,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.configure(background="WhiteSmoke")
         self.rowconfigure(0, weight=1)  # Weight 1 = stretchable row
         self.columnconfigure(0, weight=1)  # Weight 1 = stretchable column
-        self.title("HomA - Home Automation")
+        app_title = "HomA - Home Automation"  # Used to find window ID further down
+        self.title(app_title)
         self.btn_frm = None  # Used by BuildButtonBar(), can be hidden by edit_pref
 
         ''' ChildWindows() moves children with toplevel and keeps children on top '''
@@ -3649,7 +3647,11 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.event_top = self.event_scroll_active = self.event_frame = None
         self.event_btn_frm = None
 
-        ''' File/Edit/View/Tools dropdown menu bars '''
+        ''' Save Toplevel OS window ID for minimizing window '''
+        self.update_idletasks()  # Make visible for wmctrl. Verified needed 2025-02-13
+        self.getWindowID(app_title)
+
+        ''' File/Edit/View/Tools dropdown menu bars - Window ID required '''
         self.file_menu = self.edit_menu = self.view_menu = self.tools_menu = None
         self.BuildMenu()  # Dropdown Menu Bars after 'sm ='
 
@@ -3689,13 +3691,37 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 ble.app = self  # For functions called from Dropdown menu
                 self.bleSaveInst = inst  # For breathing colors monitoring
 
-        ''' Save Toplevel OS window ID for minimizing window (must be last step) '''
-        command_line_list = ["xdotool", "getactivewindow"]
-        event = self.runCommand(command_line_list, forgive=False)
-        self.xdo_os_window_id = event['output']
-
         while self.Refresh():  # Run forever until quit
             pass
+
+    def getWindowID(self, title):
+        """ Use wmctrl to get window ID in hex and convert to decimal for xdotool """
+        _who = self.who + "getWindowID():"
+        GLO['WINDOW_ID'] = None  # Integer HomA OS Window ID
+        v2_print(_who, "search for:", title)
+
+        if not self.CheckInstalled('wmctrl'):
+            v2_print(_who, "`wmctrl` is not installed.")
+            return
+        if not self.CheckInstalled('xdotool'):
+            v2_print(_who, "`xdotool` is not installed.")
+            return
+
+        command_line_list = ["wmctrl", "-l"]
+        event = self.runCommand(command_line_list, _who, forgive=False)
+        for line in event['output'].splitlines():
+            ''' $ wmctrl -l
+                0x05600018  0   N/A HomA - Home Automation '''
+            parts = line.split()
+            if ' '.join(parts[3:]) != title:
+                continue
+            v2_print("Title matches:", ' '.join(parts[3:]))
+            GLO['WINDOW_ID'] = int(parts[0], 0)  # Convert hex window ID to decimal
+
+        v2_print(_who, "GLO['WINDOW_ID']:", GLO['WINDOW_ID'])
+        if GLO['WINDOW_ID'] is None:
+            v0_print(_who, "ERROR `wmctrl` could not find Window.")
+            v0_print("Search for title failed: '" + title + "'.\n")
 
     def BuildMenu(self):
         """ Build dropdown Menu bars: File, Edit, View & Tools """
@@ -3721,8 +3747,12 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                                    underline=0, state=tk.DISABLED,
                                    command=lambda: self.Rediscover(auto=False))
         self.file_menu.add_separator()
-        self.file_menu.add_command(label="Minimize", font=g.FONT, underline=0,
-                                   command=self.MinimizeApp, state=tk.NORMAL)
+
+        if GLO['WINDOW_ID'] is not None:
+            # xdotool and wmctrl must be installed for Minimize button
+            self.file_menu.add_command(label="Minimize", font=g.FONT, underline=0,
+                                       command=self.MinimizeApp, state=tk.NORMAL)
+
         self.file_menu.add_command(label="Suspend", font=g.FONT, underline=0,
                                    command=self.Suspend, state=tk.NORMAL)
         self.file_menu.add_separator()
@@ -3876,7 +3906,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         """
         _who = self.who + "MinimizeApp():"
         # noinspection SpellCheckingInspection
-        command_line_list = ["xdotool", "windowminimize", self.xdo_os_window_id]
+        command_line_list = ["xdotool", "windowminimize", str(GLO['WINDOW_ID'])]
         self.runCommand(command_line_list, _who)
 
     def FocusIn(self, *_args):
@@ -4008,7 +4038,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.btn_frm = tk.Frame(self)
         self.btn_frm.grid_rowconfigure(0, weight=1)
         self.btn_frm.grid_columnconfigure(0, weight=1)
+        # When changing grid options, also change in self.Preferences()
         self.btn_frm.grid(row=99, column=0, columnspan=2, sticky=tk.E)
+
         '''
         2024-09-07 - Xorg or Tkinter glitch only fixed by reboot makes tk.Button
           3x wider and taller. Use ttk.Button which defaults to regular size.
@@ -4045,8 +4077,10 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             return widget
 
         ''' Minimize Button - U+1F847 🡇  -OR-  U+25BC ▼ '''
-        device_button(0, 0, "Minimize", self.MinimizeApp,
-                      "Quickly and easily minimize HomA.", "nw", self.img_down)
+        if GLO['WINDOW_ID'] is not None:
+            # xdotool and wmctrl must be installed for Minimize button
+            device_button(0, 0, "Minimize", self.MinimizeApp,
+                          "Quickly and easily minimize HomA.", "nw", self.img_down)
 
         # noinspection SpellCheckingInspection
         ''' 🌡 (U+1F321) Sensors Button  -OR-  🗲 (U+1F5F2) Devices Button '''
@@ -4073,7 +4107,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         help_text += "videos and explanations on using this screen.\n"
         help_text += "https://www.pippim.com/programs/homa.html#\n"
         device_button(0, 3, "Help", lambda: g.web_help("Introduction"),
-                      help_text, "ne", self.img_help)
+                      help_text, "ne", self.img_mag_glass)
 
         ''' ✘ CLOSE BUTTON  '''
         self.bind("<Escape>", self.CloseApp)
@@ -4117,13 +4151,11 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.tree.destroy()
             sm.treeview_active = True
             sm.PopulateTree()  # Calls sm.Print(start=0, end=-1)
-            self.BuildButtonBar(self.devices_btn_text)
 
         if show_devices:
             sm.tree.destroy()
             sm.treeview_active = False
             self.PopulateTree()
-            self.BuildButtonBar(self.sensors_btn_text)
 
     def RightClick(self, event):
         """ Mouse right button click. Popup menu on selected treeview row.
@@ -4207,20 +4239,17 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             menu.add_separator()
 
             menu.add_command(label="View Breathing Statistics", font=g.FONT,
-                             image=self.img_reset, compound=tk.LEFT,
+                             image=self.img_mag_glass, compound=tk.LEFT,
                              command=self.DisplayBreathing, state=tk.DISABLED)
             menu.add_command(label="Reset Bluetooth", font=g.FONT,
                              image=self.img_reset, compound=tk.LEFT,
                              command=cr.inst.resetBluetooth, state=tk.DISABLED)
             menu.add_command(label="View Bluetooth Devices", font=g.FONT,
-                             image=self.img_reset, compound=tk.LEFT,
+                             image=self.img_mag_glass, compound=tk.LEFT,
                              command=self.DisplayBluetooth, state=tk.NORMAL)
 
             # Device must be on for Set Color, Nighttime and Breathing Colors
-            if cr.inst.powerStatus == "ON":
-                state = tk.NORMAL
-            else:
-                state = tk.DISABLED
+            state = tk.NORMAL if cr.inst.powerStatus == "ON" else tk.DISABLED
 
             menu.entryconfig(name_string, state=state)
             menu.entryconfig("Nighttime brightness", state=state)
@@ -4238,11 +4267,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 menu.entryconfig("Breathing colors", state=tk.DISABLED)
                 menu.entryconfig("View Breathing Statistics", state=tk.DISABLED)
 
-            if cr.inst.device is None:
-                menu.entryconfig("Reset Bluetooth", state=tk.NORMAL)
-            else:
-                menu.entryconfig("Reset Bluetooth", state=tk.DISABLED)
-
+            state = tk.NORMAL if cr.inst.device is None else tk.DISABLED
+            menu.entryconfig("Reset Bluetooth", state=state)
             menu.add_separator()
 
         menu.add_command(label="Turn On " + name, font=g.FONT, state=tk.DISABLED,
@@ -4268,7 +4294,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         # Enable Turn On/Off menu options depending on current power status.
         if cr.arp_dict['type_code'] == GLO['KDL_TV']:
-            cr.inst.PowerSavingMode()
+            cr.inst.PowerSavingMode()  # Get power savings mode
             if cr.inst.power_saving_mode == "OFF":
                 menu.entryconfig(name + " Picture Off ", state=tk.NORMAL)
             elif cr.inst.power_saving_mode == "ON":
@@ -4277,14 +4303,14 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 pass  # power_saving_mode == "?"
 
         if cr.arp_dict['type_code'] == GLO['LAPTOP_D']:
-            # Laptop display has instant power status check time. Pippim
-            # movie.sh script can wake up laptop displayed turned off, so
-            # double check it
+            # Laptop display has instant power status check time. Pippim's
+            # movie.sh script powers on/off laptop display with x-idle, so
+            # double check backlight power status.
             cr.inst.getPower()
 
-        if cr.inst.powerStatus != "ON":
+        if cr.inst.powerStatus != "ON":  # Other options are "OFF" and "?"
             menu.entryconfig("Turn On " + name, state=tk.NORMAL)
-        if cr.inst.powerStatus != "OFF":
+        if cr.inst.powerStatus != "OFF":  # Other options are "ON" and "?"
             menu.entryconfig("Turn Off " + name, state=tk.NORMAL)
 
         # Allow moving up unless at top, allow moving down unless at bottom
@@ -5130,7 +5156,8 @@ b'A really secret message. Not for prying eyes.'
             self.notebook.destroy()
             self.notebook = None
             self.EnableMenu()
-            #self.btn_frm.grid()  # Restore Application() bottom button bar
+            # Restore Application() bottom button bar as pre BuildButtonBar() options
+            self.btn_frm.grid(row=99, column=0, columnspan=2, sticky=tk.E)
 
         #self.btn_frm.grid_forget()  # Hide Application() bottom button bar
         ha_font = (None, g.MON_FONT)  # ms_font = mserve, ha_font = HomA
@@ -5147,12 +5174,13 @@ b'A really secret message. Not for prying eyes.'
                   foreground=[("active", "Black"), ("selected", "Black")])
         style.map('TEntry', lightcolor=[('focus', 'LemonChiffon')])  # Not working
 
+        self.btn_frm.grid_forget()  # Hide button bar
         self.notebook = ttk.Notebook(self)
         listTabs, listFields, listHelp = glo.defineNotebook()
         all_notebook = toolkit.makeNotebook(
             self.notebook, listTabs, listFields, listHelp, GLO, "TNotebook.Tab",
             "Notebook.TFrame", "C.TButton", close, tt=self.tt,
-            help_btn_image=self.img_help, close_btn_image=self.img_close)
+            help_btn_image=self.img_mag_glass, close_btn_image=self.img_close)
         self.edit_pref_active = True
         self.EnableMenu()
 
@@ -5590,7 +5618,7 @@ b'A really secret message. Not for prying eyes.'
             help_text += "videos and explanations on using this screen.\n"
             help_text += "https://www.pippim.com/programs/homa.html#\n"
             button_func(0, 0, "Help", lambda: g.web_help(help),
-                        help_text, "ne", self.img_help)
+                        help_text, "ne", self.img_mag_glass)
 
         button_func(0, 1, "Close", close, "Close this window.", "ne", self.img_close)
 
@@ -5903,29 +5931,33 @@ class TreeviewRow(DeviceCommonSelf):
         """ Fade In over 10 steps of 30 ms """
         toolkit.tv_tag_remove(self.tree, item, 'normal')  # Same as step 10
         for i in range(10):
-            if i != 0:
-                toolkit.tv_tag_remove(self.tree, item, 'fade' + str(i - 1))
-            if i != 9:
-                toolkit.tv_tag_add(self.tree, item, 'fade' + str(i))
-            else:
-                toolkit.tv_tag_add(self.tree, item, 'curr_sel')  # Same as step 10
-            #self.top.update()
-            #self.top.after(10)  # 20 milliseconds
-            self.tree.update()  # Change from .top to .tree for SystemMonitor to use
-            self.tree.after(10)  # 20 milliseconds
+            try:
+                if i != 0:
+                    toolkit.tv_tag_remove(self.tree, item, 'fade' + str(i - 1))
+                if i != 9:
+                    toolkit.tv_tag_add(self.tree, item, 'fade' + str(i))
+                else:
+                    toolkit.tv_tag_add(self.tree, item, 'curr_sel')  # Same as step 10
+                self.tree.update()  # Change from .top to .tree for SystemMonitor to use
+                self.tree.after(10)  # 20 milliseconds
+            except tk.TclError:
+                return  # Changed treeview during fade in
 
     def FadeOut(self, item):
         """ Fade Out over 10 steps of 30 ms """
         toolkit.tv_tag_remove(self.tree, item, 'curr_sel')  # Same as step 10
         for i in range(9, -1, -1):
-            if i != 9:
-                toolkit.tv_tag_remove(self.tree, item, 'fade' + str(i))
-            if i > 0:
-                toolkit.tv_tag_add(self.tree, item, 'fade' + str(i))
-            else:
-                toolkit.tv_tag_add(self.tree, item, 'normal')  # Same as step 10
-            self.tree.update()
-            self.tree.after(10)  # 10 milliseconds
+            try:
+                if i != 9:
+                    toolkit.tv_tag_remove(self.tree, item, 'fade' + str(i))
+                if i > 0:
+                    toolkit.tv_tag_add(self.tree, item, 'fade' + str(i))
+                else:
+                    toolkit.tv_tag_add(self.tree, item, 'normal')  # Same as step 10
+                self.tree.update()
+                self.tree.after(10)  # 10 milliseconds
+            except tk.TclError:
+                return  # Changed tree during fade out
 
 
 class SystemMonitor(DeviceCommonSelf):
@@ -6389,16 +6421,16 @@ v1_print(sys.argv[0], "- Home Automation", " | verbose1:", p_args.verbose1,
 root = None  # Tkinter toplevel
 app = None  # Application GUI
 cfg = sql.Config()  # Colors configuration SQL records
-glo = Globals()  # Global variables
+glo = Globals()  # Global variables instance used everywhere
 GLO = glo.dictGlobals  # global dictionary. Dummy, reset during main() glo.open_file().
 ble = BluetoothLedLightStrip()  # Must follow GLO dictionary and before ni instance
-cp = Computer()  # cp = Computer Platform
+cp = Computer()  # cp = Computer Platform instance used everywhere
 ni = NetworkInfo()  # ni = global class instance used everywhere
-ni.adb_reset(background=True)  # When TCL TV is communicating this is necessary
+ni.adb_reset(background=True)  # Sometimes necessary when TCL TV isn't communicating.
 rd = None  # rd = Rediscovery instance for app.Rediscover() & app.Discover()
 sm = None  # sm = System Monitor - fan speed and CPU temperatures
 
-SAVE_CWD = ""  # Saved current working directory. Will change to program directory.
+SAVE_CWD = ""  # Saved current working directory. Change to program directory.
 killer = ext.GracefulKiller()  # Class instance for shutdown or CTRL+C
 
 v0_print()
@@ -6506,7 +6538,7 @@ def main():
     global SAVE_CWD  # Saved current working directory to restore on exit
 
     ''' Save current working directory '''
-    SAVE_CWD = os.getcwd()  # Bad habit from old code in mserve.py
+    SAVE_CWD = os.getcwd()  # Convention from old code in mserve.py
     if SAVE_CWD != g.PROGRAM_DIR:
         v1_print("Changing from:", SAVE_CWD, "to g.PROGRAM_DIR:", g.PROGRAM_DIR)
         os.chdir(g.PROGRAM_DIR)

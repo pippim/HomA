@@ -68,7 +68,7 @@ except ImportError:  # Python 2
 # print ("Python version: ", PYTHON_VER)
 
 from PIL import Image, ImageTk  # For MoveTreeviewColumn
-from ttkwidgets import CheckboxTreeview
+# from ttkwidgets import CheckboxTreeview  # 2025-02-12 - Import not used
 
 # python standard library modules
 import os
@@ -2053,9 +2053,7 @@ class DictTreeview:
         self.frame.grid(sticky=tk.NSEW)
 
 
-        ''' CheckboxTreeview List Box, Columns and Headings '''
-        #self.tree = CheckboxTreeview(  # NOT USED - SAVE MEMORY AND LAG
-        #    self.frame, select mode='none', columns=self.columns)
+        ''' Define Tkinter Treeview and Columns '''
         self.tree = ttk.Treeview(
             self.frame, selectmode='none', columns=self.columns)
         self.tree['displaycolumns'] = displaycolumns
