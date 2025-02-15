@@ -386,6 +386,7 @@ class Globals(DeviceCommonSelf):
             "LED_LIGHTS_MAC": "",  # Bluetooth LED Light Strip MAC address
             "LED_LIGHTS_STARTUP": True,  # "0" turn off, "1" turn on.
             "LED_LIGHTS_COLOR": None,  # Last colorchooser ((r, g, b), #000000)
+            "LED_RED+GREEN_ADJ": False,  # "1" override red+green mix with less green.
             "BLUETOOTH_SCAN_TIME": 10,  # Number of seconds to scan bluetooth devices
 
             "TIMER_SEC": 600,  # Tools Dropdown Menubar - Countdown Timer default
@@ -435,6 +436,13 @@ class Globals(DeviceCommonSelf):
             except (TypeError, IndexError):  # No color saved
                 self.dictGlobals['LED_LIGHTS_COLOR'] = None
 
+            # 2025-02-15 Define new global dictionary key GLO['LED_RED+GREEN_ADJ']
+            try:
+                s = self.dictGlobals['LED_RED+GREEN_ADJ']
+            except (TypeError, IndexError, KeyError):  # No key, first time used
+                self.dictGlobals['LED_RED+GREEN_ADJ'] = True
+
+            ''' Decrypt SUDO PASSWORD '''
             with warnings.catch_warnings():
                 # Deprecation Warning:
                 # /usr/lib/python2.7/dist-packages/cryptography/x509/__init__.py:32:
@@ -577,6 +585,9 @@ class Globals(DeviceCommonSelf):
              "LED Lights Turn On at startup? True/False"),
             ("LED_LIGHTS_COLOR", 4, RO, STR, STR, 20, DEC, MIN, MAX, CB,
              'LED Lights last used color.\nFormat: (red, green, blue) #9f9f9f"]'),
+            ("LED_RED+GREEN_ADJ", 4, RW, BOOL, BOOL, 1, DEC, MIN, MAX, CB,
+             "When LED Red and Green are mixed together,\n"
+             "boost Red by 50% and reduce Green by 50%."),
             ("BLUETOOTH_SCAN_TIME", 4, RW, INT, INT, 3, DEC, MIN, MAX, CB,
              'Number of seconds to perform bluetooth scan.\n'
              'A longer time may discover more devices.'),
@@ -2879,7 +2890,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         # Starts as a tuple json converts to list: [[44, 28, 27], u'#2c1c1b']
         default = 'red' if GLO['LED_LIGHTS_COLOR'] is None else GLO['LED_LIGHTS_COLOR'][1]
 
-        new = colorchooser.askcolor(
+        new = colorchooser.askcolor(  # value 1 turns color off, value 2 very very dim.
             default, parent=self.fake_top, title="Choose color")
         self.fake_top.destroy()
         try:
@@ -3095,10 +3106,13 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
             self.blue = half_bright if tb else 0
             v3_print(_who, "2nd half_bright:", half_bright)
 
-            ''' Override red+green has too much green '''
-            if self.red and self.green:
+            ''' Override red+green has too much green GLO['LED_RED+GREEN_ADJ'] '''
+            if GLO['LED_RED+GREEN_ADJ'] and self.red and self.green:
                 self.green = int(self.green / 2)  # turns olive into yellow
                 self.red = int(brightness - self.green)
+                if self.green == 1 and self.red > 2:  # Value of 1 is LED light off.
+                    self.green += 1  # Set to 2, the dimmest possible color.
+                    self.red -= 1
 
             ''' Set LED facsimile color for computer monitor display '''
             rp = float(self.red) / float(new_high)  # rp = red percentage
@@ -3586,8 +3600,14 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             v1_print(self.requires)
             v1_print(self.installed)
 
+        ''' TkDefaultFont changes default font everywhere except tk.Entry in Color Chooser '''
         default_font = font.nametofont("TkDefaultFont")
         default_font.configure(size=g.MON_FONT)
+        text_font = font.nametofont("TkTextFont")  # tk.Entry fonts in Color Chooser
+        text_font.configure(size=g.MON_FONT)
+        ''' TkFixedFont, TkMenuFont, TkHeadingFont, TkCaptionFont, TkSmallCaptionFont,
+            TkIconFont and TkTooltipFont - It is not advised to change these fonts.
+            https://www.tcl-lang.org/man/tcl8.6/TkCmd/font.htm '''
 
         self.last_refresh_time = time.time()  # Refresh idle loop last entered time
         # Normal 1 minute delay to rediscover is shortened at boot time if fast start
