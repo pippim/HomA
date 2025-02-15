@@ -1764,7 +1764,8 @@ class makeNotebook:
             try:
                 new_value = var.get()
                 self.bad_value_key = ""
-            except ValueError as e:
+            except (ValueError, tk.TclError) as e:
+                # TclError: expected boolean value but got "00"
                 error(e)
                 return None
 
@@ -1805,7 +1806,8 @@ class makeNotebook:
             elif store_type == "float" or store_type == "time":
                 self.newData[name_key] = float(val)
             elif store_type == "boolean":
-                self.newData[name_key] = False if val == "0" else True
+                #print("val:", val, type(val))
+                self.newData[name_key] = val
             #elif store_type == "list":
             #    self.newData[name_key] = list(val)
             else:

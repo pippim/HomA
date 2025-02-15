@@ -437,10 +437,10 @@ class Globals(DeviceCommonSelf):
                 self.dictGlobals['LED_LIGHTS_COLOR'] = None
 
             # 2025-02-15 Define new global dictionary key GLO['LED_RED+GREEN_ADJ']
-            try:
-                s = self.dictGlobals['LED_RED+GREEN_ADJ']
-            except (TypeError, IndexError, KeyError):  # No key, first time used
-                self.dictGlobals['LED_RED+GREEN_ADJ'] = True
+            #try:
+            #    s = self.dictGlobals['LED_RED+GREEN_ADJ']
+            #except (TypeError, IndexError, KeyError):  # No key, first time used
+            #    self.dictGlobals['LED_RED+GREEN_ADJ'] = True
 
             ''' Decrypt SUDO PASSWORD '''
             with warnings.catch_warnings():
@@ -3107,12 +3107,12 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
             v3_print(_who, "2nd half_bright:", half_bright)
 
             ''' Override red+green has too much green GLO['LED_RED+GREEN_ADJ'] '''
-            if GLO['LED_RED+GREEN_ADJ'] and self.red and self.green:
+            if GLO['LED_RED+GREEN_ADJ'] is True and self.red and self.green:
                 self.green = int(self.green / 2)  # turns olive into yellow
                 self.red = int(brightness - self.green)
                 if self.green == 1 and self.red > 2:  # Value of 1 is LED light off.
-                    self.green += 1  # Set to 2, the dimmest possible color.
-                    self.red -= 1
+                    self.green += 1  # Green becomes 2, the dimmest possible color.
+                    self.red -= 1  # Red decremented to compensate for Green increment.
 
             ''' Set LED facsimile color for computer monitor display '''
             rp = float(self.red) / float(new_high)  # rp = red percentage
