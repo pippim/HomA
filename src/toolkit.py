@@ -1144,7 +1144,7 @@ class ChildWindows:
         window.winfo_xxx see: https://wiki.tcl-lang.org/page/winfo%28%29
 
     """
-    def __init__(self, toplevel, auto_raise=True):
+    def __init__(self, toplevel, auto_raise=True, perform_move=True):
 
         self.toplevel = toplevel  # Parent window
         self.window = {}  # Child Window {key, widget, x, y, w, h
@@ -1157,9 +1157,10 @@ class ChildWindows:
         self.curr_geom = [0, 0, 0, 0]  # Geometry when drag_window called
         self.last_geom = [0, 0, 0, 0]  # Geometry when drag_window last called
         self.move_geom = [0, 0, 0, 0]  # Difference between curr and last
-        self.toplevel.bind("<Configure>", self.drag_window)
         if auto_raise:
             self.toplevel.bind("<FocusIn>", self.raise_children)
+        if perform_move:
+            self.toplevel.bind("<Configure>", self.drag_window)
 
         ''' Event log '''
         self.init_time = time.time()
@@ -1250,8 +1251,8 @@ class ChildWindows:
 
     # DOWN TO BUSINESS
     def raise_children(self, *_args):
-        """ Focus in on parent. Focus in and lift the children up in the
-            order they were registered.
+        """ Focus in registered to parent window. Override and focus in and lift the
+            children windows overtop in the order they were registered.
         """
         if not len(self.window_list):
             return
@@ -1267,11 +1268,7 @@ class ChildWindows:
         self.log_el("R", self.rec, self.rit_st, self.rit_en, self.rit_el)
 
     def move_children(self, x_off, y_off):
-        """ Focus in on parent. Focus in and lift the children up in the
-            order they were registered.
-
-            2024-04-02 - As window dragged down to left, child raises up to left.
-        """
+        """ Parent window dragged. Drag child windows along with it. """
         if not len(self.window_list):
             return
         _who = self.who + "move_children():"

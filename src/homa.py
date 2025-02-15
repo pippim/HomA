@@ -902,11 +902,11 @@ class Computer(DeviceCommonSelf):
 
         return False
 
-    def TurnOn(self, forgive=False):
+    def turnOn(self, forgive=False):
         """ Not needed because computer is always turned on. Defined for
             right click menu conformity reasons.
         """
-        _who = self.who + "TurnOn():"
+        _who = self.who + "turnOn():"
         v2_print(_who, "Turn On Computer:", self.ip)
 
         if forgive:
@@ -915,15 +915,15 @@ class Computer(DeviceCommonSelf):
         self.powerStatus = "ON"  # Can be "ON", "OFF" or "?"
         return self.powerStatus  # Really it is "AWAKE"
 
-    def TurnOff(self, forgive=False):
+    def turnOff(self, forgive=False):
         """ Turn off computer with GLO['POWER_OFF_CMD_LIST'] which contains:
                 systemctl suspend
 
-            Prior to calling cp.TurnOff(), Application().TurnOff() calls
-            SetAllPower("OFF") to turn off all other devices. If rebooting, rather
+            Prior to calling cp.turnOff(), Application().turnOff() calls
+            turnAllPower("OFF") to turn off all other devices. If rebooting, rather
             than suspending, then devices are left powered up.
         """
-        _who = self.who + "TurnOff():"
+        _who = self.who + "turnOff():"
         v2_print(_who, "Turn Off Computer:", self.ip)
 
         if forgive:
@@ -1597,7 +1597,7 @@ class LaptopDisplay(DeviceCommonSelf):
 
         return False
 
-    def TurnOn(self, forgive=False):
+    def turnOn(self, forgive=False):
         """ Return True if "On" or "Off", False if no communication
             If forgive=True then don't report pipe.returncode != 0
 
@@ -1610,7 +1610,7 @@ class LaptopDisplay(DeviceCommonSelf):
             bash: /sys/class/backlight/intel_backlight/brightness: Permission denied
 
         """
-        _who = self.who + "TurnOn():"
+        _who = self.who + "turnOn():"
         v2_print(_who, "Turn On Laptop Display:", self.ip)
 
         if forgive:
@@ -1619,7 +1619,7 @@ class LaptopDisplay(DeviceCommonSelf):
         self.SetPower("ON", forgive=forgive)
         return self.powerStatus
 
-    def TurnOff(self, forgive=False):
+    def turnOff(self, forgive=False):
         """ Return True if "On" or "Off", False if no communication
             If forgive=True then don't report pipe.returncode != 0
             echo 4 > /sys/class/backlight/intel_backlight/bl_power
@@ -1633,7 +1633,7 @@ class LaptopDisplay(DeviceCommonSelf):
             bash: /sys/class/backlight/intel_backlight/brightness: Permission denied
 
         """
-        _who = self.who + "TurnOn():"
+        _who = self.who + "turnOn():"
         v2_print(_who, "Turn Off Laptop Display:", self.ip)
 
         if forgive:
@@ -1762,11 +1762,11 @@ class SmartPlugHS100(DeviceCommonSelf):
 
         return False
 
-    def TurnOn(self, forgive=False):
+    def turnOn(self, forgive=False):
         """ Turn on TP-Link Smart Plug using hs100.sh script.
             If forgive=True then don't report pipe.returncode != 0
         """
-        _who = self.who + "TurnOn():"
+        _who = self.who + "turnOn():"
         v2_print(_who, "Turn On TP-Link Kasa HS100 Smart Plug:", self.ip)
 
         Reply = self.getPower(forgive=forgive)  # Get current power status
@@ -1783,11 +1783,11 @@ class SmartPlugHS100(DeviceCommonSelf):
         v2_print(_who, self.ip, "- Smart Plug turned 'ON'")
         return "ON"
 
-    def TurnOff(self, forgive=False):
+    def turnOff(self, forgive=False):
         """ Turn off TP-Link Smart Plug using hs100.sh script.
             If forgive=True then don't report pipe.returncode != 0
         """
-        _who = self.who + "TurnOn():"
+        _who = self.who + "turnOn():"
         v2_print(_who, "Turn Off TP-Link Kasa HS100 Smart Plug:", self.ip)
 
         Reply = self.getPower(forgive=forgive)
@@ -1947,10 +1947,10 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/
 
         return self.powerStatus
 
-    def TurnOn(self, forgive=False):
+    def turnOn(self, forgive=False):
         """ Turn On Sony Bravia KDL TV using os_curl """
 
-        _who = self.who + "TurnOn():"
+        _who = self.who + "turnOn():"
         v2_print(_who, 'Send: "id": 55, "params": [{"status": true}], to:', self.ip)
 
         # Copy and paste JSON strings from Sony website:
@@ -1974,10 +1974,10 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/
         self.powerStatus = ret  # Can be "ON", "OFF" or "?"
         return ret
 
-    def TurnOff(self, forgive=False):
+    def turnOff(self, forgive=False):
         """ Turn Off Sony Bravia KDL TV using os_curl """
 
-        _who = self.who + "TurnOff():"
+        _who = self.who + "turnOff():"
         v2_print(_who, 'Send: "id": 55, "params": [{"status": false}], to:', self.ip)
 
         # Copy and paste JSON strings from Sony website:
@@ -2257,8 +2257,8 @@ List of devices attached
             getPower() - timeout 2.0 adb shell dumpsys input_method | grep -i screen on
             isDevice() - timeout 0.1 adb connect <ip>
             Connect() - Call isDevice followed by wakeonlan up to 60 times
-            TurnOn() - timeout 0.5 adb shell input key event KEYCODE_WAKEUP
-            TurnOff() - timeout 0.5 adb shell input key event KEYCODE_SLEEP
+            turnOn() - timeout 0.5 adb shell input key event KEYCODE_WAKEUP
+            turnOff() - timeout 0.5 adb shell input key event KEYCODE_SLEEP
 
     """
 
@@ -2290,7 +2290,7 @@ List of devices attached
 
     def Connect(self, forgive=False):
         """ Wakeonlan and Connect to TCL / Google Android TV
-            Called on startup. Also called from TurnOff() and TurnOn().
+            Called on startup. Also called from turnOff() and turnOn().
 
         DEBUGGING:
 
@@ -2401,12 +2401,12 @@ Application().Rediscover(): FOUND NEW INSTANCE or REDISCOVERED LOST INSTANCE:
 
         return self.powerStatus
 
-    def TurnOn(self, forgive=False):
+    def turnOn(self, forgive=False):
         """ Turn On TCL / Google Android TV.
             Send KEYCODE_WAKEUP 5 times until screenOn = true
         """
 
-        _who = self.who + "TurnOn():"
+        _who = self.who + "turnOn():"
         v2_print("\n" + _who, "Send KEYCODE_WAKEUP to:", self.ip)
 
         # Connect() will try 60 times with wakeonlan and isDevice check.
@@ -2438,10 +2438,10 @@ Application().Rediscover(): FOUND NEW INSTANCE or REDISCOVERED LOST INSTANCE:
                 return self.powerStatus
             cnt += 1
 
-    def TurnOff(self, forgive=False):
+    def turnOff(self, forgive=False):
         """ Send 'adb shell input keyevent KEYCODE_SLEEP' """
 
-        _who = self.who + "TurnOff():"
+        _who = self.who + "turnOff():"
         v2_print(_who, "Send KEYCODE_SLEEP to:", self.ip)
 
         command_line_list = ["timeout", GLO['ADB_KEY_TIME'], "adb",
@@ -2597,10 +2597,10 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
             v2_print(self.device)
             if GLO['LED_LIGHTS_STARTUP'] is not False:
                 v2_print(_who, "Turning on LED Light.")
-                self.TurnOn()
+                self.turnOn()
             else:
                 v2_print(_who, "Turning off LED Light.")
-                self.TurnOff()
+                self.turnOff()
         else:
             v1_print(_who, self.mac, "failed to connect.")
 
@@ -2994,11 +2994,10 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
                     self.Connect(retry=self.MAX_FAIL + 1)  # Increments self.connect_errors on failure
                     # APP_RESTART_TIME  TODO: Make global method in self.app.delta_str
                     delta = round(time.time() - GLO['APP_RESTART_TIME'], 2)
-                    delta_str = "{0:>8.2f}".format(delta)  # "99999.99" format
-                    v0_print(delta_str, "|", _who, "Attempted reconnect:",
+                    v1_print("{0:>8.2f}".format(delta), "|", _who, "Attempted reconnect:",
                              self.connect_errors + 1, "time(s).")
                 else:
-                    # Attempted to connect 3 times. Error that Connect() never gave
+                    # Attempted to connect self.MAX_FAIL times.
                     self.showMessage(gatt_err, count=self.connect_errors)
 
                 return False
@@ -3335,6 +3334,10 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         if len(GLO['LED_LIGHTS_MAC']) != 17:  # Can be "" for new dictionary
             v0_print(_who, "Invalid GLO['LED_LIGHTS_MAC']:", GLO['LED_LIGHTS_MAC'])
 
+        self.cmdStart = time.time()
+        self.cmdCommand = ["tc.connect", GLO['LED_LIGHTS_MAC']]
+        self.cmdString = ' '.join(self.cmdCommand)
+
         try:
             self.device = tc.connect(GLO['LED_LIGHTS_MAC'], reset_on_start=sudo_reset)
             self.connect_errors = 0  # Reset connect error counter
@@ -3355,7 +3358,17 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
                 delta_str = "{0:>8.2f}".format(delta)  # "99999.99" format
                 v1_print(delta_str, "|", _who, "Failed to connect:",
                          self.connect_errors, "time(s).")
-                # TODO: log event
+
+                ''' log event and v3_print debug lines '''
+                self.cmdOutput = ""
+                self.cmdError = "Failed to connect: " + str(self.connect_errors) + \
+                                " time(s)."
+                self.cmdError += "\n" + str(err)
+                self.cmdReturncode = 124  # Assume error is timeout.
+                self.cmdDuration = time.time() - self.cmdStart
+                self.cmdCaller = _who
+                self.logEvent(_who, log=True)
+                v2_print(_who, "Just called self.LogEvent(), use View Discovery Errors")
 
         if self.app:  # Prevent erroneous Resume from Suspend from running
             self.app.last_refresh_time = time.time()
@@ -3450,10 +3463,10 @@ $ ps aux | grep gatttool | grep -v grep | wc -l
         self.device = None
         self.powerStatus = "?"
 
-    def TurnOn(self):
+    def turnOn(self):
         """ Turn On BLE (Bluetooth Low Energy) LED Light Strip. """
 
-        _who = self.who + "TurnOn():"
+        _who = self.who + "turnOn():"
         v2_print("\n" + _who, "Send GATT cmd to:", self.name)
 
         if self.device is None:
@@ -3463,8 +3476,8 @@ $ ps aux | grep gatttool | grep -v grep | wc -l
             tc.powerOn(self.device)
             self.powerStatus = "ON"  # Can be "ON", "OFF" or "?"
             v1_print(_who, "self.suspendPowerOff:", self.suspendPowerOff)
-            # BluetoothLedLightStrip().TurnOn(): self.suspendPowerOff: 1
-            # BluetoothLedLightStrip().TurnOn(): self.suspendPowerOff: 2
+            # BluetoothLedLightStrip().turnOn(): self.suspendPowerOff: 1
+            # BluetoothLedLightStrip().turnOn(): self.suspendPowerOff: 2
 
             # If suspend turned off power, start breathing
             if self.suspendPowerOff:
@@ -3484,12 +3497,12 @@ $ ps aux | grep gatttool | grep -v grep | wc -l
 
         return self.powerStatus
 
-    def TurnOff(self):
+    def turnOff(self):
         """ Turn Off BLE (Bluetooth Low Energy) LED Light Strip.
             Warning: Does NOT disconnect. This must be done when suspending system.
         """
 
-        _who = self.who + "TurnOff():"
+        _who = self.who + "turnOff():"
         v2_print("\n" + _who, "Send GATT cmd to:", self.name)
 
         if self.device is None:
@@ -4273,17 +4286,17 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         menu.add_command(label="Turn On " + name, font=g.FONT, state=tk.DISABLED,
                          image=self.img_turn_on, compound=tk.LEFT,
-                         command=lambda: self.TurnOn(cr))
+                         command=lambda: self.turnOn(cr))
         menu.add_command(label="Turn Off " + name, font=g.FONT, state=tk.DISABLED,
                          image=self.img_turn_off, compound=tk.LEFT,
-                         command=lambda: self.TurnOff(cr))
+                         command=lambda: self.turnOff(cr))
         menu.add_separator()
         menu.add_command(label="Move " + name + " Up", font=g.FONT, state=tk.DISABLED,
                          image=self.img_up, compound=tk.LEFT,
-                         command=lambda: self.MoveRowUp(cr))
+                         command=lambda: self.moveRowUp(cr))
         menu.add_command(label="Move " + name + " Down", font=g.FONT, state=tk.DISABLED,
                          image=self.img_down, compound=tk.LEFT,
-                         command=lambda: self.MoveRowDown(cr))
+                         command=lambda: self.moveRowDown(cr))
         menu.add_separator()
         menu.add_command(label="Close menu", font=g.FONT, command=_closePopup,
                          image=self.img_close, compound=tk.LEFT)
@@ -4373,12 +4386,12 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         cr.tree.item(cr.item, text=text)
         cr.tree.update_idletasks()
 
-    def TurnOn(self, cr):
+    def turnOn(self, cr):
         """ Mouse right button click selected "Turn On".
-            Also called by SetAllPower("ON").
+            Also called by turnAllPower("ON").
         """
-        _who = self.who + "TurnOn():"
-        resp = cr.inst.TurnOn()
+        _who = self.who + "turnOn():"
+        resp = cr.inst.turnOn()
         text = "  " + str(resp)
         cr.tree.item(cr.item, text=text)
         cr.tree.update_idletasks()
@@ -4391,14 +4404,14 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         # Setting Power can loop for a minute in worst case scenario using adb
         self.last_refresh_time = time.time()  # Refresh idle loop last entered time
 
-    def TurnOff(self, cr):
+    def turnOff(self, cr):
         """ Mouse right button click selected "Turn Off".
-            Also be called by SetAllPower("OFF").
+            Also be called by turnAllPower("OFF").
         """
-        _who = self.who + "TurnOff():"
+        _who = self.who + "turnOff():"
         if cr.inst.type_code == GLO['DESKTOP'] or cr.inst.type_code == GLO['LAPTOP_B']:
-            self.SetAllPower("OFF")  # Turn all devices off
-        resp = cr.inst.TurnOff()
+            self.turnAllPower("OFF")  # Turn all devices off
+        resp = cr.inst.turnOff()
         text = "  " + str(resp)
         cr.tree.item(cr.item, text=text)
         cr.tree.update_idletasks()
@@ -4411,9 +4424,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         # Setting Power can loop for a minute in worst case scenario using adb
         self.last_refresh_time = time.time()  # Refresh idle loop last entered time
 
-    def MoveRowUp(self, cr):
+    def moveRowUp(self, cr):
         """ Mouse right button click selected "Move Row Up". """
-        _who = self.who + "MoveRowUp():"
+        _who = self.who + "moveRowUp():"
         if str(cr.item) == "0":
             v0_print(_who, "Already on first row. Cannot move up.")
             return
@@ -4424,9 +4437,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         dr.Update(cr.item)  # Update destination row with current row
         cr.Update(dr.item)  # Update current row with destination row
 
-    def MoveRowDown(self, cr):
+    def moveRowDown(self, cr):
         """ Mouse right button click selected "Move Row Down". """
-        _who = self.who + "MoveRowDown():"
+        _who = self.who + "moveRowDown():"
         if int(cr.item) >= len(cr.tree.get_children())-1:
             v0_print(_who, "Already on last row. Cannot move down.")
             return
@@ -4553,10 +4566,10 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.update_idletasks()
         self.after(100)  # Extra time (besides power off time) for Breathing Colors
 
-        self.SetAllPower("OFF")  # Turn off all devices except computer
+        self.turnAllPower("OFF")  # Turn off all devices except computer
         self.tt.zap_tip_window(self.suspend_btn)  # Delete tooltips window
         self.tt.poll_tips()
-        cp.TurnOff()  # suspend computer
+        cp.turnOff()  # suspend computer
 
     def ResumeFromSuspend(self):
         """ Resume from suspend. Display status of devices that were
@@ -4582,7 +4595,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         v1_print("\n" + _who, "ni.view_order:", ni.view_order)
 
         # Turn all devices on
-        self.SetAllPower("ON")  # This also shows new status in devices treeview
+        self.turnAllPower("ON")  # This also shows new status in devices treeview
 
         # Set variables to force rediscovery
         now = time.time()
@@ -4653,12 +4666,12 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.dtb.close()
         self.dtb = None
 
-    def SetAllPower(self, state):
+    def turnAllPower(self, state):
         """ Loop through instances and set power state to "ON" or "OFF".
             Called by Suspend ("OFF") and Resume ("ON")
             If devices treeview is mounted, update power status in each row
         """
-        _who = self.who + "SetAllPower(" + state + "):"
+        _who = self.who + "turnAllPower(" + state + "):"
         night = cp.NightLightStatus()
         v1_print(_who, "Nightlight status: '" + night + "'")
 
@@ -4700,7 +4713,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             resp = "?"  # Necessary for pyCharm checker only
             if state == "ON":
                 v0_print(_who, "Unconditionally turning power 'ON':", inst.name)
-                resp = inst.TurnOn()
+                resp = inst.turnOn()
                 inst.powerStatus = str(resp)
                 # TODO Check response
                 inst.resumePowerOn += 1  # Resume powered on the device
@@ -4709,15 +4722,15 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             elif state == "OFF":
                 ''' Timing out if power is already OFF
                 Application().Suspend(): Suspending system...
-                TclGoogleAndroidTV().TurnOff(): runCommand(): cmdReturncode: 124
-                TclGoogleAndroidTV().TurnOff(): 192.168.0.17 timeout after: 5.0
+                TclGoogleAndroidTV().turnOff(): runCommand(): cmdReturncode: 124
+                TclGoogleAndroidTV().turnOff(): 192.168.0.17 timeout after: 5.0
                 NetworkInfo().os_curl(): logEvent(): cmdReturncode: None
 
                 If inst.Power is "OFF" do not try to turn off again and waste time.                
                 '''
                 if inst.powerStatus != "OFF":
                     v0_print(_who, "Conditionally turning power 'OFF':", inst.name)
-                    resp = inst.TurnOff()
+                    resp = inst.turnOff()
                     inst.powerStatus = str(resp)
                     inst.suspendPowerOff += 1  # Suspend powered off the device
                     inst.menuPowerOff = 0  # User didn't power on the device via menu
