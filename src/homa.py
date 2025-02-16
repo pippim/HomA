@@ -436,12 +436,6 @@ class Globals(DeviceCommonSelf):
             except (TypeError, IndexError):  # No color saved
                 self.dictGlobals['LED_LIGHTS_COLOR'] = None
 
-            # 2025-02-15 Define new global dictionary key GLO['LED_RED+GREEN_ADJ']
-            #try:
-            #    s = self.dictGlobals['LED_RED+GREEN_ADJ']
-            #except (TypeError, IndexError, KeyError):  # No key, first time used
-            #    self.dictGlobals['LED_RED+GREEN_ADJ'] = True
-
             ''' Decrypt SUDO PASSWORD '''
             with warnings.catch_warnings():
                 # Deprecation Warning:
@@ -581,11 +575,11 @@ class Globals(DeviceCommonSelf):
              "Pause x seconds after resuming from suspend"),
             ("LED_LIGHTS_MAC", 4, RW, MAC, STR, 17, DEC, MIN, MAX, CB,
              "Bluetooth Low Energy LED Light Strip address"),
-            ("LED_LIGHTS_STARTUP", 4, RW, BOOL, BOOL, 1, DEC, MIN, MAX, CB,
+            ("LED_LIGHTS_STARTUP", 4, RW, BOOL, BOOL, 2, DEC, MIN, MAX, CB,
              "LED Lights Turn On at startup? True/False"),
             ("LED_LIGHTS_COLOR", 4, RO, STR, STR, 20, DEC, MIN, MAX, CB,
              'LED Lights last used color.\nFormat: (red, green, blue) #9f9f9f"]'),
-            ("LED_RED+GREEN_ADJ", 4, RW, BOOL, BOOL, 1, DEC, MIN, MAX, CB,
+            ("LED_RED+GREEN_ADJ", 4, RW, BOOL, BOOL, 2, DEC, MIN, MAX, CB,
              "When LED Red and Green are mixed together,\n"
              "boost Red by 50% and reduce Green by 50%."),
             ("BLUETOOTH_SCAN_TIME", 4, RW, INT, INT, 3, DEC, MIN, MAX, CB,
@@ -595,7 +589,7 @@ class Globals(DeviceCommonSelf):
              "Tools Dropdown Menubar - Countdown Timer default"),
             ("TIMER_ALARM", 5, RW, FNAME, STR, 30, DEC, MIN, MAX, CB,
              ".wav sound file to play when timer ends."),
-            ("LOG_EVENTS", 0, HD, BOOL, BOOL, 1, DEC, MIN, MAX, CB,
+            ("LOG_EVENTS", 0, HD, BOOL, BOOL, 2, DEC, MIN, MAX, CB,
              "Override runCommand events'\nlogging and --verbose3 printing"),
             ("EVENT_ERROR_COUNT", 0, HD, INT, INT, 9, 0, MIN, MAX, CB,
              "To enable/disable View Dropdown menu 'Discovery errors'"),
@@ -2049,13 +2043,13 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/
 
         return self.power_saving_mode
 
-    def PictureOn(self, forgive=False):
+    def turnPictureOn(self, forgive=False):
         """ Turn On Sony Bravia KDL TV Picture using os_curl """
 
         # https://pro-bravia.sony.net/develop/integrate/rest-api
         # /spec/service/system/v1_0/setPowerSavingMode/index.html
 
-        _who = self.who + "PictureOn():"
+        _who = self.who + "turnPictureOn():"
         v2_print(_who, 'Send: "id": 52, "params": [{"mode": "off"}], to:', self.ip)
 
         # Copy and paste JSON strings from Sony website:
@@ -2075,13 +2069,13 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/
 
         return "ON"
 
-    def PictureOff(self, forgive=False):
+    def turnPictureOff(self, forgive=False):
         """ Turn Off Sony Bravia KDL TV Picture using os_curl """
 
         # https://pro-bravia.sony.net/develop/integrate/rest-api
         # /spec/service/system/v1_0/setPowerSavingMode/index.html
 
-        _who = self.who + "PictureOff():"
+        _who = self.who + "turnPictureOff():"
         v2_print(_who, 'Send: "id": 52, "params": [{"mode": "pictureOff"}], to:', self.ip)
 
         # Copy and paste JSON strings from Sony website:
@@ -2721,9 +2715,9 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
             status = "OFF"
 
         if reconnect:
-            v0_print(_who, "Bluetooth status:", status, "attempting self.Connect()")
+            v1_print(_who, "Bluetooth status:", status, "attempting self.Connect()")
             self.Connect(sudo_reset=True)
-            v0_print(_who, self.name, "self.device:", self.device)
+            v1_print(_who, self.name, "self.device:", self.device)
 
         self.BluetoothStatus = status
         return self.BluetoothStatus
@@ -3520,7 +3514,7 @@ $ ps aux | grep gatttool | grep -v grep | wc -l
         v2_print("\n" + _who, "Send GATT cmd to:", self.name)
 
         if self.device is None:
-            self.Connect()
+            self.Connect()  # 2025-02-15 why bother connecting just to disconnect?
 
         try:
             tc.powerOff(self.device)
@@ -4245,11 +4239,11 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             menu.add_command(label=name + " Picture On ",
                              font=g.FONT, state=tk.DISABLED,
                              image=self.img_picture_on, compound=tk.LEFT,
-                             command=lambda: self.PictureOn(cr))
+                             command=lambda: self.turnPictureOn(cr))
             menu.add_command(label=name + " Picture Off ",
                              font=g.FONT, state=tk.DISABLED,
                              image=self.img_picture_off, compound=tk.LEFT,
-                             command=lambda: self.PictureOff(cr))
+                             command=lambda: self.turnPictureOff(cr))
             cr.inst.getVolume()
             menu.add_separator()
 
@@ -4357,18 +4351,18 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.last_refresh_time = time.time()
         menu.update()  # 2025-02-09 will this force title to appear?
 
-    def PictureOn(self, cr):
+    def turnPictureOn(self, cr):
         """ Mouse right button click selected "<name> Picture On". """
-        _who = self.who + "PictureOn():"
-        resp = cr.inst.PictureOn()
+        _who = self.who + "turnPictureOn():"
+        resp = cr.inst.turnPictureOn()
         text = "  " + str(resp)
         cr.tree.item(cr.item, text=text)
         cr.tree.update_idletasks()
 
-    def PictureOff(self, cr):
+    def turnPictureOff(self, cr):
         """ Mouse right button click selected "<name> Picture Off". """
-        _who = self.who + "PictureOff():"
-        resp = cr.inst.PictureOff()
+        _who = self.who + "turnPictureOff():"
+        resp = cr.inst.turnPictureOff()
         text = "  " + str(resp)
         cr.tree.item(cr.item, text=text)
         cr.tree.update_idletasks()
@@ -4411,11 +4405,12 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             Also called by turnAllPower("ON").
         """
         _who = self.who + "turnOn():"
-        resp = cr.inst.turnOn()
-        text = "  " + str(resp)
+        #resp = cr.inst.turnOn()
+        cr.inst.turnOn()
+        text = "  " + cr.inst.powerStatus  # 2025-02-15 don't rely on str(resp)
         cr.tree.item(cr.item, text=text)
         cr.tree.update_idletasks()
-        cr.inst.powerStatus = str(resp)
+        #cr.inst.powerStatus = str(resp)  # 2025-02-15 don't rely on str(resp)
         cr.inst.resumePowerOn = 0  # Resume didn't power on the device
         cr.inst.manualPowerOn = 0  # Was device physically powered on?
         cr.inst.nightPowerOn = 0  # Did nighttime power on the device?
@@ -4431,11 +4426,12 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         _who = self.who + "turnOff():"
         if cr.inst.type_code == GLO['DESKTOP'] or cr.inst.type_code == GLO['LAPTOP_B']:
             self.turnAllPower("OFF")  # Turn all devices off
-        resp = cr.inst.turnOff()
-        text = "  " + str(resp)
+        #resp = cr.inst.turnOff()
+        cr.inst.turnOff()
+        text = "  " + cr.inst.powerStatus  # 2025-02-15 don't rely on str(resp)
         cr.tree.item(cr.item, text=text)
         cr.tree.update_idletasks()
-        cr.inst.powerStatus = str(resp)
+        #cr.inst.powerStatus = str(resp)  # 2025-02-15 don't rely on str(resp)
         cr.inst.suspendPowerOff = 0  # Suspend didn't power off the device
         cr.inst.manualPowerOff = 0  # Was device physically powered off?
         cr.inst.dayPowerOff = 0  # Did daylight power off the device?
@@ -4580,11 +4576,13 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         _event = self.runCommand(command_line_list, _who)  # def runCommand
         '''  # 2025-02-11 No longer needed but nice bit of code to recycle someday.
 
+        self.tt.zap_tip_window(self.suspend_btn)  # 2025-02-16 still getting ghost
         self.isActive = False  # Signal closing so methods shut down elegantly.
         if self.bleSaveInst:  # Is breathing colors active?
             self.bleSaveInst.already_breathing_colors = False  # Force shutdown
         self.update_idletasks()
         self.after(100)  # Extra time (besides power off time) for Breathing Colors
+        self.tt.zap_tip_window(self.suspend_btn)  # 2025-02-15 still getting ghost
 
         self.turnAllPower("OFF")  # Turn off all devices except computer
         self.tt.zap_tip_window(self.suspend_btn)  # Delete tooltips window
@@ -4809,6 +4807,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         # Loop through ni.instances
         for i, instance in enumerate(ni.instances):
+            if not self.isActive:
+                return  # Shutting down
+
             inst = instance['instance']
             if self.usingDevicesTreeview:
                 # Get treeview row based on matching MAC address + device_type
@@ -5437,7 +5438,10 @@ b'A really secret message. Not for prying eyes.'
         if len(device_list) == 0:
             return
 
-        scrollbox = self.DisplayCommon(_who, title, x=x, y=y, width=700)
+
+        # 2025-01-16 TODO: Check for function already running at top.
+        scrollbox = self.DisplayCommon(_who, title, x=x, y=y, width=700,
+                                       help="ViewBluetoothDevices")
         if scrollbox is None:
             return  # Window already opened and method is running
 
