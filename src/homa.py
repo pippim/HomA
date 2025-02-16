@@ -1258,7 +1258,14 @@ class NetworkInfo(DeviceCommonSelf):
         # name : wlp60s0  | mac : 9c:b6:d0:10:37:f7  | ip : 192.168.0.10
 
     def adb_reset(self, background=False):
-        """ Kill and restart ADB server. Takes 3 seconds so run in background """
+        """ Kill and restart ADB server. Takes 3 seconds so run in background 
+            TV may give a message like:
+            
+            If problems revoke USB, turn off USB debugging, click build 7 times
+            RSA key fingerprint: a7:ad:1f:82:66:16:15:eb:bc:54:85:56:ce:ad:d4:2b
+            ~/.android/adbkey.pub - holds a lot more complicated key 700+ characters
+            
+        """
         _who = self.who + "adb_reset():"
 
         command_line_list = \
@@ -4193,6 +4200,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                   stays in place because fadeOut() never runs.
         """
         item = self.tree.identify_row(event.y)
+        help_id = "HelpRightClickMenu"
 
         if item is None:
             return  # Empty row, nothing to do
@@ -4236,6 +4244,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         if cr.arp_dict['type_code'] == GLO['KDL_TV']:
             # Sony TV has power save mode to turn picture off and listen to music
+            help_id = "HelpRightClickSonyTV"
             menu.add_command(label=name + " Picture On ",
                              font=g.FONT, state=tk.DISABLED,
                              image=self.img_picture_on, compound=tk.LEFT,
@@ -4249,6 +4258,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         if cr.arp_dict['type_code'] == GLO['BLE_LS']:
             # Bluetooth Low Energy LED Light Strip
+            help_id = "HelpRightClickBluetooth"
             name_string = "Set " + name + " Color"
             menu.add_command(label=name_string,
                              font=g.FONT, state=tk.DISABLED,
@@ -4304,6 +4314,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         menu.add_command(label="Turn Off " + name, font=g.FONT, state=tk.DISABLED,
                          image=self.img_turn_off, compound=tk.LEFT,
                          command=lambda: self.turnOff(cr))
+
         menu.add_separator()
         menu.add_command(label="Move " + name + " Up", font=g.FONT, state=tk.DISABLED,
                          image=self.img_up, compound=tk.LEFT,
@@ -4311,7 +4322,10 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         menu.add_command(label="Move " + name + " Down", font=g.FONT, state=tk.DISABLED,
                          image=self.img_down, compound=tk.LEFT,
                          command=lambda: self.moveRowDown(cr))
+
         menu.add_separator()
+        menu.add_command(label="Help", font=g.FONT, command=lambda: g.web_help(help_id),
+                         image=self.img_mag_glass, compound=tk.LEFT)
         menu.add_command(label="Close menu", font=g.FONT, command=_closePopup,
                          image=self.img_close, compound=tk.LEFT)
 
@@ -4330,6 +4344,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 pass  # power_saving_mode == "?"
 
         if cr.arp_dict['type_code'] == GLO['LAPTOP_D']:
+            help_id = "HelpRightClickLaptopDisplay"
             # Laptop display has instant power status check time. Pippim's
             # movie.sh script powers on/off laptop display with x-idle, so
             # double check backlight power status.
@@ -6170,7 +6185,7 @@ class SystemMonitor(DeviceCommonSelf):
                 CheckFanChange(parts[0])  # Over 200 RPM change will be logged.
             if "PU" in parts[0]:
                 # 2025-02-09 For python 3 degree in bytes use str(+66.0°C)
-                self.curr_sensor[parts[0]] = str(parts[1].strip())
+                self.curr_sensor[parts[0]] = str(parts[1].strip()).replace("+", "")
 
         if not dell_found:
             return  # Not an Alienware 17R3 or similar DELL machine
@@ -6227,8 +6242,8 @@ class SystemMonitor(DeviceCommonSelf):
             # When tree_only is True, printing has already been done to console
             if not tree_only:
                 v0_print("{0:>8.2f}".format(sensor['delta']),  # "999.99" format
-                         '|', opt('CPU').rjust(7), opt('Processor Fan').rjust(8),
-                         '|', opt('GPU').rjust(7), opt('Video Fan').rjust(8),
+                         '|', opt('CPU').rjust(8), opt('Processor Fan').rjust(8),
+                         '|', opt('GPU').rjust(8), opt('Video Fan').rjust(8),
                          '|', dt.datetime.now().strftime('%I:%M %p').strip('0').rjust(8))
 
             if self.treeview_active:

@@ -5200,10 +5200,12 @@ class ToolTips(CommonTip):
                     if self.print_error:
                         print(self.who + 'process_tip(): ' +
                               'self.tip_window does not exist')
-                        print('self.now:', self.now, 'zero_alpha_time:', zero_alpha_time)
-                    diff = self.now - zero_alpha_time
-                    if self.print_error:
-                        print('diff:', diff)
+                        print('self.now:', self.now, 'zero_alpha_time:', zero_alpha_time,
+                              "diff:", self.now - zero_alpha_time)
+                        try:
+                            print(self.widget['text'])  # E.G. "Suspend" for suspend button
+                        except KeyError:
+                            pass  # Some widget's don't have text
                 else:
                     self.tip_window.destroy()
 
