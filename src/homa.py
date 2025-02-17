@@ -4345,21 +4345,22 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         if cr.arp_dict['type_code'] == GLO['LAPTOP_D']:
             help_id = "HelpRightClickLaptopDisplay"
-            # Laptop display has instant power status check time. Pippim's
+            # Laptop display has very fast power status response time. Pippim's
             # movie.sh script powers on/off laptop display with x-idle, so
             # double check backlight power status.
-            cr.inst.getPower()
+            cr.inst.getPower()  # Set current laptop display cr.inst.powerStatus
 
+        # Enable turn on/off based on current power status
         if cr.inst.powerStatus != "ON":  # Other options are "OFF" and "?"
             menu.entryconfig("Turn On " + name, state=tk.NORMAL)
         if cr.inst.powerStatus != "OFF":  # Other options are "ON" and "?"
             menu.entryconfig("Turn Off " + name, state=tk.NORMAL)
 
-        # Allow moving up unless at top, allow moving down unless at bottom
-        all_iid = self.tree.get_children()
-        if item != all_iid[0]:
+        # Enable moving row up and moving row down
+        all_iid = self.tree.get_children()  # Get all item iid in treeview
+        if item != all_iid[0]:  # Enable moving row up if not at top?
             menu.entryconfig("Move " + name + " Up", state=tk.NORMAL)
-        if item != all_iid[-1]:
+        if item != all_iid[-1]:  # Enable moving row down if not at bottom?
             menu.entryconfig("Move " + name + " Down", state=tk.NORMAL)
 
         # Reset last rediscovery time. Some methods can take 10 seconds to timeout
@@ -5628,6 +5629,12 @@ b'A really secret message. Not for prying eyes.'
         self.event_top.configure(background="WhiteSmoke")  # Future user configuration
         self.win_grp.register_child(title, self.event_top)  # Lifting & moving with parent
         self.event_scroll_active = True
+
+        ''' Borrow Calculator program icon for taskbar '''
+        cfg_key = ['cfg_calculator', 'toplevel', 'taskbar_icon', 'height & colors']
+        ti = cfg.get_cfg(cfg_key)
+        img.taskbar_icon(self.event_top, ti['height'], ti['outline'],
+                         ti['fill'], ti['text'], char="V")
 
         ''' Bind <Escape> to close window '''
         self.event_top.bind("<Escape>", close)
