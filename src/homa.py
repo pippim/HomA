@@ -487,7 +487,6 @@ class Globals(DeviceCommonSelf):
         with open(g.USER_DATA_DIR + os.sep + GLO['CONFIG_FNAME'], "w") as f:
             f.write(json.dumps(self.dictGlobals))
 
-
     def defineNotebook(self):
         """ defineNotebook models global data variables in dictionary. Used by
             Edit Preferences in HomA and makeNotebook() in toolkit.py.
@@ -1263,7 +1262,7 @@ class NetworkInfo(DeviceCommonSelf):
             
             If problems revoke USB, turn off USB debugging, click build 7 times
             RSA key fingerprint: a7:ad:1f:82:66:16:15:eb:bc:54:85:56:ce:ad:d4:2b
-            ~/.android/adbkey.pub - holds a lot more complicated key 700+ characters
+            ~/.android/adb key.pub - holds a lot more complicated key 700+ characters
             
         """
         _who = self.who + "adb_reset():"
@@ -1688,7 +1687,7 @@ class LaptopDisplay(DeviceCommonSelf):
         # Sudo password required for powering laptop backlight on/off
         if GLO['SUDO_PASSWORD'] is None:
             GLO['SUDO_PASSWORD'] = self.app.GetPassword()
-            self.app.EnableMenu()
+            self.app.enableDropdown()
             if GLO['SUDO_PASSWORD'] is None:
                 return "?"  # Cancel button (256) or escape or 'X' on window decoration (64512)
 
@@ -1698,9 +1697,8 @@ class LaptopDisplay(DeviceCommonSelf):
         elif status == "OFF":
             echo = GLO['BACKLIGHT_OFF']
         else:
-            echo = "?"  # For pycharm reference checker
-            V0_print(_who, "Invalid status (no 'ON' or 'OFF':", status)
-            exit()
+            V0_print(_who, "Invalid status (not 'ON' or 'OFF':", status)
+            return
 
         #command_line_str = "echo PASSWORD | sudo -S echo X | sudo tee BL_POWER"
 
@@ -2742,7 +2740,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
 
         if GLO['SUDO_PASSWORD'] is None:
             GLO['SUDO_PASSWORD'] = self.app.GetPassword(msg=msg)
-            self.app.EnableMenu()
+            self.app.enableDropdown()
 
         return GLO['SUDO_PASSWORD']
 
@@ -2791,7 +2789,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         self.cmdReturncode = returncode
 
 
-        self.app.ResumeWait(timer=GLO['BLUETOOTH_SCAN_TIME'], alarm=False,
+        self.app.resumeWait(timer=GLO['BLUETOOTH_SCAN_TIME'], alarm=False,
                             title="Scanning Bluetooth Devices", abort=False)
         #self.app.after(500)  # Slush fund sleep extra 1/2 second
         # 2025-01-15 NOTE: It takes another 3 to 7 seconds for window to open ???
@@ -2935,7 +2933,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
 
         self.device = None  # Force connect on next attempt
         self.powerStatus = "?"
-        # self.app.EnableMenu()  # 'NoneType' object has no attribute 'EnableMenu'
+        # self.app.enableDropdown()  # 'NoneType' object has no attribute 'enableDropdown'
         return self.powerStatus
 
     def breatheColors(self, low=4, high=30, span=6.0, step=0.275, bots=1.5, tops=0.5):
@@ -2984,7 +2982,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         fast_sleep = float(self.FAST_MS) / 1000.0  # When not enough time for refresh
 
         self.already_breathing_colors = True
-        self.app.EnableMenu()  # Allow View dropdown menu option "Breathing stats".
+        self.app.enableDropdown()  # Allow View dropdown menu option "Breathing stats".
         v1_print("\n" + ext.ch(), _who, "Breathing colors - Starting up.")
 
         def sendCommand():
@@ -3127,12 +3125,12 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
             return sendCommand() and self.powerStatus == "ON"
 
         def refresh(ms):
-            """ Call self.app.Refresh() in loop for designated milliseconds. """
+            """ Call self.app.refreshApp() in loop for designated milliseconds. """
             while ms > 0:
                 self.app.last_refresh_time = time.time()
                 tk_after = False if ms < GLO['REFRESH_MS'] else True
                 rst = time.time()
-                self.app.Refresh(tk_after=tk_after)
+                self.app.refreshApp(tk_after=tk_after)
                 if not tk_after:
                     time.sleep(fast_sleep)  # give 5 ms idle time
                     self.app.update_idletasks()  # Give screen and mouse response
@@ -3271,7 +3269,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         v2_print(self.monitorBreatheColors(test=True))
 
         self.already_breathing_colors = False
-        self.app.EnableMenu()  # Disable "View" dropdown menu option "Breathing stats".
+        self.app.enableDropdown()  # Disable "View" dropdown menu option "Breathing stats".
 
     def monitorBreatheColors(self, test=False):
         """ Format statistics generated inside self.breatheColors() method.
@@ -3618,8 +3616,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.last_rediscover_time = time.time() - GLO['REDISCOVER_SECONDS'] + 3
         self.rediscover_done = True  # 16ms time slices until done.
         self.rediscover_row = 0  # Current row processed in Treeview
-        self.tree = None  # Painted in PopulateTree()
-        # Images used in PopulateTree() and/or other methods
+        self.tree = None  # Painted in populateDevicesTree()
+        # Images used in populateDevicesTree() and/or other methods
         self.photos = None
 
         # Button images
@@ -3654,7 +3652,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.columnconfigure(0, weight=1)  # Weight 1 = stretchable column
         app_title = "HomA - Home Automation"  # Used to find window ID further down
         self.title(app_title)
-        self.btn_frm = None  # Used by BuildButtonBar(), can be hidden by edit_pref
+        self.btn_frm = None  # Used by buildButtonBar(), can be hidden by edit_pref
 
         ''' ChildWindows() moves children with toplevel and keeps children on top '''
         self.win_grp = toolkit.ChildWindows(self, auto_raise=False)
@@ -3687,10 +3685,10 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         ''' File/Edit/View/Tools dropdown menu bars - Window ID required '''
         self.file_menu = self.edit_menu = self.view_menu = self.tools_menu = None
-        self.BuildMenu()  # Dropdown Menu Bars after 'sm ='
+        self.buildDropdown()  # Build Dropdown Menu Bars after 'sm =' class declared
 
         ''' Create treeview with internet devices. '''
-        self.PopulateTree()
+        self.populateDevicesTree()
 
         ''' When devices displayed show sensors button and vice versa. '''
         self.sensors_devices_btn = None
@@ -3698,14 +3696,14 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.devices_btn_text = "Devices"  # when Sensors active
         self.suspend_btn = None  # Suspend button on button bar to control tooltip
         self.usingDevicesTreeview = True  # Startup uses Devices Treeview
-        self.BuildButtonBar(self.sensors_btn_text)
+        self.buildButtonBar(self.sensors_btn_text)
 
-        # Dropdown Menu Bars after 'sm =' and BuildButtonBar() sets button text
-        self.EnableMenu()
+        # Dropdown Menu Bars after 'sm =' and buildButtonBar() sets button text
+        self.enableDropdown()
 
         # Experiments to delay rediscover when there is GUI activity
-        self.minimizing = False  # When minimizing, override FocusIn()
-        self.bind("<FocusIn>", self.FocusIn)  # Raise windows up
+        self.minimizing = False  # When minimizing, override focusIn()
+        self.bind("<FocusIn>", self.focusIn)  # Raise windows up
         self.bind("<Motion>", self.Motion)  # On motion reset rediscovery timer
 
         self.last_motion_time = GLO['APP_RESTART_TIME']
@@ -3725,7 +3723,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 ble.app = self  # For functions called from Dropdown menu
                 self.bleSaveInst = inst  # For breathing colors monitoring
 
-        while self.Refresh():  # Run forever until quit
+        while self.refreshApp():  # Run forever until quit
             pass
 
     def getWindowID(self, title):
@@ -3757,7 +3755,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             v0_print(_who, "ERROR `wmctrl` could not find Window.")
             v0_print("Search for title failed: '" + title + "'.\n")
 
-    def BuildMenu(self):
+    def buildDropdown(self):
         """ Build dropdown Menu bars: File, Edit, View & Tools """
 
         def ForgetPassword():
@@ -3765,7 +3763,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             GLO['SUDO_PASSWORD'] = None  # clear global password in homa
             command_line_list = ["sudo", "-K"]  # clear password in linux
             self.runCommand(command_line_list)
-            self.EnableMenu()
+            self.enableDropdown()
 
         mb = tk.Menu(self)
         self.config(menu=mb)
@@ -3785,13 +3783,13 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         if GLO['WINDOW_ID'] is not None:
             # xdotool and wmctrl must be installed for Minimize button
             self.file_menu.add_command(label="Minimize", font=g.FONT, underline=0,
-                                       command=self.MinimizeApp, state=tk.NORMAL)
+                                       command=self.minimizeApp, state=tk.NORMAL)
 
         self.file_menu.add_command(label="Suspend", font=g.FONT, underline=0,
                                    command=self.Suspend, state=tk.NORMAL)
         self.file_menu.add_separator()
         self.file_menu.add_command(label="Exit", font=g.FONT, underline=1,
-                                   command=self.CloseApp, state=tk.DISABLED)
+                                   command=self.closeApp, state=tk.DISABLED)
 
         mb.add_cascade(label="File", font=g.FONT, underline=0, menu=self.file_menu)
 
@@ -3802,22 +3800,22 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.edit_menu.add_separator()
         self.edit_menu.add_command(label="Monitor volume", underline=0,
                                    font=g.FONT, state=tk.DISABLED,
-                                   command=self.CloseApp)
+                                   command=self.closeApp)
 
         mb.add_cascade(label="Edit", font=g.FONT, underline=0, menu=self.edit_menu)
 
         # View Dropdown Menu
         self.view_menu = tk.Menu(mb, tearoff=0)
         self.view_menu.add_command(label="Sensors", font=g.FONT, underline=0,
-                                   command=self.SensorsDevicesToggle, state=tk.DISABLED)
+                                   command=self.toggleSensorsDevices, state=tk.DISABLED)
         self.view_menu.add_separator()
         self.view_menu.add_command(label="Network devices", font=g.FONT, underline=0,
-                                   command=self.SensorsDevicesToggle, state=tk.DISABLED)
+                                   command=self.toggleSensorsDevices, state=tk.DISABLED)
         self.view_menu.add_separator()
         self.view_menu.add_command(label="Bluetooth devices", font=g.FONT, underline=10,
-                                   command=self.DisplayBluetooth, state=tk.NORMAL)
+                                   command=self.DisplayBluetooth, state=tk.DISABLED)
         self.view_menu.add_command(label="Discovery timings", font=g.FONT, underline=10,
-                                   command=self.DisplayTimings)
+                                   command=self.DisplayTimings, state=tk.DISABLED)
         self.view_menu.add_command(label="Discovery errors", font=g.FONT, underline=10,
                                    command=self.DisplayErrors, state=tk.DISABLED)
         self.view_menu.add_command(label="Breathing stats", font=g.FONT, underline=10,
@@ -3832,20 +3830,20 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                                     state=tk.DISABLED)
         self.tools_menu.add_command(label="Timer " + str(GLO['TIMER_SEC']) + " seconds",
                                     font=g.FONT, underline=0,
-                                    command=lambda: self.ResumeWait(timer=GLO['TIMER_SEC']))
+                                    command=lambda: self.resumeWait(timer=GLO['TIMER_SEC']))
         self.tools_menu.add_separator()
 
         self.tools_menu.add_command(label="Forget sudo password", underline=0,
                                     font=g.FONT, command=ForgetPassword, state=tk.DISABLED)
         self.tools_menu.add_command(label="Debug information", font=g.FONT,
-                                    underline=0, command=self.CloseApp,
+                                    underline=0, command=self.closeApp,
                                     state=tk.DISABLED)
         mb.add_cascade(label="Tools", font=g.FONT, underline=0,
                        menu=self.tools_menu)
 
-    def EnableMenu(self):
+    def enableDropdown(self):
         """ Called from build_lib_menu() and passed to self.playlists to call.
-            Also passed with lcs.register_menu(self.EnableMenu)
+            Also passed with lcs.register_menu(self.enableDropdown)
         :return: None """
 
         if not self.isActive:
@@ -3862,6 +3860,10 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.edit_menu.entryconfig("Monitor volume", state=tk.DISABLED)
 
         ''' View Menu '''
+        # Default to enabled
+        self.view_menu.entryconfig("Bluetooth devices", state=tk.NORMAL)
+        self.view_menu.entryconfig("Discovery timings", state=tk.NORMAL)
+
         # Enable options depending on Sensors Treeview or Devices Treeview mounted
         if not self.usingDevicesTreeview:
             # Sensors Treeview is displayed
@@ -3873,7 +3875,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.view_menu.entryconfig("Network devices", state=tk.DISABLED)
 
         if GLO['EVENT_ERROR_COUNT'] != 0:
-            # 2024-12-17 - Working when called from command line, not from indicator
             self.view_menu.entryconfig("Discovery errors", state=tk.NORMAL)
         else:
             self.view_menu.entryconfig("Discovery errors", state=tk.DISABLED)
@@ -3881,6 +3882,13 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         if self.bleSaveInst and self.bleSaveInst.already_breathing_colors:
             self.view_menu.entryconfig("Breathing stats", state=tk.NORMAL)
         else:
+            self.view_menu.entryconfig("Breathing stats", state=tk.DISABLED)
+
+        # If one view is running, disable all of them from starting.
+        if self.event_scroll_active:
+            self.view_menu.entryconfig("Bluetooth devices", state=tk.DISABLED)
+            self.view_menu.entryconfig("Discovery timings", state=tk.DISABLED)
+            self.view_menu.entryconfig("Discovery errors", state=tk.DISABLED)
             self.view_menu.entryconfig("Breathing stats", state=tk.DISABLED)
 
         ''' Tools Menu '''
@@ -3891,14 +3899,12 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.tools_menu.entryconfig("Forget sudo password", state=tk.NORMAL)
         self.tools_menu.entryconfig("Debug information", state=tk.DISABLED)
 
-    def CloseApp(self, *_args):
+    def closeApp(self, *_args):
         """ <Escape>, X on window, 'Exit from dropdown menu or Close Button"""
-
-        self.isActive = False  # Signal closing down so methods return
 
         # Need Devices treeview displayed to save ni.view_order
         if not self.usingDevicesTreeview:
-            self.SensorsDevicesToggle()  # Toggle off Sensors Treeview
+            self.toggleSensorsDevices()  # Toggle off Sensors Treeview
 
         # Generate new ni.view_order list of MAC addresses
         order = []
@@ -3908,7 +3914,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             order.append(cr.mac)
 
         self.win_grp.destroy_all(tt=self.tt)  # Destroy Calculator and Countdown
-        self.destroy()  # Destroy Toplevel window
+
+        self.isActive = False  # Signal closing down so methods return
 
         ''' Save files '''
         ni.view_order = order
@@ -3931,23 +3938,23 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             v0_print("sm.number_logs     :", "{:,d}".format(sm.number_logs).rjust(9))
 
         self.destroy()  # Destroy toplevel
-        exit()
+        exit()  # exit() required to completely shut down app
 
-    def MinimizeApp(self, *_args):
+    def minimizeApp(self, *_args):
         """ Minimize GUI Application() window using xdotool.
             2024-12-08 TODO: Minimize child windows (Countdown and Big Number Calc.)
                 However, when restoring windows it can be on another monitor.
         """
-        _who = self.who + "MinimizeApp():"
+        _who = self.who + "minimizeApp():"
         # noinspection SpellCheckingInspection
         command_line_list = ["xdotool", "windowminimize", str(GLO['WINDOW_ID'])]
         self.runCommand(command_line_list, _who)
 
-    def FocusIn(self, *_args):
+    def focusIn(self, *_args):
         """ Window or menu in focus, disable rediscovery. Raise child windows above.
             NOTE: triggered two times so test current state for first time status.
             NOTE: When the right-click menu is closed it registers FocusOut and
-                  toplevel registers FocusIn again.
+                  toplevel registers focusIn again.
             NOTE: If preferences Notebook is active and countdown timer is started
                   the digits never appear and linux locks up totally. Mouse movement
                   can still occur but that is all. As of 2024-12-27.
@@ -3972,18 +3979,18 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
     def Motion(self, *_args):
         """ Window or menu had motion, reset last rediscovery time.
-            This will break ResumeFromSuspend() action to force rediscovery
+            This will break resumeFromSuspend() action to force rediscovery
 
             See: https://www.tcl.tk/man/tcl8.4/TkCmd/bind.htm#M15
         """
         self.last_motion_time = time.time()
         self.last_rediscover_time = self.last_motion_time
 
-    def PopulateTree(self):
+    def populateDevicesTree(self):
         """ Populate treeview using ni.Discovered[{}, {}...{}]
             Treeview IID is string: "0", "1", "2" ... "99"
         """
-        _who = self.who + "PopulateTree():"
+        _who = self.who + "populateDevicesTree():"
 
         ''' Treeview style is large images in cell 0 '''
         style = ttk.Style()
@@ -4059,7 +4066,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             if not p_args.fast:
                 self.tree.update_idletasks()  # Slow mode display each row.
 
-    def BuildButtonBar(self, toggle_text):
+    def buildButtonBar(self, toggle_text):
         """ Paint button bar below treeview.
             Minimize - Minimize window.
             Tree Toggle - Button toggles between show Sensors or show Devices.
@@ -4113,7 +4120,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         ''' Minimize Button - U+1F847 🡇  -OR-  U+25BC ▼ '''
         if GLO['WINDOW_ID'] is not None:
             # xdotool and wmctrl must be installed for Minimize button
-            device_button(0, 0, "Minimize", self.MinimizeApp,
+            device_button(0, 0, "Minimize", self.minimizeApp,
                           "Quickly and easily minimize HomA.", "nw", self.img_down)
 
         # noinspection SpellCheckingInspection
@@ -4126,7 +4133,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             pic_image = self.img_wifi
 
         self.sensors_devices_btn = device_button(
-            0, 1, toggle_text, self.SensorsDevicesToggle,
+            0, 1, toggle_text, self.toggleSensorsDevices,
             text, "nw", pic_image)
 
         ''' Suspend Button U+1F5F2  🗲 '''
@@ -4144,18 +4151,18 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                       help_text, "ne", self.img_mag_glass)
 
         ''' ✘ CLOSE BUTTON  '''
-        self.bind("<Escape>", self.CloseApp)
-        self.protocol("WM_DELETE_WINDOW", self.CloseApp)
-        device_button(0, 4, "Close", self.CloseApp,
+        self.bind("<Escape>", self.closeApp)
+        self.protocol("WM_DELETE_WINDOW", self.closeApp)
+        device_button(0, 4, "Close", self.closeApp,
                       "Close HomA and all windows HomA opened.", "ne", pic=self.img_close)
 
-    def SensorsDevicesToggle(self):
+    def toggleSensorsDevices(self):
         """ Sensors / Devices toggle button clicked.
             If button text == "Sensors" then active sm.tree.
             If button text == "Devices" then active Applications.tree.
 
         """
-        _who = self.who + "SensorsDevicesToggle()"
+        _who = self.who + "toggleSensorsDevices()"
         show_devices = show_sensors = False
 
         # Immediately get rid of tooltip
@@ -4177,19 +4184,19 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         else:
             print("Invalid Button self.sensors_devices_btn['text']:",
                   self.sensors_devices_btn['text'])
-            exit()
+            return
 
-        self.EnableMenu()  # NORMAL/DISABLED options for view Sensors/Devices
+        self.enableDropdown()  # NORMAL/DISABLED options for view Sensors/Devices
 
         if show_sensors:
             self.tree.destroy()
             sm.treeview_active = True
-            sm.PopulateTree()  # Calls sm.Print(start=0, end=-1)
+            sm.populateDevicesTree()  # Calls sm.Print(start=0, end=-1)
 
         if show_devices:
             sm.tree.destroy()
             sm.treeview_active = False
-            self.PopulateTree()
+            self.populateDevicesTree()
 
     def RightClick(self, event):
         """ Mouse right button click. Popup menu on selected treeview row.
@@ -4237,7 +4244,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         else:
             menu = tk.Menu(self)
 
-        menu.bind("<FocusIn>", self.FocusIn)
+        menu.bind("<FocusIn>", self.focusIn)
         menu.bind("<Motion>", self.Motion)
 
         menu.post(event.x_root, event.y_root)
@@ -4482,7 +4489,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         dr.Update(cr.item)  # Update destination row with current row
         cr.Update(dr.item)  # Update current row with destination row
 
-    def Refresh(self, tk_after=True):
+    def refreshApp(self, tk_after=True):
         """ Sleeping loop until need to do something. Fade tooltips. Resume from
             suspend. Rediscover devices.
 
@@ -4493,7 +4500,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         """
 
-        _who = self.who + "Refresh()"
+        _who = self.who + "refreshApp()"
         self.update_idletasks()
         if not self.winfo_exists():
             self.isActive = False
@@ -4502,7 +4509,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         ''' Is system shutting down? '''
         if killer.kill_now:
             v0_print('\nhoma.py refresh() closed by SIGTERM')
-            self.CloseApp()
+            self.closeApp()
             return False  # Not required because this point never reached.
 
         ''' Resuming from suspend? '''
@@ -4511,7 +4518,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         if delta > GLO['RESUME_TEST_SECONDS']:  # Assume > is resume from suspend
             v0_print("\n" + "= "*4, _who, "Resuming from suspend after:",
                      tmf.days(delta), " ="*4 + "\n")
-            self.ResumeFromSuspend()  # Resume Wait + Conditionally Power on devices
+            self.resumeFromSuspend()  # Resume Wait + Conditionally Power on devices
             now = time.time()  # can be 15 seconds or more later
             GLO['APP_RESTART_TIME'] = now  # Reset app started time to resume time
 
@@ -4557,6 +4564,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             now = self.last_refresh_time
 
         ''' Sleep remaining time until GLO['REFRESH_MS'] expires '''
+        self.update()  # Process everything in tkinter queue before sleeping
         sleep = GLO['REFRESH_MS'] - int(now - self.last_refresh_time)
         sleep = sleep if sleep > 0 else 1  # Sleep minimum 1 millisecond
         if sleep == 1:
@@ -4605,7 +4613,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.tt.poll_tips()
         cp.turnOff()  # suspend computer
 
-    def ResumeFromSuspend(self):
+    def resumeFromSuspend(self):
         """ Resume from suspend. Display status of devices that were
             known at time of suspend. Then set variables to trigger
             rediscovery for any new devices added.
@@ -4622,10 +4630,10 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         global rd
         rd = None  # In case rediscovery was in progress during suspend
         self.rediscover_done = True
-        _who = self.who + "ResumeFromSuspend():"
+        _who = self.who + "resumeFromSuspend():"
         self.isActive = True  # Application GUI is active again
 
-        self.ResumeWait()  # Display countdown waiting for devices to come online
+        self.resumeWait()  # Display countdown waiting for devices to come online
         v1_print("\n" + _who, "ni.view_order:", ni.view_order)
 
         # Turn all devices on
@@ -4638,7 +4646,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.last_refresh_time = now + 1.0  # If abort, don't come back here
         sm.last_sensor_log = now - GLO['SENSOR_LOG'] - 1.0  # Force initial sensor log
 
-    def ResumeWait(self, timer=None, alarm=True, title=None, abort=True):
+    def resumeWait(self, timer=None, alarm=True, title=None, abort=True):
         """ Wait x seconds for devices to come online. If 'timer' passed do a
             simple countdown.
 
@@ -4649,7 +4657,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             :param abort: Allow countdown timer to be ended early (closed)
         """
 
-        _who = self.who + "ResumeWait():"
+        _who = self.who + "resumeWait():"
 
         ''' Is countdown already running? '''
         if self.dtb:
@@ -4686,11 +4694,11 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             if self.dtb.forced_abort:
                 break
             if not self.winfo_exists():
-                break  # self.CloseApp() has destroyed window
+                break  # self.closeApp() has destroyed window
             self.dtb.update(str(int(start + countdown_sec - time.time())))
             # Suspend uses: 'self.after(150)'
             self.after(100)
-            # During countdown timer, don't trigger ResumeFromSuspend()
+            # During countdown timer, don't trigger resumeFromSuspend()
             self.last_refresh_time = time.time() + 1.0
 
         if timer and alarm is True:  # Play sound when timer ends
@@ -4770,7 +4778,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                     inst.menuPowerOff = 0  # User didn't power on the device via menu
             else:
                 v0_print(_who, "state is not 'ON' or 'OFF':", state)
-                exit()
+                return
 
             if inst.type_code == GLO['BLE_LS']:
                 # Special debugging for LED Light Strips
@@ -4875,7 +4883,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         global rd  # global instance that allows rentry to split job into slices
 
         ''' Calling a second time when first time is still running?
-            Happens during message wait calling self.Refresh() calling us.
+            Happens during message wait calling self.refreshApp() calling us.
         '''
         if rd is not None and self.rediscover_done is False:
             v2_print("\n" + _who, "Phase II starting.")
@@ -4928,11 +4936,11 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             rd = None
             self.rediscover_done = True
             self.last_rediscover_time = time.time()
-            # 2024-12-02 - Couple hours watching TV, suddenly ResumeFromSuspend() ran
+            # 2024-12-02 - Couple hours watching TV, suddenly resumeFromSuspend() ran
             #   a few times with 3 second countdown. Reset self.last_refresh_time.
             self.last_refresh_time = time.time()  # Prevent resume from suspend
             self.file_menu.entryconfig("Rediscover now", state=tk.NORMAL)
-            self.EnableMenu()
+            self.enableDropdown()
 
         v2_print(_who, "Rediscovery count:", len(rd.arp_dicts))
 
@@ -4990,7 +4998,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 if len(discovered) != 1:
                     print(_who, "Catastrophic error! len(discovered):",
                           len(discovered))
-                    exit()
+                    return
 
                 if instances:
                     ni.instances.append(instances[0])
@@ -5153,7 +5161,7 @@ b'A really secret message. Not for prying eyes.'
             """
             self.last_refresh_time = time.time()  # Prevent resume from suspend
             self.last_rediscover_time = self.last_refresh_time
-            self.Refresh(tk_after=False)
+            self.refreshApp(tk_after=False)
             self.after(10)
             self.update()  # Suspend button stays blue after mouseover ends>?
 
@@ -5205,8 +5213,8 @@ b'A really secret message. Not for prying eyes.'
 
             self.notebook.destroy()
             self.notebook = None
-            self.EnableMenu()
-            # Restore Application() bottom button bar as pre BuildButtonBar() options
+            self.enableDropdown()
+            # Restore Application() bottom button bar as pre buildButtonBar() options
             self.btn_frm.grid(row=99, column=0, columnspan=2, sticky=tk.E)
 
         #self.btn_frm.grid_forget()  # Hide Application() bottom button bar
@@ -5232,7 +5240,7 @@ b'A really secret message. Not for prying eyes.'
             "Notebook.TFrame", "C.TButton", close, tt=self.tt,
             help_btn_image=self.img_mag_glass, close_btn_image=self.img_close)
         self.edit_pref_active = True
-        self.EnableMenu()
+        self.enableDropdown()
 
     def OpenCalculator(self):
         """ Big Number Calculator allows K, M, G, T, etc. UoM """
@@ -5254,7 +5262,7 @@ b'A really secret message. Not for prying eyes.'
         self.calculator = Calculator(self.calc_top, g.BIG_FONT, geom,
                                      btn_fg=ti['text'], btn_bg=ti['fill'])
         self.win_grp.register_child('Calculator', self.calc_top)
-        # Do not auto raise children. homa.py will take care of that with FocusIn()
+        # Do not auto raise children. homa.py will take care of that with focusIn()
 
         def calculator_close(*_args):
             """ Save last geometry for next Calculator startup """
@@ -5492,8 +5500,8 @@ b'A really secret message. Not for prying eyes.'
 
     def DisplayBreathing(self):
         """ Display Breathing Colors parameters and statistics in real time.
-            Called about 3 times per second during self.Refresh() cycle.
-            self.Refresh() in turn is called by bleSaveInst.breatheColors().
+            Called about 3 times per second during self.refreshApp() cycle.
+            self.refreshApp() in turn is called by bleSaveInst.breatheColors().
             bleSaveInst.monitorBreatheColors() returns formatted text lines.
 
             Calls DisplayCommon to create Window, Frame and Scrollbox.
@@ -5616,6 +5624,7 @@ b'A really secret message. Not for prying eyes.'
             self.event_top = None
             if close_cb:
                 close_cb()
+            self.enableDropdown()
 
         self.event_top = tk.Toplevel()
         if x is None or y is None:
@@ -5692,7 +5701,7 @@ b'A really secret message. Not for prying eyes.'
         scrollbox.tag_config('yellow', background='yellow')
         scrollbox.tag_config('cyan', background='cyan')
         scrollbox.tag_config('magenta', background='magenta')
-
+        self.enableDropdown()
         return scrollbox
 
     def GATTToolJobs(self, found_inst=None):
@@ -6259,11 +6268,11 @@ class SystemMonitor(DeviceCommonSelf):
                     # 2025-01-20 getting error flashing when last row not inserted yet
                     self.FlashLastRow()  # fade in color, pause, fade out color
 
-    def PopulateTree(self):
+    def populateDevicesTree(self):
         """ Populate treeview using self.sensor_log [{}, {}... {}]
             Treeview IID is string seconds: "0.1", "1.1", "2.2" ... "9999.9"
         """
-        _who = self.who + "PopulateTree():"
+        _who = self.who + "populateDevicesTree():"
 
         ''' Treeview style is large images in cell 0 '''
         style = ttk.Style()
@@ -6560,9 +6569,8 @@ def open_files():
         elif type_code == GLO['LAPTOP_D']:  # Laptop Display image
             inst = LaptopDisplay(arp['mac'], arp['ip'], arp['name'], arp['alias'])
         else:
-            inst = None  # Oops
             v0_print(_who, "Data corruption. Unknown type_code:", type_code)
-            exit()
+            return
 
         # Device instances created for this session.
         ni.instances.append({"mac": arp['mac'], "instance": inst})
