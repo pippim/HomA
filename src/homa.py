@@ -934,7 +934,10 @@ class Computer(DeviceCommonSelf):
             pass
 
         command_line_list = GLO['POWER_OFF_CMD_LIST']  # systemctl suspend
+        v0_print(_who, ext.ch(), "Suspend command:", command_line_list)
         _event = self.runCommand(command_line_list, _who, forgive=forgive)
+        # NOTE: this point shouldn't be reached until system resumes
+        v0_print(_who, ext.ch(), "Command finished.")
 
         self.powerStatus = "OFF"  # Can be "ON", "OFF" or "?"
         return self.powerStatus  # Really it is "SLEEP"
@@ -3620,11 +3623,12 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         # Images used in populateDevicesTree() and/or other methods
         self.photos = None
 
-        # Button images
+        # Button Bar button images
+        self.img_minimize = img.tk_image("minimize.png", 26, 26)
+        self.img_sensors = img.tk_image("flame.png", 26, 26)
+        self.img_devices = img.tk_image("wifi.png", 26, 26)
         self.img_suspend = img.tk_image("lightning_bolt.png", 26, 26)
-        self.img_flame = img.tk_image("flame.png", 26, 26)  # Sensors
         self.img_mag_glass = img.tk_image("mag_glass.png", 26, 26)
-        self.img_wifi = img.tk_image("wifi.png", 26, 26)  # Devices
 
         # Right-click popup menu images common to all devices
         self.img_turn_off = img.tk_image("turn_off.png", 42, 26)
@@ -3695,6 +3699,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.sensors_btn_text = "Sensors"  # when Devices active
         self.devices_btn_text = "Devices"  # when Sensors active
         self.suspend_btn = None  # Suspend button on button bar to control tooltip
+        self.close_btn = None  # Close button on button bar to control tooltip
+        self.main_help_id = "HelpNetworkDevices"  # Toggles to HelpSensors and HelpDevices
         self.usingDevicesTreeview = True  # Startup uses Devices Treeview
         self.buildButtonBar(self.sensors_btn_text)
 
@@ -3786,7 +3792,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                                        command=self.minimizeApp, state=tk.NORMAL)
 
         self.file_menu.add_command(label="Suspend", font=g.FONT, underline=0,
-                                   command=self.Suspend, state=tk.NORMAL)
+                                   command=self.Suspend, state=tk.DISABLED)
         self.file_menu.add_separator()
         self.file_menu.add_command(label="Exit", font=g.FONT, underline=1,
                                    command=self.closeApp, state=tk.DISABLED)
@@ -3851,8 +3857,18 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         ''' File Menu '''
         # During rediscovery, the "Rediscover now" dropdown menubar option disabled
-        self.file_menu.entryconfig("Rediscover now", state=tk.NORMAL)
-        self.file_menu.entryconfig("Exit", state=tk.NORMAL)
+        if self.rediscover_done is True:
+            self.file_menu.entryconfig("Rediscover now", state=tk.NORMAL)
+            self.file_menu.entryconfig("Suspend", state=tk.NORMAL)
+            self.file_menu.entryconfig("Exit", state=tk.NORMAL)
+            self.suspend_btn['state'] = tk.NORMAL
+            self.close_btn['state'] = tk.NORMAL
+        else:
+            self.file_menu.entryconfig("Rediscover now", state=tk.DISABLED)
+            self.file_menu.entryconfig("Suspend", state=tk.DISABLED)
+            self.file_menu.entryconfig("Exit", state=tk.DISABLED)
+            self.suspend_btn['state'] = tk.DISABLED
+            self.close_btn['state'] = tk.DISABLED
 
         ''' Edit Menu '''
         # 2024-12-01 - Edit menu options not written yet
@@ -3901,6 +3917,20 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
     def closeApp(self, *_args):
         """ <Escape>, X on window, 'Exit from dropdown menu or Close Button"""
+        _who = self.who + "closeApp():"
+
+        self.suspend_btn['state'] = tk.NORMAL  # 2025-02-11 color was staying blue
+
+        ''' Is it ok to stop processing? - Make common method...'''
+        msg = None
+        if self.dtb:  # Cannot Close when resume countdown timer is running.
+            msg = "Countdown timer is running."
+        if not self.rediscover_done:  # Cannot suspend during rediscovery.
+            msg = "Device rediscovery is in progress for a few seconds."
+        if msg:  # Cannot suspend when other jobs are active
+            self.ShowInfo("Cannot Close now.", msg, icon="error")
+            v0_print(_who, "Aborting Close.", msg)
+            return
 
         # Need Devices treeview displayed to save ni.view_order
         if not self.usingDevicesTreeview:
@@ -3979,7 +4009,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
     def Motion(self, *_args):
         """ Window or menu had motion, reset last rediscovery time.
-            This will break resumeFromSuspend() action to force rediscovery
+            This will break resumeAfterSuspend() action to force rediscovery
 
             See: https://www.tcl.tk/man/tcl8.4/TkCmd/bind.htm#M15
         """
@@ -4121,16 +4151,18 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         if GLO['WINDOW_ID'] is not None:
             # xdotool and wmctrl must be installed for Minimize button
             device_button(0, 0, "Minimize", self.minimizeApp,
-                          "Quickly and easily minimize HomA.", "nw", self.img_down)
+                          "Quickly and easily minimize HomA.", "nw", self.img_minimize)
 
         # noinspection SpellCheckingInspection
         ''' 🌡 (U+1F321) Sensors Button  -OR-  🗲 (U+1F5F2) Devices Button '''
         if toggle_text == self.sensors_btn_text:
             text = "Show Temperatures and Fans."
-            pic_image = self.img_flame
+            self.main_help_id = "HelpNetworkDevices"
+            pic_image = self.img_sensors
         else:
             text = "Show Network Devices."
-            pic_image = self.img_wifi
+            self.main_help_id = "HelpSensors"
+            pic_image = self.img_devices
 
         self.sensors_devices_btn = device_button(
             0, 1, toggle_text, self.toggleSensorsDevices,
@@ -4147,14 +4179,15 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         help_text = "Open new window in default web browser for\n"
         help_text += "videos and explanations on using this screen.\n"
         help_text += "https://www.pippim.com/programs/homa.html#\n"
-        device_button(0, 3, "Help", lambda: g.web_help("Introduction"),
+        # Instead of "Introduction" have self.help_id with "HelpSensors" or "HelpDevices"
+        device_button(0, 3, "Help", lambda: g.web_help(self.main_help_id),
                       help_text, "ne", self.img_mag_glass)
 
         ''' ✘ CLOSE BUTTON  '''
         self.bind("<Escape>", self.closeApp)
         self.protocol("WM_DELETE_WINDOW", self.closeApp)
-        device_button(0, 4, "Close", self.closeApp,
-                      "Close HomA and all windows HomA opened.", "ne", pic=self.img_close)
+        self.close_btn = device_button(0, 4, "Close", self.closeApp,
+                                       "Exit HomA.", "ne", pic=self.img_close)
 
     def toggleSensorsDevices(self):
         """ Sensors / Devices toggle button clicked.
@@ -4172,14 +4205,16 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         if "Sensors" in self.sensors_devices_btn['text']:
             show_sensors = True
             self.sensors_devices_btn['text'] = toolkit.normalize_tcl(self.devices_btn_text)
-            self.sensors_devices_btn['image'] = self.img_wifi
+            self.sensors_devices_btn['image'] = self.img_devices
             self.tt.set_text(self.sensors_devices_btn, "Show Network Devices.")
+            self.main_help_id = "HelpSensors"
             self.usingDevicesTreeview = False
         elif "Devices" in self.sensors_devices_btn['text']:
             show_devices = True
             self.sensors_devices_btn['text'] = toolkit.normalize_tcl(self.sensors_btn_text)
-            self.sensors_devices_btn['image'] = self.img_flame
+            self.sensors_devices_btn['image'] = self.img_sensors
             self.tt.set_text(self.sensors_devices_btn, "Show Temperatures and Fans.")
+            self.main_help_id = "HelpNetworkDevices"
             self.usingDevicesTreeview = True
         else:
             print("Invalid Button self.sensors_devices_btn['text']:",
@@ -4518,7 +4553,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         if delta > GLO['RESUME_TEST_SECONDS']:  # Assume > is resume from suspend
             v0_print("\n" + "= "*4, _who, "Resuming from suspend after:",
                      tmf.days(delta), " ="*4 + "\n")
-            self.resumeFromSuspend()  # Resume Wait + Conditionally Power on devices
+            self.resumeAfterSuspend()  # Resume Wait + Conditionally Power on devices
             now = time.time()  # can be 15 seconds or more later
             GLO['APP_RESTART_TIME'] = now  # Reset app started time to resume time
 
@@ -4582,7 +4617,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         self.suspend_btn['state'] = tk.NORMAL  # 2025-02-11 color was staying blue
 
-        ''' Is it ok to suspend? '''
+        ''' Is it ok to stop processing? - Make common method...'''
         msg = None
         if self.dtb:  # Cannot suspend when resume countdown timer is running.
             msg = "Countdown timer is running."
@@ -4595,10 +4630,11 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         v0_print(_who, "Suspending system...")
         ''' Move mouse away from suspend button to close tooltip window 
-            No longer needed because Tooltips().zap_tip_window() was created.
+            No longer needed because Tooltips().zap_tip_window() was created.  '''
         command_line_list = ["xdotool", "mousemove_relative", "--", "-200", "-200"]
         _event = self.runCommand(command_line_list, _who)  # def runCommand
-        '''  # 2025-02-11 No longer needed but nice bit of code to recycle someday.
+        # 2025-02-11 No longer needed but nice bit of code to recycle someday.
+        # 2025-02-19 Add back mouse move. On resume enter event generated in tooltips
 
         self.tt.zap_tip_window(self.suspend_btn)  # 2025-02-16 still getting ghost
         self.isActive = False  # Signal closing so methods shut down elegantly.
@@ -4610,10 +4646,10 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         self.turnAllPower("OFF")  # Turn off all devices except computer
         self.tt.zap_tip_window(self.suspend_btn)  # Delete tooltips window
-        self.tt.poll_tips()
+        self.update()
         cp.turnOff()  # suspend computer
 
-    def resumeFromSuspend(self):
+    def resumeAfterSuspend(self):
         """ Resume from suspend. Display status of devices that were
             known at time of suspend. Then set variables to trigger
             rediscovery for any new devices added.
@@ -4630,7 +4666,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         global rd
         rd = None  # In case rediscovery was in progress during suspend
         self.rediscover_done = True
-        _who = self.who + "resumeFromSuspend():"
+        _who = self.who + "resumeAfterSuspend():"
         self.isActive = True  # Application GUI is active again
 
         self.resumeWait()  # Display countdown waiting for devices to come online
@@ -4698,7 +4734,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.dtb.update(str(int(start + countdown_sec - time.time())))
             # Suspend uses: 'self.after(150)'
             self.after(100)
-            # During countdown timer, don't trigger resumeFromSuspend()
+            # During countdown timer, don't trigger resumeAfterSuspend()
             self.last_refresh_time = time.time() + 1.0
 
         if timer and alarm is True:  # Play sound when timer ends
@@ -4716,6 +4752,26 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         _who = self.who + "turnAllPower(" + state + "):"
         night = cp.NightLightStatus()
         v1_print(_who, "Nightlight status: '" + night + "'")
+
+        ''' 2025-02-19 Stale loop? resume and eventually close button error:
+
+  File "./homa.py", line 3726, in __init__
+    while self.refreshApp():  # Run forever until quit
+  File "./homa.py", line 4558, in refreshApp
+    self.Rediscover(auto=True)  # Check for new network devices
+  File "./homa.py", line 4948, in Rediscover
+    self.RefreshAllPowerStatuses(auto=auto)  # When auto false, rows highlighted
+  File "./homa.py", line 4861, in RefreshAllPowerStatuses
+    cr.Update(iid)  # Update row with new ['text']
+  File "./homa.py", line 5894, in Update
+    str(item), image=self.photo, text=self.text, values=self.values)
+  File "/usr/lib/python2.7/lib-tk/ttk.py", line 1353, in item
+    return _val_or_dict(self.tk, kw, self._w, "item", item)
+  File "/usr/lib/python2.7/lib-tk/ttk.py", line 299, in _val_or_dict
+    res = tk.call(*(args + options))
+_tkinter.TclError: invalid command name ".140335699394216.140335510496752"
+         
+        '''
 
         # Loop through ni.instances
         for i, instance in enumerate(ni.instances):
@@ -4894,9 +4950,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         if rd is None and self.rediscover_done is False:
             v0_print(_who, "'rd' instance disappeared after Phase I.")
 
-        # Disable calling from File Dropdown Menubar
-        self.file_menu.entryconfig("Rediscover now", state=tk.DISABLED)
-
         # If GLO['APP_RESTART_TIME'] is within 1 minute (GLO['REDISCOVER_SECONDS']) turn off
         # auto rediscovery flags so startup commands are logged to cmdEvents
         if GLO['APP_RESTART_TIME'] > time.time() - GLO['REDISCOVER_SECONDS'] - \
@@ -4925,6 +4978,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             ext.t_init("Creating instance rd = NetworkInfo()")
             rd = NetworkInfo()  # rd. class is newer instance ni. class
             self.rediscover_done = False  # Signal job in progress
+            self.enableDropdown()
             ext.t_end('no_print')
             if auto:  # If called from File dropdown menubar DON'T return
                 self.last_refresh_time = time.time()  # Override resume from suspend
@@ -4936,7 +4990,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             rd = None
             self.rediscover_done = True
             self.last_rediscover_time = time.time()
-            # 2024-12-02 - Couple hours watching TV, suddenly resumeFromSuspend() ran
+            # 2024-12-02 - Couple hours watching TV, suddenly resumeAfterSuspend() ran
             #   a few times with 3 second countdown. Reset self.last_refresh_time.
             self.last_refresh_time = time.time()  # Prevent resume from suspend
             self.file_menu.entryconfig("Rediscover now", state=tk.NORMAL)
@@ -5888,6 +5942,29 @@ class TreeviewRow(DeviceCommonSelf):
             :returns: nothing
         """
         _who = self.who + "Update():"
+
+        ''' 2025-02-19 - OOPS clicking Close button a hour after resume from suspend:
+  File "./homa.py", line 6678, in <module>
+    
+  File "./homa.py", line 6672, in main
+    #img.taskbar_icon(root, 64, 'black', 'green', 'red', char='H')
+  File "./homa.py", line 3726, in __init__
+    ble.app = self  # For functions called from Dropdown menu
+  File "./homa.py", line 4558, in refreshApp
+    if int(now - self.last_rediscover_time) > GLO['REDISCOVER_SECONDS']:
+  File "./homa.py", line 4969, in Rediscover
+    v2_print(_who, "Rediscovery count:", len(rd.arp_dicts))
+  File "./homa.py", line 4882, in RefreshAllPowerStatuses
+    if cr.text != old_text:
+  File "./homa.py", line 5915, in Update
+    
+  File "/usr/lib/python2.7/lib-tk/ttk.py", line 1353, in item
+    return _val_or_dict(self.tk, kw, self._w, "item", item)
+  File "/usr/lib/python2.7/lib-tk/ttk.py", line 299, in _val_or_dict
+    res = tk.call(*(args + options))
+_tkinter.TclError: invalid command name ".140052547996200.140052547535360"
+         
+        '''
 
         self.top.photos[int(item)] = self.photo  # changes if swapping rows
         self.top.tree.item(

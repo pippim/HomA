@@ -5043,8 +5043,7 @@ class ToolTips(CommonTip):
             self.release_time = self.current_alpha = 0.0
 
         self.tip_window = self.window_geom = None
-        self.window_visible = self.window_fading_in = False
-        self.window_fading_out = False
+        self.window_visible = self.window_fading_in = self.window_fading_out = False
 
     def set_widget_colors(self):
         """ Set the colors for canvas object focus """
@@ -5145,7 +5144,7 @@ class ToolTips(CommonTip):
                     print(self.who + ".process_tip():",
                           "self.tip.window doesn't exist")
                     try:
-                        print(self.widget['text'])
+                        print(ext.ch(), "widget['text']:", self.widget['text'])
                     except KeyError:
                         pass  # Some parents don't have text attribute
                 return
@@ -5178,6 +5177,8 @@ class ToolTips(CommonTip):
             #                  self.now: 1697681387.58
             #             fade_out_time: 1697681387.37   Tenth
             if self.window_fading_out is False:
+                # 2025-02-19 for HomA suspend button fading out forced on but
+                # window doesn't exist
                 self.window_fading_out = True
                 self.window_fading_in = False
 
@@ -5202,8 +5203,13 @@ class ToolTips(CommonTip):
                               'self.tip_window does not exist')
                         print('self.now:', self.now, 'zero_alpha_time:', zero_alpha_time,
                               "diff:", self.now - zero_alpha_time)
+                        print('self.enter_time:', self.enter_time,
+                              "self.window_visible:", self.window_visible,
+                              "self.window_fading_in:", self.window_fading_in,
+                              "self.window_fading_out:", self.window_fading_out)
                         try:
-                            print(self.widget['text'])  # E.G. "Suspend" for suspend button
+                            print(ext.ch(), "widget['text']:", self.widget['text'])
+                            # E.G. "Suspend" for HomA's suspend button
                         except KeyError:
                             pass  # Some widget's don't have text
                 else:
