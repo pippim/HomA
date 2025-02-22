@@ -324,6 +324,194 @@ class DeviceCommonSelf:
         return self.cmdEvent
 
 
+class Router(DeviceCommonSelf):
+    """ Router """
+
+    def __init__(self, mac=None, ip=None, name=None, alias=None):
+        """ DeviceCommonSelf(): Variables used by all classes """
+        DeviceCommonSelf.__init__(self, "Router().")  # Define self.who
+        _who = self.who + "__init()__:"
+
+        self.mac = mac  # a8:4e:3f:82:98:b2
+        self.ip = ip  # 192.168.0.1
+        self.name = name  # Hitronhub.home
+        self.alias = alias  # Admin
+
+        self.requires = ['ip', 'ifconfig']
+        self.installed = []
+        self.CheckDependencies(self.requires, self.installed)
+        v2_print(self.who, "Dependencies:", self.requires)
+        v2_print(self.who, "Installed?  :", self.installed)
+        # When reading /etc/hosts match from MAC address if available
+        # or Static IP address if MAC address not available.
+        if self.name is None:
+            self.name = ""  # Computer name from /etc/hosts
+        if self.alias is None:
+            self.alias = ""  # Computer alias from /etc/hosts
+
+        self.type = "Router"
+        self.type_code = GLO['ROUTER_M']
+
+        self.ether_name = ""  # eth0, enp59s0, etc
+        self.ether_mac = ""  # aa:bb:cc:dd:ee:ff
+        self.ether_ip = ""  # 192.168.0.999
+        self.wifi_name = ""  # wlan0, wlp60s0, etc
+        self.wifi_mac = ""  # aa:bb:cc:dd:ee:ff
+        self.wifi_ip = ""  # 192.168.0.999
+
+        self.Interface()  # Initial values
+
+    def Interface(self, forgive=False):
+        """ Return name of interface that is up. Either ethernet first or
+            wifi second. If there is no interface return blank.
+        """
+
+        _who = self.who + "Interface():"
+        v2_print(_who, "Test if Ethernet and/or WiFi interface is up.")
+
+        if not self.CheckInstalled('ip'):
+            return
+
+        command_line_list = ["ip", "addr"]
+        event = self.runCommand(command_line_list, _who, forgive=forgive)
+
+        if not event['returncode'] == 0:
+            if forgive is False:
+                v0_print(_who, "pipe.returncode:", pipe.returncode)
+            return ""  # Return null string = False
+
+        interface = event['output'].splitlines()
+
+        # noinspection SpellCheckingInspection
+        ''' `ip addr` output:
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+    inet 127.0.0.1/8 scope host lo
+       valid_lft forever preferred_lft forever
+2: enp59s0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq state UP group default qlen 1000
+    link/ether 28:f1:0e:2a:1a:ed brd ff:ff:ff:ff:ff:ff
+    inet 192.168.0.12/24 brd 192.168.0.255 scope global dynamic enp59s0
+       valid_lft 598085sec preferred_lft 598085sec
+3: wlp60s0: <BROADCAST,MULTICAST> mtu 1500 qdisc mq state DOWN group default qlen 1000
+    link/ether 9c:b6:d0:10:37:f7 brd ff:ff:ff:ff:ff:ff
+        '''
+
+        name = mac = ip = ""
+        self.ether_name = ""  # eth0, enp59s0, etc
+        self.ether_mac = ""  # aa:bb:cc:dd:ee:ff
+        self.ether_ip = ""  # 192.168.0.999
+        self.wifi_name = ""  # wlan0, wlp60s0, etc
+        self.wifi_mac = ""  # aa:bb:cc:dd:ee:ff
+        self.wifi_ip = ""  # 192.168.0.999
+
+        def parse_interface():
+            """ Process last group of name, mac and ip """
+            if ip and ip.startswith("127"):
+                return  # local host "127.0.0.1" is not useful
+
+            if name and name.startswith("e"):  # Ethernet
+                self.ether_name = name  # eth0, enp59s0, etc
+                self.ether_mac = mac  # aa:bb:cc:dd:ee:ff
+                self.ether_ip = ip  # 192.168.0.999
+
+            elif name and name.startswith("w"):  # WiFi
+                self.wifi_name = name  # eth0, enp59s0, etc
+                self.wifi_mac = mac  # aa:bb:cc:dd:ee:ff
+                self.wifi_ip = ip  # 192.168.0.999
+            else:
+                v0_print(_who, "Error parsing name:", name, "mac:", mac, "ip:", ip)
+
+        for line in interface:
+
+            parts = line.split(":")
+            if len(parts) == 3:
+                if not name == "":  # First time skip blank name
+                    parse_interface()
+                name = parts[1].strip()
+                mac = ip = ""
+                continue
+
+            if not mac:
+                r = re.search("(?:[0-9a-fA-F]:?){12}", line)
+                if r:
+                    mac = r.group(0)
+
+            elif not ip:
+                r = re.search("[0-9]+(?:\.[0-9]+){3}", line)
+                if r:
+                    ip = r.group(0)
+                    # print("\n name:", name, "mac:", mac, "ip:", ip, "\n")
+
+        parse_interface()
+        v3_print(_who, "self.ether_name:", self.ether_name, " | self.ether_mac:",
+                 self.ether_mac, " | self.ether_ip:", self.ether_ip)
+        v3_print(_who, "self.wifi_name :", self.wifi_name, " | self.wifi_mac :",
+                 self.wifi_mac, " | self.wifi_ip :", self.wifi_ip)
+
+        if self.ether_ip:  # Ethernet IP is preferred if available.
+            return self.ether_ip
+
+        if self.wifi_ip:  # Ethernet IP unavailable, use WiFi IP if available
+            return self.wifi_ip
+
+        return ""  # Return null string = False
+
+    def isDevice(self, forgive=False):
+        """ Test if passed ip == ethernet ip or WiFi ip.
+            Initially a laptop base could be assigned with IP but now it
+            is assigned as a laptop display. A laptop will have two on/off
+            settings - one for the base and one for the display. It will have
+            two images in the treeview.
+
+            A desktop will only have a single image and desktop on/off option.
+
+        """
+        _who = self.who + "isDevice():"
+        v2_print(_who, "Test if device is Router:", self.ip)
+
+        if forgive:
+            pass
+
+        if self.ip.endswith(".0.1") or self.ip.endswith(".1.1"):
+            return True
+
+        return False
+
+    def turnOn(self, forgive=False):
+        """ FUTURE  """
+        _who = self.who + "turnOn():"
+        v2_print(_who, "Turn On Router:", self.ip)
+
+        if forgive:
+            pass
+
+        self.powerStatus = "ON"  # Can be "ON", "OFF" or "?"
+        return self.powerStatus  # Really it is "AWAKE"
+
+    def turnOff(self, forgive=False):
+        """ FUTURE  """
+        _who = self.who + "turnOff():"
+        v2_print(_who, "Turn Off Router:", self.ip)
+
+        if forgive:
+            pass
+
+        self.powerStatus = "OFF"  # Can be "ON", "OFF" or "?"
+        return self.powerStatus  # Really it is "SLEEP"
+
+    def getPower(self, forgive=False):
+        """ The computer is always "ON" """
+
+        _who = self.who + "getPower():"
+        v2_print(_who, "Test if device is powered on:", self.ip)
+
+        if forgive:
+            pass
+
+        self.powerStatus = "ON"
+        return self.powerStatus
+
+
 class Globals(DeviceCommonSelf):
     """ Globals
 
@@ -335,10 +523,14 @@ class Globals(DeviceCommonSelf):
     """
 
     def __init__(self):
-        """ DeviceCommonSelf(): Variables used by all classes
-            Stored in ~/.local/share/hom/config.json
+        """ Globals(): Global variables for HomA. Traditional "GLOBAL_VALUE = 1"
+            is mapped to "self.dictGlobals['GLOBAL_VALUE'] = 1".
+
+            Stored in ~/.local/share/homa/config.json
+
             After adding new dictionary field, remove the config.json file and
-            restart HomA.
+            restart HomA. Then a new default config.json file will created.
+
         """
         DeviceCommonSelf.__init__(self, "Globals().")  # Define self.who
 
@@ -405,6 +597,7 @@ class Globals(DeviceCommonSelf):
             "DESKTOP": 100,  # Desktop Computer, Tower, NUC, Raspberry Pi, etc.
             "LAPTOP_B": 110,  # Laptop base (CPU, GPU, Keyboard, Fans, Ports, etc.)
             "LAPTOP_D": 120,  # Laptop display (Can be turned on/off separate from base)
+            "ROUTER_M": 200,  # Router Modem
 
             "SUDO_PASSWORD": None,  # Sudo password required for laptop backlight
             # 2025-01-04 TODO: get backlight with runCommand()
@@ -435,6 +628,13 @@ class Globals(DeviceCommonSelf):
                     ((s[0][0], s[0][1], s[0][2]), s[1])
             except (TypeError, IndexError):  # No color saved
                 self.dictGlobals['LED_LIGHTS_COLOR'] = None
+
+            try:
+                s = self.dictGlobals['ROUTER_M']
+                print("Found GLO['ROUTER_M']:", GLO['ROUTER_M'])
+            except KeyError:
+                self.dictGlobals['ROUTER_M'] = 200  # TODO: 201 = Cable Modem Router
+                print("Create GLO['ROUTER_M']:", GLO['ROUTER_M'])
 
             ''' Decrypt SUDO PASSWORD '''
             with warnings.catch_warnings():
@@ -629,7 +829,9 @@ class Globals(DeviceCommonSelf):
              "Laptop base (CPU, GPU, Keyboard, Fans, Ports, etc.)"),
             ("LAPTOP_D", 7, RO, INT, INT, 3, DEC, MIN, MAX, CB,
              'Laptop display (backlight can be turned\n'
-             'on/off separately from laptop base)')
+             'on/off separately from laptop base)'),
+            ("ROUTER_M", 7, RO, INT, INT, 3, DEC, MIN, MAX, CB,
+             "Router connecting local network to global internet")
         ]
 
         help_id    = "https://www.pippim.com/programs/homa.html#"  # same as g.HELP_URL
@@ -1506,6 +1708,9 @@ class NetworkInfo(DeviceCommonSelf):
         if test_one(SmartPlugHS100):
             return instance
 
+        if test_one(Router):
+            return instance
+
         if test_one(Computer):
             return instance
 
@@ -2302,7 +2507,7 @@ List of devices attached
             v1_print(_who, "TCL Google Android TV dependencies are not installed.")
 
     def Connect(self, forgive=False):
-        """ Wakeonlan and Connect to TCL / Google Android TV
+        """ Wakeonlan and Connect to TCL / Google Android TV in a loop until isDevice().
             Called on startup. Also called from turnOff() and turnOn().
 
         DEBUGGING:
@@ -3900,7 +4105,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         else:
             self.view_menu.entryconfig("Breathing stats", state=tk.DISABLED)
 
-        # If one view is running, disable all of them from starting.
+        # If one child view is running, disable all child views from starting.
         if self.event_scroll_active:
             self.view_menu.entryconfig("Bluetooth devices", state=tk.DISABLED)
             self.view_menu.entryconfig("Discovery timings", state=tk.DISABLED)
@@ -6013,6 +6218,8 @@ _tkinter.TclError: invalid command name ".140052547996200.140052547535360"
             photo = img.tk_image("laptop_b.jpg", 300, 180)
         elif type_code == GLO['LAPTOP_D']:  # Laptop Display image
             photo = img.tk_image("laptop_d.jpg", 300, 180)
+        elif type_code == GLO['ROUTER_M']:  # Laptop Display image
+            photo = img.tk_image("router_m.png", 300, 180)
         else:
             v0_print(_who, "Unknown 'type_code':", type_code)
             photo = None
@@ -6514,7 +6721,11 @@ def v3_print(*args, **kwargs):
 
 def discover(update=False, start=None, end=None):
     """ Test arp devices for device type using .isDevice() by mac address.
+        Called from mainline and app.Rediscover()
 
+        Before calling use ni = NetworkInfo() to create ni.arp_dicts[{}, {}...]
+        app.Rediscover() uses rd = NetworkInfo() to create rd.arp_dicts
+        
         :param update: If True, update ni.arp_dicts entry with type_code
         :param start: ni.arp_dicts starting index for loop
         :param end: ni.arp_dicts ending index (ends just before passed value)
@@ -6627,7 +6838,7 @@ def open_files():
         try:
             type_code = arp['type_code']
         except KeyError:
-            continue  # This device isn't recognized as actionable
+            continue  # This device wasn't recognized by HomA, perhaps a smart phone?
 
         ni.discovered.append(arp)  # Add discovered device that can be instantiated
 
@@ -6645,6 +6856,8 @@ def open_files():
             inst = Computer(arp['mac'], arp['ip'], arp['name'], arp['alias'])
         elif type_code == GLO['LAPTOP_D']:  # Laptop Display image
             inst = LaptopDisplay(arp['mac'], arp['ip'], arp['name'], arp['alias'])
+        elif type_code == GLO['ROUTER_M']:  # Router Modem image
+            inst = Router(arp['mac'], arp['ip'], arp['name'], arp['alias'])
         else:
             v0_print(_who, "Data corruption. Unknown type_code:", type_code)
             return
