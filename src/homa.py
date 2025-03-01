@@ -40,6 +40,18 @@ warnings.filterwarnings("ignore", "ResourceWarning")  # PIL python 3 unclosed fi
 
     Gatttool REQUIRES:
     python(3)-serial
+
+    2025-03-01 LONG TERM:
+        TODO: Sensors: Add average CPU Mhz and Load %.
+                       Add Top 20 programs with Top 3 displayed.
+              Display volume level changes with lib-notify (tvpowered).
+              Suspend all and resume all (tvpowered).
+              Dimmer (movie.sh) features where wakeup is based on mouse
+                passing over monitor for five seconds.
+              xrandr monitor details - geometry & resolution.
+              mmm features - track window geometry every minute.
+              eyesome interface for functions needing sudo permissions.
+
 '''
 
 ''' check configuration. '''
@@ -134,7 +146,7 @@ except NameError:  # name 'reload' is not defined
 
 # Vendor libraries preinstalled in subdirectories (ttkwidgets not used)
 import trionesControl.trionesControl as tc  # Bluetooth LED Light strips wrapper
-import pygatt  # Bluetooth Low Energy (BLE) communication
+import pygatt  # Bluetooth Low Energy (BLE) low-level communication
 import pygatt.exceptions
 
 # Pippim libraries
@@ -337,7 +349,7 @@ class Router(DeviceCommonSelf):
         self.name = name  # Hitronhub.home
         self.alias = alias  # Admin
 
-        self.requires = ['ip', 'ifconfig']
+        self.requires = ['nmcli', 'ifconfig', 'sudo', 'systemctl']
         self.installed = []
         self.CheckDependencies(self.requires, self.installed)
         v2_print(self.who, "Dependencies:", self.requires)
@@ -351,6 +363,8 @@ class Router(DeviceCommonSelf):
 
         self.type = "Router"
         self.type_code = GLO['ROUTER_M']
+
+        self.app = None  # Set to Application() to call app.getSudoPassword()
 
         self.ether_name = ""  # eth0, enp59s0, etc
         self.ether_mac = ""  # aa:bb:cc:dd:ee:ff
@@ -369,11 +383,16 @@ class Router(DeviceCommonSelf):
         _who = self.who + "Interface():"
         v2_print(_who, "Test if Ethernet and/or WiFi interface is up.")
 
-        if not self.CheckInstalled('ip'):
+        if not self.CheckInstalled('nmcli'):
             return
 
-        command_line_list = ["ip", "addr"]
+        command_line_list = ["nmcli", "con", "show"]
         event = self.runCommand(command_line_list, _who, forgive=forgive)
+        ''' $ nmcli con show
+NAME                UUID                                  TYPE             DEVICE  
+Wired connection 1  378122bb-ad44-3ddd-a616-c93e1bf0f828  802-3-ethernet   enp59s0 
+SHAW-8298B0         61019051-72db-4fef-ae01-759f1b4dc568  802-11-wireless  --      
+SHAW-8298B0-5G      bfce8167-18fc-4646-bec3-868c097a3f4a  802-11-wireless  -- '''
 
         if not event['returncode'] == 0:
             if forgive is False:
@@ -382,20 +401,6 @@ class Router(DeviceCommonSelf):
 
         interface = event['output'].splitlines()
 
-        # noinspection SpellCheckingInspection
-        ''' `ip addr` output:
-1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
-    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
-    inet 127.0.0.1/8 scope host lo
-       valid_lft forever preferred_lft forever
-2: enp59s0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq state UP group default qlen 1000
-    link/ether 28:f1:0e:2a:1a:ed brd ff:ff:ff:ff:ff:ff
-    inet 192.168.0.12/24 brd 192.168.0.255 scope global dynamic enp59s0
-       valid_lft 598085sec preferred_lft 598085sec
-3: wlp60s0: <BROADCAST,MULTICAST> mtu 1500 qdisc mq state DOWN group default qlen 1000
-    link/ether 9c:b6:d0:10:37:f7 brd ff:ff:ff:ff:ff:ff
-        '''
-
         name = mac = ip = ""
         self.ether_name = ""  # eth0, enp59s0, etc
         self.ether_mac = ""  # aa:bb:cc:dd:ee:ff
@@ -403,46 +408,6 @@ class Router(DeviceCommonSelf):
         self.wifi_name = ""  # wlan0, wlp60s0, etc
         self.wifi_mac = ""  # aa:bb:cc:dd:ee:ff
         self.wifi_ip = ""  # 192.168.0.999
-
-        def parse_interface():
-            """ Process last group of name, mac and ip """
-            if ip and ip.startswith("127"):
-                return  # local host "127.0.0.1" is not useful
-
-            if name and name.startswith("e"):  # Ethernet
-                self.ether_name = name  # eth0, enp59s0, etc
-                self.ether_mac = mac  # aa:bb:cc:dd:ee:ff
-                self.ether_ip = ip  # 192.168.0.999
-
-            elif name and name.startswith("w"):  # WiFi
-                self.wifi_name = name  # eth0, enp59s0, etc
-                self.wifi_mac = mac  # aa:bb:cc:dd:ee:ff
-                self.wifi_ip = ip  # 192.168.0.999
-            else:
-                v0_print(_who, "Error parsing name:", name, "mac:", mac, "ip:", ip)
-
-        for line in interface:
-
-            parts = line.split(":")
-            if len(parts) == 3:
-                if not name == "":  # First time skip blank name
-                    parse_interface()
-                name = parts[1].strip()
-                mac = ip = ""
-                continue
-
-            if not mac:
-                r = re.search("(?:[0-9a-fA-F]:?){12}", line)
-                if r:
-                    mac = r.group(0)
-
-            elif not ip:
-                r = re.search("[0-9]+(?:\.[0-9]+){3}", line)
-                if r:
-                    ip = r.group(0)
-                    # print("\n name:", name, "mac:", mac, "ip:", ip, "\n")
-
-        parse_interface()
         v3_print(_who, "self.ether_name:", self.ether_name, " | self.ether_mac:",
                  self.ether_mac, " | self.ether_ip:", self.ether_ip)
         v3_print(_who, "self.wifi_name :", self.wifi_name, " | self.wifi_mac :",
@@ -467,7 +432,7 @@ class Router(DeviceCommonSelf):
 
         """
         _who = self.who + "isDevice():"
-        v2_print(_who, "Test if device is Router:", self.ip)
+        v2_print(_who, "Test if device is a Router:", self.ip)
 
         if forgive:
             pass
@@ -478,38 +443,140 @@ class Router(DeviceCommonSelf):
         return False
 
     def turnOn(self, forgive=False):
-        """ FUTURE  """
+        """ Simulate turning on router using:
+            sudo systemctl start NetworkManager.service
+        """
         _who = self.who + "turnOn():"
         v2_print(_who, "Turn On Router:", self.ip)
 
         if forgive:
-            pass
+            pass  # Dummy argument for uniform instance parameter list
 
-        self.powerStatus = "ON"  # Can be "ON", "OFF" or "?"
-        return self.powerStatus  # Really it is "AWAKE"
+        self.setPower("ON", forgive=forgive)
+        return self.powerStatus
 
     def turnOff(self, forgive=False):
-        """ FUTURE  """
+        """ Simulate turning off router using:
+            sudo systemctl stop NetworkManager.service
+        """
         _who = self.who + "turnOff():"
         v2_print(_who, "Turn Off Router:", self.ip)
 
         if forgive:
-            pass
+            pass  # Dummy argument for uniform instance parameter list
 
-        self.powerStatus = "OFF"  # Can be "ON", "OFF" or "?"
-        return self.powerStatus  # Really it is "SLEEP"
+        self.setPower("OFF", forgive=forgive)
+        return self.powerStatus
 
     def getPower(self, forgive=False):
-        """ The computer is always "ON" """
+        """ Return "ON", "OFF" or "?" """
 
         _who = self.who + "getPower():"
-        v2_print(_who, "Test if device is powered on:", self.ip)
+        v2_print(_who, "Test if router is powered on:", self.ip)
 
         if forgive:
-            pass
+            pass  # Dummy argument for uniform instance parameter list
 
-        self.powerStatus = "ON"
+        command_line_list = ["systemctl", "is-active", "--quiet", "NetworkManager.service"]
+        event = self.runCommand(command_line_list, _who, forgive=forgive)
+
+        self.powerStatus = "ON" if event['returncode'] == 0 else "OFF"  # status code 3
+        #print(_who, "event['returncode']:", event['returncode'])
         return self.powerStatus
+
+    def setPower(self, status, forgive=False):
+        """ Set Laptop Display Backlight Power 'OFF' or 'ON'
+            If forgive=True then don't report pipe.returncode != 0
+        """
+
+        _who = self.who + "setPower(" + status + "):"
+        v2_print(_who, "Set Router Power to:", status)
+
+        # Sudo password required for powering laptop backlight on/off
+        if GLO['SUDO_PASSWORD'] is None:
+            GLO['SUDO_PASSWORD'] = self.app.GetPassword()
+            self.app.enableDropdown()
+            if GLO['SUDO_PASSWORD'] is None:
+                return "?"  # Cancel button (256) or escape or 'X' on window decoration (64512)
+
+        if status == "ON":
+            mode = "start"
+        elif status == "OFF":
+            mode = "stop"
+        else:
+            V0_print(_who, "Invalid status (not 'ON' or 'OFF'):", status)
+            return
+
+        #command_line_str = "echo PASSWORD | sudo -S systemctl start NetworkManager"
+
+        self.cmdStart = time.time()
+        cmd1 = sp.Popen(['echo', GLO['SUDO_PASSWORD']], stdout=sp.PIPE)
+        pipe = sp.Popen(['sudo', '-S', 'systemctl', mode, 'NetworkManager.service'],
+                        stdin=cmd1.stdout, stdout=sp.PIPE, stderr=sp.PIPE)
+
+        self.cmdCaller = _who
+        who = self.cmdCaller + " logEvent():"
+        self.cmdCommand = ["echo", "GLO['SUDO_PASSWORD']", "|", "sudo", "-S",
+                           'systemctl', mode, "NetworkManager.service"]
+        self.cmdString = ' '.join(self.cmdCommand)
+        self.cmdOutput = pipe.stdout.read().decode().strip()
+        self.cmdError = pipe.stdout.read().decode().strip()
+        self.cmdReturncode = pipe.returncode
+        self.cmdReturncode = 0 if self.cmdReturncode is None else self.cmdReturncode
+        self.cmdDuration = time.time() - self.cmdStart
+        self.logEvent(who, forgive=forgive, log=True)
+        self.powerStatus = status
+
+        ''' Running `nmcli networking off` turns smart plugs off. Try rediscover now:
+        
+Traceback (most recent call last):
+  File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 1540, in __call__
+    return self.func(*args)
+  File "./homa.py", line 4049, in <lambda>
+    command=lambda: self.Rediscover(auto=False))
+  File "./homa.py", line 5242, in Rediscover
+    rd = NetworkInfo()  # rd. class is newer instance ni. class
+  File "./homa.py", line 1492, in __init__
+    name = parts[0]  # Can be "unknown" when etc/self.hosts has no details
+IndexError: list index out of range
+Exception in Tkinter callback
+Traceback (most recent call last):
+  File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 1540, in __call__
+    return self.func(*args)
+  File "./homa.py", line 4579, in <lambda>
+    command=lambda: self.breatheColors(cr))
+  File "./homa.py", line 4716, in breatheColors
+    resp = cr.inst.breatheColors()
+  File "./homa.py", line 3482, in breatheColors
+    if not processStep():
+  File "./homa.py", line 3475, in processStep
+    refresh(sleep_ms)  # Normal / Fast Refresh in loop
+  File "./homa.py", line 3399, in refresh
+    self.app.refreshApp(tk_after=tk_after)
+  File "./homa.py", line 4856, in refreshApp
+    self.Rediscover(auto=True)  # Check for new network devices
+  File "./homa.py", line 5242, in Rediscover
+    rd = NetworkInfo()  # rd. class is newer instance ni. class
+  File "./homa.py", line 1492, in __init__
+    name = parts[0]  # Can be "unknown" when etc/self.hosts has no details
+IndexError: list index out of range
+Traceback (most recent call last):
+  File "./homa.py", line 7005, in <module>
+    main()
+  File "./homa.py", line 6999, in main
+    app = Application(root)  # Treeview of ni.discovered[{}, {}...{}]
+  File "./homa.py", line 3995, in __init__
+    while self.refreshApp():  # Run forever until quit
+  File "./homa.py", line 4856, in refreshApp
+    self.Rediscover(auto=True)  # Check for new network devices
+  File "./homa.py", line 5242, in Rediscover
+    rd = NetworkInfo()  # rd. class is newer instance ni. class
+  File "./homa.py", line 1492, in __init__
+    name = parts[0]  # Can be "unknown" when etc/self.hosts has no details
+IndexError: list index out of range
+
+       
+        '''
 
 
 class Globals(DeviceCommonSelf):
@@ -606,8 +673,8 @@ class Globals(DeviceCommonSelf):
             "BACKLIGHT_OFF": "4",  # ... will control laptop display backlight power On/Off.
             # Power all On/Off controls
             "POWER_OFF_CMD_LIST": ["systemctl", "suspend"],  # Run "Turn Off" for Computer()
-            "POWER_ALL_EXCL_LIST": [100, 110, 120],  # Exclude when powering "All" to "ON" / "OFF"
-                                                     # 100=DESKTOP, 110=LAPTOP_B, 120=LAPTOP_D
+            "POWER_ALL_EXCL_LIST": [100, 110, 120, 200],  # Exclude when powering "All"
+            # to "ON" / "OFF" 100=DESKTOP, 110=LAPTOP_B, 120=LAPTOP_D, 200=ROUTER_M
         }
 
     def openFile(self):
@@ -629,12 +696,13 @@ class Globals(DeviceCommonSelf):
             except (TypeError, IndexError):  # No color saved
                 self.dictGlobals['LED_LIGHTS_COLOR'] = None
 
-            try:
-                s = self.dictGlobals['ROUTER_M']
-                print("Found GLO['ROUTER_M']:", GLO['ROUTER_M'])
-            except KeyError:
-                self.dictGlobals['ROUTER_M'] = 200  # TODO: 201 = Cable Modem Router
-                print("Create GLO['ROUTER_M']:", GLO['ROUTER_M'])
+            # TEMPLATE TO ADD A NEW FIELD TO DICTIONARY
+            #try:
+            #    _s = self.dictGlobals['ROUTER_M']
+            #    print("Found GLO['ROUTER_M']:", GLO['ROUTER_M'])
+            #except KeyError:
+            #    self.dictGlobals['ROUTER_M'] = 200  # 2025-02-22 New field
+            #    print("Create GLO['ROUTER_M']:", GLO['ROUTER_M'])
 
             ''' Decrypt SUDO PASSWORD '''
             with warnings.catch_warnings():
@@ -862,12 +930,14 @@ class Globals(DeviceCommonSelf):
             try:
                 new_list = json.loads(new_value)
             except ValueError:
-                v0_print("Bad list passed:", key, new_value)
+                v0_print("Bad list passed:", key, new_value, type(new_value))
                 return False
 
             if key == "POWER_ALL_EXCL_LIST":  # List longer for future device types
-                if not set(new_list).issubset([10, 20, 30, 40, 50, 60, 70, 100, 110, 120]):
-                    v0_print("Bad list passed:", key, new_value)
+                subset_list = [10, 20, 30, 40, 50, 60, 70, 100, 110, 120, 200]
+                if not set(new_list).issubset(subset_list):
+                    v0_print(_who, "POWER_ALL bad value:", key, new_value)
+                    v0_print("Not in list:", subset_list)
                     return False
 
             new_value = new_list  # Passed all tests
@@ -912,9 +982,6 @@ class Computer(DeviceCommonSelf):
         self.redshift_active = False  # 2024-11-15 Not supported yet.
         self.eyesome_active = False  # Pippim color temperature & brightness.
         self.sunlight_percent = 0  # Percentage of sunlight, 0 = nighttime.
-        self.dimmer_active = False  # Pippim 2 out of 3 monitors dimmer.
-        self.flux_active = False  # 2024-11-15 Not supported yet.
-        self.sct_active = False  # 2024-11-15 Not supported yet.
 
         self.requires = ['ip', 'getent', 'hostnamectl', 'gsettings', 'cut',
                          'get-edid', 'parse-edid', 'xrandr']
@@ -937,8 +1004,8 @@ class Computer(DeviceCommonSelf):
             # "tablet", "handset", "watch", "embedded", "vm" and "container"
 
         if self.chassis == "laptop":
-            if name:  # name can be None
-                self.name = name + " (Base)"  # There will be two rows, one 'Display'
+            if self.name is not None:  # self.name can be passed as None
+                self.name += " (Base)"  # There will be two rows, the other is ' (Display)'
             self.type = "Laptop Computer"
             self.type_code = GLO['LAPTOP_B']
         else:
@@ -946,7 +1013,7 @@ class Computer(DeviceCommonSelf):
             self.type_code = GLO['DESKTOP']
         v2_print(self.who, "chassis:", self.chassis, " | type:", self.type)
 
-        # When reading /etc/hosts match from MAC address if available
+        # /etc/hosts is read for alias matching on MAC address if available
         # or Static IP address if MAC address not available.
         if self.name is None:
             self.name = ""  # Computer name from /etc/hosts
@@ -960,32 +1027,31 @@ class Computer(DeviceCommonSelf):
         self.wifi_mac = ""  # aa:bb:cc:dd:ee:ff
         self.wifi_ip = ""  # 192.168.0.999
 
+        # noinspection SpellCheckingInspection
+        ''' `socket` doesn't serve any useful purpose
         import socket
         _socks = [i[4][0] for i in socket.getaddrinfo(socket.gethostname(), None)]
-        #print("socks:", _socks)  # socks: ['127.0.1.1', '127.0.1.1', '127.0.1.1',
+        print("socks:", _socks)  
+        # socks: ['127.0.1.1', '127.0.1.1', '127.0.1.1',
         # '192.168.0.12', '192.168.0.12', '192.168.0.12',
         # '192.168.0.10', '192.168.0.10', '192.168.0.10']
-
-        self.Interface()  # Initial values
-
         '''
-        Convert string to bytes
-            Python2:
-            
-            s = "ABCD"
-            b = bytearray()
-            b.extend(s)
-            
-            Python3:
-            
-            s = "ABCD"
-            b = bytearray()
-            b.extend(map(ord, s))
-        '''
+
+        self.Interface()  # Initial values using `ip a show dynamic`
+
         self.crypto_key = self.generateCryptoKey()
         v3_print(_who, "BEFORE self.crypto_key:", self.crypto_key, "\n  length:",
                  len(self.crypto_key), type(self.crypto_key))
         b = bytearray()
+        ''' Convert string to bytes
+            Python2:
+                s = "ABCD"
+                b = bytearray()
+                b.extend(s)
+            Python3:
+                s = "ABCD"
+                b = bytearray()
+                b.extend(map(ord, s)) '''
         b.extend(self.crypto_key)
         self.crypto_key = b
         v3_print(_who, " AFTER self.crypto_key:", self.crypto_key, "\n  length:",
@@ -1000,10 +1066,18 @@ class Computer(DeviceCommonSelf):
         _who = self.who + "Interface():"
         v2_print(_who, "Test if Ethernet and/or WiFi interface is up.")
 
-        if not self.CheckInstalled('ip'):
-            return
+        name = mac = ip = ""
+        self.ether_name = ""  # eth0, enp59s0, etc
+        self.ether_mac = ""  # aa:bb:cc:dd:ee:ff
+        self.ether_ip = ""  # 192.168.0.999
+        self.wifi_name = ""  # wlan0, wlp60s0, etc
+        self.wifi_mac = ""  # aa:bb:cc:dd:ee:ff
+        self.wifi_ip = ""  # 192.168.0.999
 
-        command_line_list = ["ip", "addr"]
+        if not self.CheckInstalled('ip'):
+            return ""  # Return null string = False
+
+        command_line_list = ["ip", "a", "show", "dynamic"]
         event = self.runCommand(command_line_list, _who, forgive=forgive)
 
         if not event['returncode'] == 0:
@@ -1014,32 +1088,17 @@ class Computer(DeviceCommonSelf):
         interface = event['output'].splitlines()
 
         # noinspection SpellCheckingInspection
-        ''' `ip addr` output:
-1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
-    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
-    inet 127.0.0.1/8 scope host lo
-       valid_lft forever preferred_lft forever
+        ''' CONCISE ALL METHOD: $ ip a show dynamic
 2: enp59s0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq state UP group default qlen 1000
     link/ether 28:f1:0e:2a:1a:ed brd ff:ff:ff:ff:ff:ff
     inet 192.168.0.12/24 brd 192.168.0.255 scope global dynamic enp59s0
-       valid_lft 598085sec preferred_lft 598085sec
+       valid_lft 588250sec preferred_lft 588250sec
 3: wlp60s0: <BROADCAST,MULTICAST> mtu 1500 qdisc mq state DOWN group default qlen 1000
     link/ether 9c:b6:d0:10:37:f7 brd ff:ff:ff:ff:ff:ff
         '''
 
-        name = mac = ip = ""
-        self.ether_name = ""  # eth0, enp59s0, etc
-        self.ether_mac = ""  # aa:bb:cc:dd:ee:ff
-        self.ether_ip = ""  # 192.168.0.999
-        self.wifi_name = ""  # wlan0, wlp60s0, etc
-        self.wifi_mac = ""  # aa:bb:cc:dd:ee:ff
-        self.wifi_ip = ""  # 192.168.0.999
-
-        def parse_interface():
+        def tally_found():
             """ Process last group of name, mac and ip """
-            if ip and ip.startswith("127"):
-                return  # local host "127.0.0.1" is not useful
-
             if name and name.startswith("e"):  # Ethernet
                 self.ether_name = name  # eth0, enp59s0, etc
                 self.ether_mac = mac  # aa:bb:cc:dd:ee:ff
@@ -1055,25 +1114,25 @@ class Computer(DeviceCommonSelf):
         for line in interface:
 
             parts = line.split(":")
-            if len(parts) == 3:
+            if len(parts) == 3:  # Heading line "9: NAME: blah blah blah"
                 if not name == "":  # First time skip blank name
-                    parse_interface()
+                    tally_found()
                 name = parts[1].strip()
                 mac = ip = ""
                 continue
 
-            if not mac:
+            if not mac:  # First detail line has MAC address
                 r = re.search("(?:[0-9a-fA-F]:?){12}", line)
                 if r:
                     mac = r.group(0)
 
-            elif not ip:
+            elif not ip:  # Optional second detail line has IP address
                 r = re.search("[0-9]+(?:\.[0-9]+){3}", line)
                 if r:
                     ip = r.group(0)
-                    # print("\n name:", name, "mac:", mac, "ip:", ip, "\n")
 
-        parse_interface()
+        tally_found()  # Process last group of interface lines fields found.
+
         v3_print(_who, "self.ether_name:", self.ether_name, " | self.ether_mac:",
                  self.ether_mac, " | self.ether_ip:", self.ether_ip)
         v3_print(_who, "self.wifi_name :", self.wifi_name,  " | self.wifi_mac :",
@@ -1098,7 +1157,7 @@ class Computer(DeviceCommonSelf):
 
         """
         _who = self.who + "isDevice():"
-        v2_print(_who, "Test if device is Computer:", self.ip)
+        v2_print(_who, "Test if device is a Computer:", self.ip)
 
         if forgive:
             pass
@@ -1138,8 +1197,10 @@ class Computer(DeviceCommonSelf):
         command_line_list = GLO['POWER_OFF_CMD_LIST']  # systemctl suspend
         v0_print(_who, ext.ch(), "Suspend command:", command_line_list)
         _event = self.runCommand(command_line_list, _who, forgive=forgive)
-        # NOTE: this point shouldn't be reached until system resumes
-        v0_print(_who, ext.ch(), "Command finished.")
+        # NOTE: this point is still reached because suspend pauses a bit
+        # v0_print(_who, ext.ch(), "Command finished.")
+        # Computer().turnOff(): 13:27:45.472045 Suspend command: [u'systemctl', u'suspend']
+        # Computer().turnOff(): 13:27:45.551357 Command finished.
 
         self.powerStatus = "OFF"  # Can be "ON", "OFF" or "?"
         return self.powerStatus  # Really it is "SLEEP"
@@ -1148,7 +1209,7 @@ class Computer(DeviceCommonSelf):
         """ The computer is always "ON" """
 
         _who = self.who + "getPower():"
-        v2_print(_who, "Test if device is powered on:", self.ip)
+        v2_print(_who, "Test if computer is powered on:", self.ip)
 
         if forgive:
             pass
@@ -1311,8 +1372,6 @@ class NetworkInfo(DeviceCommonSelf):
         else:
             devices = event['output'].split("\n")
 
-        #print("TEST devices:", devices)
-        #for device in os.popen('arp -a'):  # Generates python 3 error unclosed resource
         for device in devices:
             self.devices.append(device)
             v3_print(device, end="")
@@ -1345,7 +1404,7 @@ class NetworkInfo(DeviceCommonSelf):
             if result:
                 # 192.168.0.16    SONY.WiFi android-47cd abb50f83a5ee 18:4F:32:8D:AA:97
                 parts = host.split()
-                name = parts[1]  # Can be "unknown" when etc/self.hosts has no details
+                name = parts[1]  # Can be "unknown" when etc/hosts has no details
                 alias = ' '.join(parts[2:-1])
                 ip = parts[0]
                 # The above Android device has two self.host_macs:
@@ -1368,7 +1427,7 @@ class NetworkInfo(DeviceCommonSelf):
                         cp.wifi_ip = ip
             else:
                 parts = host.split()
-                name = parts[1]  # Can be "unknown" when etc/self.hosts has no details
+                name = parts[1]  # Can be "unknown" when /etc/hosts has no details
                 alias = ' '.join(parts[2:-1])
                 ip = parts[0]
                 # No MAC
@@ -1408,7 +1467,7 @@ class NetworkInfo(DeviceCommonSelf):
         v3_print(device, end="")
         #print(device)
 
-        # Add optional laptop WiFi that arp never reports
+        # Add optional laptop WiFi that arp never reports when Wired connection
         if cp.chassis == "laptop":
             ip = cp.wifi_ip
             if not ip:
@@ -1803,7 +1862,7 @@ class LaptopDisplay(DeviceCommonSelf):
 
         """
         _who = self.who + "isDevice():"
-        v2_print(_who, "Test if device is Laptop Display:", self.ip)
+        v2_print(_who, "Test if device is a Laptop Display:", self.ip)
 
         if forgive:
             pass  # Dummy argument for uniform instance parameter list
@@ -1835,7 +1894,7 @@ class LaptopDisplay(DeviceCommonSelf):
         if forgive:
             pass  # Dummy argument for uniform instance parameter list
 
-        self.SetPower("ON", forgive=forgive)
+        self.setPower("ON", forgive=forgive)
         return self.powerStatus
 
     def turnOff(self, forgive=False):
@@ -1858,14 +1917,14 @@ class LaptopDisplay(DeviceCommonSelf):
         if forgive:
             pass  # Dummy argument for uniform instance parameter list
 
-        self.SetPower("OFF", forgive=forgive)
+        self.setPower("OFF", forgive=forgive)
         return self.powerStatus
 
     def getPower(self, forgive=False):
         """ Return "ON", "OFF" or "?" """
 
         _who = self.who + "getPower():"
-        v2_print(_who, "Test if device is powered on:", self.ip)
+        v2_print(_who, "Test if Laptop Display is powered on:", self.ip)
         if forgive:
             pass  # Dummy argument for uniform instance parameter list
 
@@ -1884,12 +1943,12 @@ class LaptopDisplay(DeviceCommonSelf):
 
         return self.powerStatus
 
-    def SetPower(self, status, forgive=False):
+    def setPower(self, status, forgive=False):
         """ Set Laptop Display Backlight Power 'OFF' or 'ON'
             If forgive=True then don't report pipe.returncode != 0
         """
 
-        _who = self.who + "SetPower(" + status + "):"
+        _who = self.who + "setPower(" + status + "):"
         v2_print(_who, "Set Laptop Display Power to:", status)
 
         # Sudo password required for powering laptop backlight on/off
@@ -1905,7 +1964,7 @@ class LaptopDisplay(DeviceCommonSelf):
         elif status == "OFF":
             echo = GLO['BACKLIGHT_OFF']
         else:
-            V0_print(_who, "Invalid status (not 'ON' or 'OFF':", status)
+            V0_print(_who, "Invalid status (not 'ON' or 'OFF'):", status)
             return
 
         #command_line_str = "echo PASSWORD | sudo -S echo X | sudo tee BL_POWER"
@@ -1964,7 +2023,7 @@ class SmartPlugHS100(DeviceCommonSelf):
             If forgive=True then don't report pipe.returncode != 0
         """
         _who = self.who + "isDevice():"
-        v2_print(_who, "Test if device is TP-Link Kasa HS100 Smart Plug:", self.ip)
+        v2_print(_who, "Test if device is a TP-Link Kasa HS100 Smart Plug:", self.ip)
 
         Reply = self.getPower(forgive=forgive)  # ON, OFF or N/A
         if Reply == "N/A":
@@ -1997,7 +2056,7 @@ class SmartPlugHS100(DeviceCommonSelf):
             v2_print(_who, self.ip, "- is already turned on. Skipping")
             return "ON"
 
-        self.SetPower("ON")
+        self.setPower("ON")
         v2_print(_who, self.ip, "- Smart Plug turned 'ON'")
         return "ON"
 
@@ -2018,7 +2077,7 @@ class SmartPlugHS100(DeviceCommonSelf):
             v2_print(_who, self.ip, "- is already turned off. Skipping")
             return "OFF"
 
-        self.SetPower("OFF")
+        self.setPower("OFF")
         v2_print(_who, self.ip, "- Smart Plug turned 'OFF'")
         return "OFF"
 
@@ -2060,13 +2119,13 @@ class SmartPlugHS100(DeviceCommonSelf):
         self.powerStatus = "?"  # Can be "ON", "OFF" or "?"
         return self.powerStatus
 
-    def SetPower(self, status):
+    def setPower(self, status):
         """ Set Power to status, 'OFF' or 'ON'
             Note hs100.sh requires lower() case
             If forgive=True then don't report pipe.returncode != 0
         """
 
-        _who = self.who + "SetPower(" + status + "):"
+        _who = self.who + "setPower(" + status + "):"
         v2_print(_who, "Turn TP-Link Kasa HS100 Smart Plug '" + status + "'")
 
         command_line_list = \
@@ -2438,7 +2497,7 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/audio/v1_0/g
         """
 
         _who = self.who + "isDevice():"
-        v3_print(_who, "Test if device is Sony Bravia KDL TV:", self.ip)
+        v3_print(_who, "Test if device is a Sony Bravia KDL TV:", self.ip)
 
         Reply = self.getPower(forgive=forgive)
         # Copy and paste JSON strings from Sony website:
@@ -2683,7 +2742,7 @@ Application().Rediscover(): FOUND NEW INSTANCE or REDISCOVERED LOST INSTANCE:
         """
 
         _who = self.who + "isDevice():"
-        v2_print(_who, "Test if device is TCL Google Android TV:", self.ip)
+        v2_print(_who, "Test if device is a TCL Google Android TV:", self.ip)
 
         if timeout is None:
             timeout = GLO['ADB_CON_TIME']
@@ -3748,7 +3807,7 @@ $ ps aux | grep gatttool | grep -v grep | wc -l
         """
 
         _who = self.who + "isDevice():"
-        v2_print(_who, "Test if device is Bluetooth LED Light:", self.mac)
+        v2_print(_who, "Test if device is a Bluetooth LED Light:", self.mac)
 
         if forgive:
             pass  # Make pycharm happy
@@ -3762,7 +3821,8 @@ $ ps aux | grep gatttool | grep -v grep | wc -l
 class Application(DeviceCommonSelf, tk.Toplevel):
     """ tkinter main application window
         Dropdown menus File/Edit/View/Tools
-        Treeview with columns image, name/alias/IP,
+        Treeview with 3 columns: image+status, name+IP, alias+MAC+type
+        Button bar: Minimize, Sensors, Suspend, Help, Close
     """
 
     def __init__(self, master=None):
@@ -3778,23 +3838,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.bleSaveInst = None  # For breathing colors monitoring of the real inst
         self.bleScrollbox = None  # Assigned when self.breatheColors() is called.
         self.last_red = self.last_green = self.last_blue = 0  # Display when different.
-        self.bc = None  # NOT USED - circle image instance for current Breathing Color
-
-        ''' Future read-only display fields for .Config() screen 
-        v0_print("\n")
-        v0_print("g.USER:", g.USER)  # User ID, Name, GUID varies by platform
-        v0_print("g.USER_ID:", g.USER_ID)  # Numeric User ID in Linux
-        v0_print("g.HOME:", g.HOME)  # In Linux = /home/USER
-        v0_print("g.APPNAME:", g.APPNAME)  # Originally "mserve" Different for homa.py
-        v0_print("g.USER_CONFIG_DIR:", g.USER_CONFIG_DIR)  # /home/user/.config/mserve
-        v0_print("g.USER_DATA_DIR:", g.USER_DATA_DIR)  # /home/user/.local/share/mserve
-        v0_print("g.MSERVE_DIR:", g.MSERVE_DIR)   # /home/user/.config/mserve/ <- historically wrong suffix /
-        #                         # Bad name. It implies where mserve programs are
-        v0_print("g.PROGRAM_DIR:", g.PROGRAM_DIR)  # Directory where mserve.py is stored.
-        v0_print("g.TEMP_DIR:", g.TEMP_DIR)  # /tmp/ temporary files OR: /run/user/1000/ preferred
-        #                         # also with trailing '/' to make concatenating simpler
-        v0_print()
-        '''
 
         self.isActive = True  # Set False when exiting or suspending
         self.requires = ['arp', 'getent', 'timeout', 'curl', 'adb', 'hs100.sh', 'aplay',
@@ -3883,8 +3926,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.calculator = self.calc_top = self.dtb = None
 
         ''' Display cmdEvents (toolkit.CustomScrolledText) as child window 
-            Also used to display Bluetooth devices and Breathing stats 
-        '''
+            Also used to display Bluetooth devices and Breathing stats '''
         self.event_top = self.event_scroll_active = self.event_frame = None
         self.event_btn_frm = None
 
@@ -3909,7 +3951,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.usingDevicesTreeview = True  # Startup uses Devices Treeview
         self.buildButtonBar(self.sensors_btn_text)
 
-        # Dropdown Menu Bars after 'sm =' and buildButtonBar() sets button text
+        # Dropdown Menu Bars Set options DISABLED or NORMAL based on context
         self.enableDropdown()
 
         # Experiments to delay rediscover when there is GUI activity
@@ -3922,18 +3964,19 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         # Monitors and window positions when un-minimizing
         self.monitors = self.windows = []  # List of dictionaries
 
-        # Laptop Display needs to call .GetPassword() method in this Application()
-        # Assign this Application() instance to the LaptopDisplay() instance self.app
-        # Also assign to BLE LED Light Strip which calls ShowInfo
+        ''' Assign this Application() instance to network devices (inst.app) variable:
+                - Laptop Display() and Router() needs to call .GetPassword() method.
+                - BLE LED Light Strip() needs to call .ShowInfo() method.  '''
         for instance in ni.instances:
             inst = instance['instance']
-            if inst.type_code == GLO['LAPTOP_D']:
-                inst.app = self
+            if inst.type_code == GLO['LAPTOP_D'] or inst.type_code == GLO['ROUTER_M']:
+                inst.app = self  # calls sudo
             elif inst.type_code == GLO['BLE_LS']:
-                inst.app = self  # BluetoothLedLightStrip
+                inst.app = self  # BluetoothLedLightStrip calls app.ShowInfo()
                 ble.app = self  # For functions called from Dropdown menu
                 self.bleSaveInst = inst  # For breathing colors monitoring
 
+        ''' Polling and processing with refresh tkinter loop forever '''
         while self.refreshApp():  # Run forever until quit
             pass
 
@@ -3970,18 +4013,16 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         """ Build dropdown Menu bars: File, Edit, View & Tools """
 
         def ForgetPassword():
-            """ Clear sudo password for extreme caution """
-            GLO['SUDO_PASSWORD'] = None  # clear global password in homa
-            command_line_list = ["sudo", "-K"]  # clear password in linux
+            """ 'Tools' dropdown, 'Forget sudo password' option """
+            GLO['SUDO_PASSWORD'] = None  # clear global password in HomA
+            command_line_list = ["sudo", "-K"]  # clear password in Linux
             self.runCommand(command_line_list)
             self.enableDropdown()
 
         mb = tk.Menu(self)
         self.config(menu=mb)
 
-        ''' Option names are referenced for enabling and disabling.
-            Before changing an "option name", search "option name" occurrences. '''
-
+        ''' Full option name is referenced to enable and disable the option. '''
         # File Dropdown Menu
         self.file_menu = tk.Menu(mb, tearoff=0)
 
@@ -4055,7 +4096,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
     def enableDropdown(self):
         """ Called from build_lib_menu() and passed to self.playlists to call.
             Also passed with lcs.register_menu(self.enableDropdown)
-        :return: None """
+
+            Full option name is referenced to enable and disable the option. """
 
         if not self.isActive:
             return
@@ -4086,24 +4128,22 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.view_menu.entryconfig("Discovery timings", state=tk.NORMAL)
 
         # Enable options depending on Sensors Treeview or Devices Treeview mounted
-        if not self.usingDevicesTreeview:
-            # Sensors Treeview is displayed
+        if self.usingDevicesTreeview:  # Devices Treeview is displayed
+            self.view_menu.entryconfig("Network devices", state=tk.DISABLED)
+            self.view_menu.entryconfig("Sensors", state=tk.NORMAL)
+        else:  # Sensors Treeview is displayed
             self.view_menu.entryconfig("Sensors", state=tk.DISABLED)
             self.view_menu.entryconfig("Network devices", state=tk.NORMAL)
-        else:
-            # Devices Treeview is displayed
-            self.view_menu.entryconfig("Sensors", state=tk.NORMAL)
-            self.view_menu.entryconfig("Network devices", state=tk.DISABLED)
 
-        if GLO['EVENT_ERROR_COUNT'] != 0:
-            self.view_menu.entryconfig("Discovery errors", state=tk.NORMAL)
-        else:
+        if GLO['EVENT_ERROR_COUNT'] == 0:
             self.view_menu.entryconfig("Discovery errors", state=tk.DISABLED)
+        else:
+            self.view_menu.entryconfig("Discovery errors", state=tk.NORMAL)
 
         if self.bleSaveInst and self.bleSaveInst.already_breathing_colors:
-            self.view_menu.entryconfig("Breathing stats", state=tk.NORMAL)
-        else:
             self.view_menu.entryconfig("Breathing stats", state=tk.DISABLED)
+        else:
+            self.view_menu.entryconfig("Breathing stats", state=tk.NORMAL)
 
         # If one child view is running, disable all child views from starting.
         if self.event_scroll_active:
@@ -4126,7 +4166,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         self.suspend_btn['state'] = tk.NORMAL  # 2025-02-11 color was staying blue
 
-        ''' Is it ok to stop processing? - Make common method...'''
+        ''' Is it ok to stop processing? - Make common method... '''
         msg = None
         if self.dtb:  # Cannot Close when resume countdown timer is running.
             msg = "Countdown timer is running."
@@ -4187,19 +4227,20 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
     def focusIn(self, *_args):
         """ Window or menu in focus, disable rediscovery. Raise child windows above.
-            NOTE: triggered two times so test current state for first time status.
-            NOTE: When the right-click menu is closed it registers FocusOut and
-                  toplevel registers focusIn again.
-            NOTE: If preferences Notebook is active and countdown timer is started
-                  the digits never appear and linux locks up totally. Mouse movement
-                  can still occur but that is all. As of 2024-12-27.
+
+            NOTES: 1. Triggered two times so test current state for first time status.
+                   2. When the right-click menu is closed it registers FocusOut and
+                      toplevel registers focusIn again.
+                   3. If preferences Notebook is active and countdown timer is started
+                      the digits never appear and linux locks up totally. Mouse movement
+                      can still occur but that is all. As of 2024-12-27.
         """
 
         if self.event_scroll_active and self.event_top:
             self.event_top.focus_force()
             self.event_top.lift()
 
-        # 2024-12-28 Causes Xorg to freeze. Only mouse can move.
+        # 2024-12-28 Causes Xorg to freeze screen refresh.
         #if self.edit_pref_active and self.notebook:
         #    self.notebook.focus_force()
         #    self.notebook.lift()
@@ -4408,35 +4449,29 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         # Get current button state and toggle it for next time.
         if "Sensors" in self.sensors_devices_btn['text']:
-            show_sensors = True
             self.sensors_devices_btn['text'] = toolkit.normalize_tcl(self.devices_btn_text)
             self.sensors_devices_btn['image'] = self.img_devices
             self.tt.set_text(self.sensors_devices_btn, "Show Network Devices.")
             self.main_help_id = "HelpSensors"
             self.usingDevicesTreeview = False
+            self.tree.destroy()  # Destroy Network Devices Treeview
+            sm.treeview_active = True
+            sm.populateDevicesTree()  # Build Sensors Treeview using sm.Print(start=0, end=-1)
         elif "Devices" in self.sensors_devices_btn['text']:
-            show_devices = True
             self.sensors_devices_btn['text'] = toolkit.normalize_tcl(self.sensors_btn_text)
             self.sensors_devices_btn['image'] = self.img_sensors
             self.tt.set_text(self.sensors_devices_btn, "Show Temperatures and Fans.")
             self.main_help_id = "HelpNetworkDevices"
             self.usingDevicesTreeview = True
+            sm.tree.destroy()  # Destroy Sensors Treeview
+            sm.treeview_active = False
+            self.populateDevicesTree()  # Build Network Devices Treeview
         else:
             print("Invalid Button self.sensors_devices_btn['text']:",
                   self.sensors_devices_btn['text'])
             return
 
         self.enableDropdown()  # NORMAL/DISABLED options for view Sensors/Devices
-
-        if show_sensors:
-            self.tree.destroy()
-            sm.treeview_active = True
-            sm.populateDevicesTree()  # Calls sm.Print(start=0, end=-1)
-
-        if show_devices:
-            sm.tree.destroy()
-            sm.treeview_active = False
-            self.populateDevicesTree()
 
     def RightClick(self, event):
         """ Mouse right button click. Popup menu on selected treeview row.
@@ -4768,8 +4803,11 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         ''' Is there a TV to be monitored for power off to suspend system? '''
         # 2024-12-23 TODO: SETUP FOR SONY TV REST API
 
+        ''' Is there an audio channel to be monitored for volume up/down display? '''
+        # 2025-03-01 TODO: SETUP FOR SONY TV REST API
+
         ''' Always give time slice to tooltips - requires sql.py color config '''
-        self.tt.poll_tips()  # Tooltips fade in and out. self.info piggy backing
+        self.tt.poll_tips()  # Tooltips fade in and out
         self.update()  # process pending tk events in queue
 
         if not self.winfo_exists():  # Second check needed June 2023
@@ -4835,23 +4873,18 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         v0_print(_who, "Suspending system...")
         ''' Move mouse away from suspend button to close tooltip window 
-            No longer needed because Tooltips().zap_tip_window() was created.  '''
+            because <Enter> event generated for tooltip during system resume '''
         command_line_list = ["xdotool", "mousemove_relative", "--", "-200", "-200"]
         _event = self.runCommand(command_line_list, _who)  # def runCommand
-        # 2025-02-11 No longer needed but nice bit of code to recycle someday.
-        # 2025-02-19 Add back mouse move. On resume enter event generated in tooltips
 
-        self.tt.zap_tip_window(self.suspend_btn)  # 2025-02-16 still getting ghost
+        self.tt.zap_tip_window(self.suspend_btn)  # Remove any tooltip window.
         self.isActive = False  # Signal closing so methods shut down elegantly.
         if self.bleSaveInst:  # Is breathing colors active?
             self.bleSaveInst.already_breathing_colors = False  # Force shutdown
         self.update_idletasks()
         self.after(100)  # Extra time (besides power off time) for Breathing Colors
-        self.tt.zap_tip_window(self.suspend_btn)  # 2025-02-15 still getting ghost
 
         self.turnAllPower("OFF")  # Turn off all devices except computer
-        self.tt.zap_tip_window(self.suspend_btn)  # Delete tooltips window
-        self.update()
         cp.turnOff()  # suspend computer
 
     def resumeAfterSuspend(self):
@@ -4890,7 +4923,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
     def resumeWait(self, timer=None, alarm=True, title=None, abort=True):
         """ Wait x seconds for devices to come online. If 'timer' passed do a
             simple countdown.
-
 
             :param timer: When time passed it's a countdown timer
             :param alarm: When True, sound alarm when countdown timer ends
@@ -4958,26 +4990,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         night = cp.NightLightStatus()
         v1_print(_who, "Nightlight status: '" + night + "'")
 
-        ''' 2025-02-19 Stale loop? resume and eventually close button error:
-
-  File "./homa.py", line 3726, in __init__
-    while self.refreshApp():  # Run forever until quit
-  File "./homa.py", line 4558, in refreshApp
-    self.Rediscover(auto=True)  # Check for new network devices
-  File "./homa.py", line 4948, in Rediscover
-    self.RefreshAllPowerStatuses(auto=auto)  # When auto false, rows highlighted
-  File "./homa.py", line 4861, in RefreshAllPowerStatuses
-    cr.Update(iid)  # Update row with new ['text']
-  File "./homa.py", line 5894, in Update
-    str(item), image=self.photo, text=self.text, values=self.values)
-  File "/usr/lib/python2.7/lib-tk/ttk.py", line 1353, in item
-    return _val_or_dict(self.tk, kw, self._w, "item", item)
-  File "/usr/lib/python2.7/lib-tk/ttk.py", line 299, in _val_or_dict
-    res = tk.call(*(args + options))
-_tkinter.TclError: invalid command name ".140335699394216.140335510496752"
-         
-        '''
-
         # Loop through ni.instances
         for i, instance in enumerate(ni.instances):
             inst = instance['instance']
@@ -5008,11 +5020,11 @@ _tkinter.TclError: invalid command name ".140335699394216.140335510496752"
 
             if inst.type_code == GLO['BLE_LS']:
                 # Special debugging for LED Light Strips
-                #v0_print(_who, "BEFORE:", inst.type_code, inst.mac, inst.name)
-                #v0_print("inst.device:", inst.device)
-                #v0_print("BluetoothStatus:", inst.BluetoothStatus,
-                #         "powerStatus:", inst.powerStatus)
-                pass
+                v1_print(_who, "BEFORE:", inst.type_code, inst.mac, inst.name)
+                v1_print("inst.device:", inst.device)
+                v1_print("BluetoothStatus:", inst.BluetoothStatus,
+                         "powerStatus:", inst.powerStatus)
+
             resp = "?"  # Necessary for pyCharm checker only
             if state == "ON":
                 v0_print(_who, "Unconditionally turning power 'ON':", inst.name)
@@ -5043,11 +5055,10 @@ _tkinter.TclError: invalid command name ".140335699394216.140335510496752"
 
             if inst.type_code == GLO['BLE_LS']:
                 # Special debugging for LED Light Strips
-                #v0_print(_who, "AFTER:", inst.type_code, inst.mac, inst.name)
-                #v0_print("inst.device:", inst.device)
-                #v0_print("BluetoothStatus:", inst.BluetoothStatus,
-                #         "powerStatus:", inst.powerStatus)
-                pass
+                v1_print(_who, "AFTER:", inst.type_code, inst.mac, inst.name)
+                v1_print("inst.device:", inst.device)
+                v1_print("BluetoothStatus:", inst.BluetoothStatus,
+                         "powerStatus:", inst.powerStatus)
 
             # Update Devices Treeview with power status
             if not self.usingDevicesTreeview:
@@ -5165,16 +5176,9 @@ _tkinter.TclError: invalid command name ".140335699394216.140335510496752"
         if auto is False:
             self.last_rediscover_time = time.time() - GLO['REDISCOVER_SECONDS'] * 1.5
 
-        ''' Some arp lines are DISCARDED: 
-        arp -a
-        SONY.LAN (192.168.0.19) at ac:9b:0a:df:3f:d9 [ether] on enp59s0
-        ? (20.20.20.1) at a8:4e:3f:82:98:b2 [ether] on enp59s0          <- DISCARD
-        hit ron hub.home (192.168.0.1) at a8:4e:3f:82:98:b2 [ether] on enp59s0
-        TCL.light (192.168.0.20) at 50:d4:f7:eb:46:7c [ether] on enp59s0
-        TCL.LAN (192.168.0.17) at <incomplete> on enp59s0               <- DISCARD
-        SONY.light (192.168.0.15) at 50:d4:f7:eb:41:35 [ether] on enp59s0
-        '''
-
+        ''' Some `arp -a` lines are DISCARDED: 
+                ? (20.20.20.1) at a8:4e:3f:82:98:b2 [ether] on enp59s0
+                TCL.LAN (192.168.0.17) at <incomplete> on enp59s0  '''
         # Override event logging and v3_print(...) during auto rediscovery
         GLO['LOG_EVENTS'] = True if auto is False else False
 
@@ -5313,8 +5317,8 @@ _tkinter.TclError: invalid command name ".140335699394216.140335510496752"
             if not bool(instance):
                 continue
 
-            v0_print("="*80, "\n" + _who, "FOUND NEW INSTANCE or",
-                     "REDISCOVERED LOST INSTANCE:")
+            v0_print("="*80, "\n" + _who, "Found NEW INSTANCE or",
+                     "rediscovered LOST INSTANCE:")
             v0_print(instance)
             ni.instances.append(instance)
             arp_mac['type_code'] = instance['instance'].type_code
@@ -5370,17 +5374,7 @@ _tkinter.TclError: invalid command name ".140335699394216.140335510496752"
             return "break"  # Don't let regular event handler do scroll of 5
 
     def GetPassword(self, msg=None):
-        """ Get Sudo password with message.AskString(show='*'...).
->>> from cryptography.fernet import Fernet
->>> # Put this somewhere safe!
->>> key = Fernet.generate_key()
->>> f = Fernet(key)
->>> token = f.encrypt(b"A really secret message. Not for prying eyes.")
->>> token
-b'...'
->>> f.decrypt(token)
-b'A really secret message. Not for prying eyes.'
-        """
+        """ Get Sudo password with message.AskString(show='*'...). """
 
         if msg is None:
             msg = "Sudo password required for laptop display.\n\n"
@@ -5399,9 +5393,6 @@ b'A really secret message. Not for prying eyes.'
         if password is None:
             msg = "Invalid sudo password!\n\n"
             self.ShowInfo("Invalid sudo password", msg, icon="error")
-            #message.ShowInfo(
-            #    self, text=msg, thread=self.Refresh,
-            #    title="Invalid sudo password", icon="error", win_grp=self.win_grp)
 
         self.last_refresh_time = time.time()  # Refresh idle loop last entered time
         return password  # Will be <None> if invalid password entered
@@ -5410,9 +5401,8 @@ b'A really secret message. Not for prying eyes.'
         """ Show message with thread safe refresh that doesn't invoke rediscovery.
 
             Can be called from instance which has no tk reference of it's own
-            From Application initialize with:   inst.app = self
-            From Instance call method with:     self.app.ShowInfo()
-            #ShowInfo(self, title, text, icon="information", align="center")
+                From Application initialize with:   inst.app = self
+                From Instance call method with:     self.app.ShowInfo()
         """
         def thread_safe():
             """ Prevent self.Refresh rerunning a second rediscovery during
@@ -5721,7 +5711,6 @@ b'A really secret message. Not for prying eyes.'
         if len(device_list) == 0:
             return
 
-
         # 2025-01-16 TODO: Check for function already running at top.
         scrollbox = self.DisplayCommon(_who, title, x=x, y=y, width=700,
                                        help="ViewBluetoothDevices")
@@ -5807,9 +5796,6 @@ b'A really secret message. Not for prying eyes.'
             in4("Brightest hold seconds", p["tops"], "Step value", step_value)
             self.bleScrollbox.insert("end", "\n\n")
 
-            ''' Circle Image representing current color brightness - NOT USED '''
-            # self.bc = img.BreathingCircle(p['low'], p['high'], step_count, 40)
-
             self.last_red = self.last_green = self.last_blue = 0
 
         # Body is only updated when red, green or blue change
@@ -5821,15 +5807,6 @@ b'A really secret message. Not for prying eyes.'
         self.last_red = self.bleSaveInst.red
         self.last_green = self.bleSaveInst.green
         self.last_blue = self.bleSaveInst.blue
-
-        # NOT USED - Update canvas / draw square with current color
-        #self.bleSaveInst.image = self.bc.makeImage(
-        #    self.last_red, self.last_green, self.last_blue, self.bleSaveInst.stepNdx,
-        #    cp.sunlight_percent
-        #)
-        # https://stackoverflow.com/a/48722664/6929343
-        # circle with faded edges to represent breathing.
-        # Need # of steps and step ndx.
 
         # Delete dynamic lines in custom scrollbox
         self.bleScrollbox.delete(6.0, "end")
@@ -6007,11 +5984,11 @@ b'A really secret message. Not for prying eyes.'
                 # equivalent of "ps ux | grep -v grep | grep gatttool"
                 ll = line.split()
                 # Line 4 is job closing down that can't be killed
-                # 1  ['rick', '8336',  '10.7', '0.0', '0', '0', '?', 'Zs', '10:47', '0:24']
-                # 2  ['rick', '13964', '61.2', '0.0', '0', '0', '?', 'Zs', '10:50', '1:00']
-                # 3  ['rick', '14836', '42.2', '0.0', '0', '0', '?', 'Zs', '10:50', '0:30']
-                # 4  ['rick', '15789', '0.0',  '0.0', '0', '0', '?', 'Zs', '10:50', '0:00']
-                # 5  ['rick', '16969', '0.0',  '0.0', '21556', '3376', 'pts/27', 'Ss+', '10:51', '0:00']
+                # 1  [<USER>, '8336',  '10.7', '0.0', '0', '0', '?', 'Zs', '10:47', '0:24']
+                # 2  [<USER>, '13964', '61.2', '0.0', '0', '0', '?', 'Zs', '10:50', '1:00']
+                # 3  [<USER>, '14836', '42.2', '0.0', '0', '0', '?', 'Zs', '10:50', '0:30']
+                # 4  [<USER>, '15789', '0.0',  '0.0', '0', '0', '?', 'Zs', '10:50', '0:00']
+                # 5  [<USER>, '16969', '0.0',  '0.0', '21556', '3376', 'pts/27', 'Ss+', '10:51', '0:00']
                 # external.kill_pid_running() ERROR: os.kill  failed for PID: 15789
                 v1_print(" ", ll[:10])
                 if float(ll[2]) > 10.0:  # CPU percentage > 10%?
@@ -6028,7 +6005,7 @@ b'A really secret message. Not for prying eyes.'
 
         ''' Found_pids have 12 results, 3 for each time view Bluetooth Devices is run:        
         [snip 4...]
-        ['rick', '17229', '90.9', '0.0', '21556', '3344', 'pts/31', 'Rs+', '00:59', '0:28', 
+        [<USER>, '17229', '90.9', '0.0', '21556', '3344', 'pts/31', 'Rs+', '00:59', '0:28', 
             '/usr/bin/gatttool', '-i', 'hci0', '-I'], 
         [...snip 7] '''
 
@@ -6073,8 +6050,8 @@ b'A really secret message. Not for prying eyes.'
             # No way to kill <defunct> : https://askubuntu.com/a/201308/307523
             # So these jobs will commit suicide when homa.py ends:
             # $ ps ux | grep gatttool | grep -v grep
-            # rick  7716 13.3  0.0 0 0 ? Zs 11:44 0:46 [gatttool] <defunct>
-            # rick 13317  0.0  0.0 0 0 ? Zs 11:47 0:00 [gatttool] <defunct>
+            # USER  7716 13.3  0.0 0 0 ? Zs 11:44 0:46 [gatttool] <defunct>
+            # USER 13317  0.0  0.0 0 0 ? Zs 11:47 0:00 [gatttool] <defunct>
 
             # NOTE: After killing CPU percentage declines over time for <defunct>.
             # After 15 or 20 minutes the <defunct> start to disappear on their own.
@@ -6148,29 +6125,6 @@ class TreeviewRow(DeviceCommonSelf):
         """
         _who = self.who + "Update():"
 
-        ''' 2025-02-19 - OOPS clicking Close button a hour after resume from suspend:
-  File "./homa.py", line 6678, in <module>
-    
-  File "./homa.py", line 6672, in main
-    #img.taskbar_icon(root, 64, 'black', 'green', 'red', char='H')
-  File "./homa.py", line 3726, in __init__
-    ble.app = self  # For functions called from Dropdown menu
-  File "./homa.py", line 4558, in refreshApp
-    if int(now - self.last_rediscover_time) > GLO['REDISCOVER_SECONDS']:
-  File "./homa.py", line 4969, in Rediscover
-    v2_print(_who, "Rediscovery count:", len(rd.arp_dicts))
-  File "./homa.py", line 4882, in RefreshAllPowerStatuses
-    if cr.text != old_text:
-  File "./homa.py", line 5915, in Update
-    
-  File "/usr/lib/python2.7/lib-tk/ttk.py", line 1353, in item
-    return _val_or_dict(self.tk, kw, self._w, "item", item)
-  File "/usr/lib/python2.7/lib-tk/ttk.py", line 299, in _val_or_dict
-    res = tk.call(*(args + options))
-_tkinter.TclError: invalid command name ".140052547996200.140052547535360"
-         
-        '''
-
         self.top.photos[int(item)] = self.photo  # changes if swapping rows
         self.top.tree.item(
             str(item), image=self.photo, text=self.text, values=self.values)
@@ -6242,13 +6196,11 @@ _tkinter.TclError: invalid command name ".140052547996200.140052547535360"
             self.text = "Wait..."  # Power status checked when updating treeview
         else:
             self.text = "  " + self.inst.powerStatus  # Power state already known
-        #self.name_column = self.inst.name # 2025-01-12
-        self.name_column = name  # 2025-01-12
+        self.name_column = name  # inst.name or "?" if not found
         self.name_column += "\nIP: " + self.arp_dict['ip']
         self.attribute_column = self.arp_dict['alias']
         self.attribute_column += "\nMAC: " + self.arp_dict['mac']
-        #self.attribute_column += "\n" + self.inst.type
-        self.attribute_column += "\n" + type_code
+        self.attribute_column += "\n" + type_code  # inst.type or "?" if not found
         self.values = (self.name_column, self.attribute_column, self.mac)
 
     def Add(self, item):
@@ -6316,16 +6268,6 @@ class SystemMonitor(DeviceCommonSelf):
     """ System Monitor - sensors CPU/GPU Temp and Fan Speeds.
 
         Print results to console unless `homa.py -s` (silent) was used.
-
-        TODO: Add average CPU Mhz and Load %.
-              Add Top 20 programs with Top 3 displayed.
-              Display volume level changes with lib-notify (tvpowered).
-              Suspend all and resume all (tvpowered).
-              Dimmer (movie.sh) features where wakeup is based on mouse
-                passing over monitor for five seconds.
-              xrandr monitor details - geometry & resolution.
-              mmm features - track window geometry every minute.
-              eyesome interface for functions needing sudo permissions.
     """
 
     def __init__(self, top):
@@ -6370,7 +6312,7 @@ class SystemMonitor(DeviceCommonSelf):
         self.inst_dict = None  # Applications() instance dictionary
 
         self.type = "System Monitor"
-        self.type_code = 200  # Need CODE setup
+        self.type_code = 900  # 2025-03-01 Fake type_code, need code setup
         self.requires = ['ifconfig', 'iwconfig', 'sensors', 'top']
         self.installed = []
         self.CheckDependencies(self.requires, self.installed)
@@ -6576,9 +6518,6 @@ class SystemMonitor(DeviceCommonSelf):
                                 width=14, command=self.tree.yview)
         v_scroll.grid(row=0, column=1, sticky=tk.NS)
         self.tree.configure(yscrollcommand=v_scroll.set)
-        #self.top.rowconfigure(0, weight=0)  # Devices Tree
-        #self.top.rowconfigure(1, weight=1)  # Sensors Tree
-        #self.top.rowconfigure(2, weight=1)  # Button bar
 
         # Oct 1, 2023 - MouseWheel event does NOT capture any events
         self.tree.bind("<MouseWheel>", lambda event: self.MouseWheel(event))
@@ -6636,13 +6575,7 @@ class SystemMonitor(DeviceCommonSelf):
         except tk.TclError:
             v0_print("\n" + _who, "trg_iid not found: '" + trg_iid + "'",
                      " |", type(trg_iid))
-            # SystemMonitor().FlashLastRow(): trg_iid not found: '20.04'
-            #   | <type 'float'>
             v0_print("self.sensors_log[-1]:", self.sensors_log[-1])
-            # self.sensors_log[-1]:
-            #   {'Processor Fan': '4500 RPM', 'delta': 20.04,
-            #   'Video Fan': '4600 RPM', 'time': 1735398654.633827,
-            #   'GPU': '+78.0\xc2\xb0C', 'CPU': '+78.0\xc2\xb0C'}
             return
 
         cr.FadeIn(trg_iid)
@@ -6778,16 +6711,16 @@ root = None  # Tkinter toplevel
 app = None  # Application GUI
 cfg = sql.Config()  # Colors configuration SQL records
 glo = Globals()  # Global variables instance used everywhere
-GLO = glo.dictGlobals  # global dictionary. Dummy, reset during main() glo.open_file().
+GLO = glo.dictGlobals  # Default global dictionary. Live read in glo.open_file()
 ble = BluetoothLedLightStrip()  # Must follow GLO dictionary and before ni instance
 cp = Computer()  # cp = Computer Platform instance used everywhere
 ni = NetworkInfo()  # ni = global class instance used everywhere
-ni.adb_reset(background=True)  # Sometimes necessary when TCL TV isn't communicating.
+ni.adb_reset(background=True)  # Sometimes necessary when TCL TV isn't communicating
 rd = None  # rd = Rediscovery instance for app.Rediscover() & app.Discover()
 sm = None  # sm = System Monitor - fan speed and CPU temperatures
 
-SAVE_CWD = ""  # Saved current working directory. Change to program directory.
-killer = ext.GracefulKiller()  # Class instance for shutdown or CTRL+C
+SAVE_CWD = ""  # Save current working directory before changing to program directory
+killer = ext.GracefulKiller()  # Class instance for app.Close() or CTRL+C
 
 v0_print()
 v0_print(r'  ######################################################')
@@ -6904,12 +6837,6 @@ def main():
     GLO = glo.dictGlobals
     GLO['APP_RESTART_TIME'] = time.time()
 
-    # 2025-01-18 Temporary declarations whilst dictionary recreated during development
-    GLO['LED_LIGHTS_MAC'] = "36:46:3E:F3:09:5E"
-    GLO['LED_LIGHTS_STARTUP'] = True  # Displayed as "0" (off), "1" (on), "?"
-    GLO["RESUME_TEST_SECONDS"] = 30  # > x seconds disappeared means system resumed
-    GLO["RESUME_DELAY_RESTART"] = 5  # Allow x seconds for network to come up
-
     ni = NetworkInfo()  # Generate Network Information for arp and hosts
 
     # ni.adb_reset()  # adb kill-server && adb start-server
@@ -6926,17 +6853,8 @@ def main():
         for i, entry in enumerate(ni.instances):
             v1_print("  ", str(i+1) + ".", entry)
 
-    ''' OBSOLETE - Create Tkinter "very top" Top Level window '''
-    #root = tk.Tk()  # Create "very top" toplevel for all top levels
-    #monitor.center(root)
-    #root.withdraw()  # Remove default window because we have own windows
-
     ''' Open Main Application Window '''
     root = tk.Tk()
-    #root.overrideredirect(1)  # Get rid of flash when root window created
-    #monitor.center(root)  # Get rid of top-left flash when root window created
-    #img.taskbar_icon(root, 64, 'black', 'green', 'red', char='H')
-    # Above no effect, taskbar icon is still a question mark with no color
     root.withdraw()
     app = Application(root)  # Treeview of ni.discovered[{}, {}...{}]
 
