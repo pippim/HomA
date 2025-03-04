@@ -106,10 +106,6 @@ except ImportError:  # Python 2
 
 from PIL import Image, ImageTk, ImageDraw, ImageFont
 
-import signal  # Shutdown signals
-import sqlite3  # Was only used for error messages but needed sql. in front
-
-
 try:
     import subprocess32 as sp
     SUBPROCESS_VER = '32'
@@ -117,9 +113,9 @@ except ImportError:  # No module named subprocess32
     import subprocess as sp
     SUBPROCESS_VER = 'native'
 
-import sys
-import logging
-import argparse
+import signal  # Shutdown signals
+import logging  # Logging used in pygatt and trionesControl
+import argparse  # Command line argument parser
 parser = argparse.ArgumentParser()
 parser.add_argument('-f', '--fast', action='store_true')  # Fast startup
 parser.add_argument('-s', '--silent', action='store_true')  # No info printing
@@ -399,9 +395,9 @@ SHAW-8298B0-5G      bfce8167-18fc-4646-bec3-868c097a3f4a  802-11-wireless  -- ''
                 v0_print(_who, "pipe.returncode:", pipe.returncode)
             return ""  # Return null string = False
 
-        interface = event['output'].splitlines()
+        _interface = event['output'].splitlines()
 
-        name = mac = ip = ""
+        _name = _mac = _ip = ""
         self.ether_name = ""  # eth0, enp59s0, etc
         self.ether_mac = ""  # aa:bb:cc:dd:ee:ff
         self.ether_ip = ""  # 192.168.0.999
@@ -641,6 +637,7 @@ class Globals(DeviceCommonSelf):
             "REDISCOVER_SECONDS": 60,  # Check for device changes every x seconds
             "RESUME_TEST_SECONDS": 30,  # > x seconds disappeared means system resumed
             "RESUME_DELAY_RESTART": 5,  # Allow x seconds for network to come up
+            "SUNLIGHT_PERCENT": "/usr/local/bin/.eyesome-percent",  # file contains 0% to 100%
 
             "LED_LIGHTS_MAC": "",  # Bluetooth LED Light Strip MAC address
             "LED_LIGHTS_STARTUP": True,  # "0" turn off, "1" turn on.
@@ -678,52 +675,59 @@ class Globals(DeviceCommonSelf):
         }
 
     def openFile(self):
-        """ Read dictConfig from CONFIG_FNAME = "config.json" """
+        """ Read dictConfig from CONFIG_FNAME = "config.json"
+            cp = Computer() instance must be created for cp.crypto_key.
+        """
         _who = self.who + "openFile():"
 
         fname = g.USER_DATA_DIR + os.sep + GLO['CONFIG_FNAME']
-        if os.path.isfile(fname):
-            with open(fname, "r") as f:
-                v2_print("Opening configuration file:", fname)
-                self.dictGlobals = json.loads(f.read())
+        if not os.path.isfile(fname):
+            return  # config.json doesn't exist
 
-            #print("GLO['LED_LIGHTS_COLOR']:", GLO['LED_LIGHTS_COLOR'])
-            # Starts as a tuple json converts to list: [[44, 28, 27], u'#2c1c1b']
-            try:
-                s = self.dictGlobals['LED_LIGHTS_COLOR']
-                self.dictGlobals['LED_LIGHTS_COLOR'] = \
-                    ((s[0][0], s[0][1], s[0][2]), s[1])
-            except (TypeError, IndexError):  # No color saved
-                self.dictGlobals['LED_LIGHTS_COLOR'] = None
+        with open(fname, "r") as fcb:
+            v2_print("Opening configuration file:", fname)
+            self.dictGlobals = json.loads(fcb.read())
 
-            # TEMPLATE TO ADD A NEW FIELD TO DICTIONARY
-            #try:
-            #    _s = self.dictGlobals['ROUTER_M']
-            #    print("Found GLO['ROUTER_M']:", GLO['ROUTER_M'])
-            #except KeyError:
-            #    self.dictGlobals['ROUTER_M'] = 200  # 2025-02-22 New field
-            #    print("Create GLO['ROUTER_M']:", GLO['ROUTER_M'])
+        #print("GLO['LED_LIGHTS_COLOR']:", GLO['LED_LIGHTS_COLOR'])
+        # Starts as a tuple json converts to list: [[44, 28, 27], u'#2c1c1b']
+        try:
+            s = self.dictGlobals['LED_LIGHTS_COLOR']
+            self.dictGlobals['LED_LIGHTS_COLOR'] = \
+                ((s[0][0], s[0][1], s[0][2]), s[1])
+        except (TypeError, IndexError):  # No color saved
+            self.dictGlobals['LED_LIGHTS_COLOR'] = None
 
-            ''' Decrypt SUDO PASSWORD '''
-            with warnings.catch_warnings():
-                # Deprecation Warning:
-                # /usr/lib/python2.7/dist-packages/cryptography/x509/__init__.py:32:
-                #   PendingDeprecationWarning: CRLExtensionOID has been renamed to
-                #                              CRLEntryExtensionOID
-                #   from cryptography.x509.oid import (
-                warnings.simplefilter("ignore", category=PendingDeprecationWarning)
-                f = Fernet(cp.crypto_key)  # Encrypt sudo password when storing
+        ''' TEMPLATE TO ADD A NEW FIELD TO DICTIONARY '''
+        #try:
+        #    _s = self.dictGlobals['SUNLIGHT_PERCENT']
+        #    print("Found GLO['SUNLIGHT_PERCENT']:", GLO['SUNLIGHT_PERCENT'])
+        #except KeyError:
+        #    self.dictGlobals['SUNLIGHT_PERCENT'] = "/usr/local/bin/.eyesome-percent"
+        #    print("Create GLO['SUNLIGHT_PERCENT']:", GLO['SUNLIGHT_PERCENT'])
+
+
+        ''' Decrypt SUDO PASSWORD '''
+        with warnings.catch_warnings():
+            # Deprecation Warning:
+            # /usr/lib/python2.7/dist-packages/cryptography/x509/__init__.py:32:
+            #   PendingDeprecationWarning: CRLExtensionOID has been renamed to
+            #                              CRLEntryExtensionOID
+            #   from cryptography.x509.oid import (
+            warnings.simplefilter("ignore", category=PendingDeprecationWarning)
+            f = Fernet(cp.crypto_key)  # Encrypt sudo password when storing
 
             if self.dictGlobals['SUDO_PASSWORD'] is not None:
                 self.dictGlobals['SUDO_PASSWORD'] = \
                     f.decrypt(self.dictGlobals['SUDO_PASSWORD'].encode())
                 #v0_print(self.dictGlobals['SUDO_PASSWORD'])
 
-            # 2025-01-27 override REFRESH_MS for breatheColors() testing.
-            #GLO['REFRESH_MS'] = 10  # Override 16ms to 10ms
+        # 2025-01-27 override REFRESH_MS for breatheColors() testing.
+        #GLO['REFRESH_MS'] = 10  # Override 16ms to 10ms
 
     def saveFile(self):
-        """ Save dictConfig to CONFIG_FNAME = "config.json" """
+        """ Save dictConfig to CONFIG_FNAME = "config.json"
+            cp = Computer() instance must be created for cp.crypto_key.
+        """
         _who = self.who + "saveFile():"
 
         if GLO['SUDO_PASSWORD'] is not None:
@@ -749,11 +753,13 @@ class Globals(DeviceCommonSelf):
                 GLO['SUDO_PASSWORD'] = enc.decode('utf8').replace("'", '"')
             else:  # In Python 2 a string is a string, not bytes
                 GLO['SUDO_PASSWORD'] = enc
+
+        # Override global dictionary values for saving
         GLO['LOG_EVENTS'] = True  # Don't want to store False value
         GLO['EVENT_ERROR_COUNT'] = 0  # Don't want to store last error count
 
-        with open(g.USER_DATA_DIR + os.sep + GLO['CONFIG_FNAME'], "w") as f:
-            f.write(json.dumps(self.dictGlobals))
+        with open(g.USER_DATA_DIR + os.sep + GLO['CONFIG_FNAME'], "w") as fcb:
+            fcb.write(json.dumps(self.dictGlobals))
 
     def defineNotebook(self):
         """ defineNotebook models global data variables in dictionary. Used by
@@ -852,6 +858,10 @@ class Globals(DeviceCommonSelf):
             ("BLUETOOTH_SCAN_TIME", 4, RW, INT, INT, 3, DEC, MIN, MAX, CB,
              'Number of seconds to perform bluetooth scan.\n'
              'A longer time may discover more devices.'),
+            ("SUNLIGHT_PERCENT", 4, RW, FNAME, STR, 32, DEC, MIN, MAX, CB,
+             'Pippim Eyesome sunlight percentage filename.\n'
+             'Or any filename containing "0%" to "100%",\n'
+             '(without the quotes) on the first line.'),
             ("TIMER_SEC", 5, RW, INT, INT, 6, DEC, MIN, MAX, CB,
              "Tools Dropdown Menubar - Countdown Timer default"),
             ("TIMER_ALARM", 5, RW, FNAME, STR, 30, DEC, MIN, MAX, CB,
@@ -910,15 +920,15 @@ class Globals(DeviceCommonSelf):
 
         return listTabs, listFields, listHelp
 
-    def updateNewGlobal(self, key, new_value):
+    def updateGlobalVar(self, key, new_value):
         """ Validate a new dictionary field. """
-        _who = self.who + "updateNewGlobal():"
+        _who = self.who + "updateGlobalVar():"
         _listTabs, listFields, _listHelp = self.defineNotebook()
         for atts in listFields:
             if atts[0] == key:
                 break
         else:
-            v0_print("Bad key passed:", key, new_value)
+            v0_print(_who, "Bad key passed:", key, new_value)
             return False
 
         # atts = (name, tab#, ro/rw, input as, stored as, width, decimals, min, max,
@@ -961,6 +971,11 @@ class Computer(DeviceCommonSelf):
 
         A desktop with ethernet and WiFi will only have it's ethernet
         MAC address stored in arp_dicts dictionaries.
+
+        2025-03-03 TODO: Computer, Laptop (Base) and Laptop (Display) should
+            NOT require a MAC address to appear. They should be hard-coded
+            into ni.arp_dicts[] list.
+
     """
 
     def __init__(self, mac=None, ip=None, name=None, alias=None):
@@ -983,7 +998,7 @@ class Computer(DeviceCommonSelf):
         self.eyesome_active = False  # Pippim color temperature & brightness.
         self.sunlight_percent = 0  # Percentage of sunlight, 0 = nighttime.
 
-        self.requires = ['ip', 'getent', 'hostnamectl', 'gsettings', 'cut',
+        self.requires = ['ip', 'getent', 'hostnamectl', 'gsettings', 
                          'get-edid', 'parse-edid', 'xrandr']
         self.installed = []
         self.CheckDependencies(self.requires, self.installed)
@@ -1056,7 +1071,7 @@ class Computer(DeviceCommonSelf):
         self.crypto_key = b
         v3_print(_who, " AFTER self.crypto_key:", self.crypto_key, "\n  length:",
                  len(self.crypto_key), type(self.crypto_key))
-        self.NightLightStatus()
+        self.getNightLightStatus()
 
     def Interface(self, forgive=False):
         """ Return name of interface that is up. Either ethernet first or
@@ -1199,7 +1214,7 @@ class Computer(DeviceCommonSelf):
         _event = self.runCommand(command_line_list, _who, forgive=forgive)
         # NOTE: this point is still reached because suspend pauses a bit
         # v0_print(_who, ext.ch(), "Command finished.")
-        # Computer().turnOff(): 13:27:45.472045 Suspend command: [u'systemctl', u'suspend']
+        # Computer().turnOff(): 13:27:45.472045 Suspend command: ['systemctl', 'suspend']
         # Computer().turnOff(): 13:27:45.551357 Command finished.
 
         self.powerStatus = "OFF"  # Can be "ON", "OFF" or "?"
@@ -1239,17 +1254,18 @@ class Computer(DeviceCommonSelf):
         #return base64.urlsafe_b64encode(key[:32])  # Python 2
         return base64.urlsafe_b64encode(key[:32].encode('utf-8'))  # Python 3
 
-    def NightLightStatus(self, forgive=False):
+    def getNightLightStatus(self, forgive=False):
         """ Return True if "On" or "Off"
             gsettings get org.gnome.settings-daemon.plugins.color
                 night-light-enabled
 
             percent = cat /usr/local/bin/.eyesome-percent | cut -F1
-            if percent < 100 enabled = True
+            if percent < 100 then enabled = True for Bias lighting
+            Percentage used for sunlight boost in LED breathe colors
 
         """
 
-        _who = self.who + "NightLightStatus():"
+        _who = self.who + "getNightLightStatus():"
         v2_print(_who, "Test if GNOME Night Light is active:", self.ip)
 
         if forgive:
@@ -1277,35 +1293,47 @@ class Computer(DeviceCommonSelf):
                 elif night_light == "False":
                     self.nightlight_active = False
                     return "OFF"
+                else:
+                    v1_print(_who, "night_light is NOT 'True' or 'False':", night_light)
+                    self.nightlight_active = True
+                    return "ON"
         else:
             pass  # if no `gsettings` then no GNOME Nightlight
 
-        if self.CheckInstalled('cut'):
-            # 2024-12-16 TODO: Read file directly. Use EYESOME_PERCENT_FNAME
-            command_line_str = 'cut -d" " -f1 < /usr/local/bin/.eyesome-percent'
-            v3_print("\n" + _who, "command_line_str:", command_line_str, "\n")
-            f = os.popen(command_line_str)
 
-            text = f.read().splitlines()  # NOTE: text is a list with 1 entry
-            returncode = f.close()  # https://stackoverflow.com/a/70693068/6929343
-            v3_print(_who, "text:", text, "returncode:", returncode)
+        fname = GLO['SUNLIGHT_PERCENT']
+        if not os.path.isfile(fname):
+            return "ON"  # Default to always turn bias lights on
 
-            if returncode is None and text is not None and len(text) == 1:
-                self.eyesome_active = True
-                try:
-                    percent = int(text[0])
-                    v3_print(_who, "eyesome percent:", percent)
-                    self.sunlight_percent = percent
-                    if percent == 100:
-                        return "OFF"  # 100 % sunlight
-                    else:
-                        return "ON"
-                except ValueError:
-                    v3_print(_who, "eyesome percent VALUE ERROR:", text[0])
+        # 2024-12-16 TODO: Read file directly. Use EYESOME_PERCENT_FNAME
 
-            else:
+        text = ext.read_into_string(fname)
+        v3_print("\n" + _who, "SUNLIGHT_PERCENT string:", text, "\n")
+        #percent_str = None
+        try:
+            percent_str = text.split("%")[0]
+        except IndexError:
+            return "ON"  # Default to always turn bias lights on
+
+        if percent_str is not None:
+            self.eyesome_active = True
+            try:
+                percent = int(percent_str)
+                v3_print(_who, "eyesome percent:", percent)
+                self.sunlight_percent = percent
+                if percent == 100:
+                    self.nightlight_active = False
+                    return "OFF"  # 100 % sunlight
+                else:
+                    self.nightlight_active = True
+                    return "ON"
+            except ValueError:
+                v3_print(_who, "eyesome percent VALUE ERROR:", text[0])
                 self.eyesome_active = False
+        else:
+            self.eyesome_active = False
 
+        self.nightlight_active = True
         return "ON"  # Default to always turn bias lights on
 
 
@@ -4141,9 +4169,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.view_menu.entryconfig("Discovery errors", state=tk.NORMAL)
 
         if self.bleSaveInst and self.bleSaveInst.already_breathing_colors:
-            self.view_menu.entryconfig("Breathing stats", state=tk.DISABLED)
-        else:
             self.view_menu.entryconfig("Breathing stats", state=tk.NORMAL)
+        else:
+            self.view_menu.entryconfig("Breathing stats", state=tk.DISABLED)
 
         # If one child view is running, disable all child views from starting.
         if self.event_scroll_active:
@@ -4442,7 +4470,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         """
         _who = self.who + "toggleSensorsDevices()"
-        show_devices = show_sensors = False
 
         # Immediately get rid of tooltip
         self.tt.zap_tip_window(self.sensors_devices_btn)
@@ -4482,7 +4509,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                   stays in place because fadeOut() never runs.
         """
         item = self.tree.identify_row(event.y)
-        help_id = "HelpRightClickMenu"
+        help_id = "HelpRightClickMenu"  # Default, override for some instances
 
         if item is None:
             return  # Empty row, nothing to do
@@ -4493,18 +4520,16 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         def _closePopup(*_event):
             """ Close popup menu on focus out or selecting an option """
-            cr.FadeOut(item)
+            cr.fadeOut(item)
             menu.unpost()
             self.last_refresh_time = time.time()
 
         ''' Highlight selected treeview row '''
         cr = TreeviewRow(self)  # Make current row instances
         cr.Get(item)  # Get current row
-        name = cr.arp_dict['name']
-
+        name = cr.arp_dict['name']  # name is used in menu option text
         cr.inst.powerStatus = "?" if cr.inst.powerStatus is None else cr.inst.powerStatus
-        # 320 ms row highlighting fade in
-        cr.FadeIn(item)
+        cr.fadeIn(item)  # Trigger 320 ms row highlighting fade in def fadeIn
 
         ''' If View Breathing Statistics is running, color options are disabled.
             Message cannot be displayed when menu painted because it causes focus out. '''
@@ -4523,6 +4548,13 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         menu.bind("<Motion>", self.Motion)
 
         menu.post(event.x_root, event.y_root)
+
+        if cr.arp_dict['type_code'] == GLO['LAPTOP_D']:
+            help_id = "HelpRightClickLaptopDisplay"
+            # Laptop display has very fast power status response time. The
+            # Pippim movie.sh script powers on/off laptop display with x-idle,
+            # so double check backlight power status.
+            cr.inst.getPower()  # Set current laptop display cr.inst.powerStatus
 
         if cr.arp_dict['type_code'] == GLO['KDL_TV']:
             # Sony TV has power save mode to turn picture off and listen to music
@@ -4624,13 +4656,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 menu.entryconfig(name + " Picture On ", state=tk.NORMAL)
             else:
                 pass  # power_saving_mode == "?"
-
-        if cr.arp_dict['type_code'] == GLO['LAPTOP_D']:
-            help_id = "HelpRightClickLaptopDisplay"
-            # Laptop display has very fast power status response time. Pippim's
-            # movie.sh script powers on/off laptop display with x-idle, so
-            # double check backlight power status.
-            cr.inst.getPower()  # Set current laptop display cr.inst.powerStatus
 
         # Enable turn on/off based on current power status
         if cr.inst.powerStatus != "ON":  # Other options are "OFF" and "?"
@@ -4831,8 +4856,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         ''' Rediscover devices every GLO['REDISCOVER_SECONDS'] '''
         if int(now - self.last_rediscover_time) > GLO['REDISCOVER_SECONDS']:
-            night = cp.NightLightStatus()
-            v2_print(_who, "cp.NightLightStatus():", night)
+            night = cp.getNightLightStatus()
+            v2_print(_who, "cp.getNightLightStatus():", night)
             self.Rediscover(auto=True)  # Check for new network devices
 
         ''' Should not happen very often, except after suspend resume '''
@@ -4987,7 +5012,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             If devices treeview is mounted, update power status in each row
         """
         _who = self.who + "turnAllPower(" + state + "):"
-        night = cp.NightLightStatus()
+        night = cp.getNightLightStatus()
         v1_print(_who, "Nightlight status: '" + night + "'")
 
         # Loop through ni.instances
@@ -5113,7 +5138,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 if iid is not None:
                     if auto is False or cr.text == "Wait...":
                         self.tree.see(iid)
-                        cr.FadeIn(iid)
+                        cr.fadeIn(iid)
 
             inst.getPower()  # Get the power status for device
             self.last_refresh_time = time.time()  # In case getPower() long time
@@ -5134,7 +5159,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             if auto is False or old_text == "Wait...":
                 # Fade in/out performed when called from Dropdown Menu (auto=False).
                 # Or on startup when status is "Wait...". Otherwise, too distracting.
-                cr.FadeOut(iid)
+                cr.fadeOut(iid)
 
             # Display row by row when there is processing lag
             self.tree.update_idletasks()  # Slow mode display each row.
@@ -5353,7 +5378,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         cr.Get(iid)
         self.tree.see(iid)
-        cr.FadeIn(iid)
+        cr.fadeIn(iid)
 
         old_text = cr.text  # Treeview row's old power state "  ON", etc.
         cr.text = "  " + inst.powerStatus  # Display treeview row's new power state
@@ -5361,7 +5386,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             v1_print(_who, cr.mac, "Power status changed from: '"
                      + old_text.strip() + "' to: '" + cr.text.strip() + "'.")
         cr.Update(iid)  # Update row with new ['text']
-        cr.FadeOut(iid)
+        cr.fadeOut(iid)
 
     @staticmethod
     def MouseWheel(event):
@@ -5458,7 +5483,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                          " | new:", all_notebook.newData[key],
                          "\n  |", atts)
 
-                _success = glo.updateNewGlobal(key, all_notebook.newData[key])
+                _success = glo.updateGlobalVar(key, all_notebook.newData[key])
 
             self.notebook.destroy()
             self.notebook = None
@@ -6061,7 +6086,7 @@ class TreeviewRow(DeviceCommonSelf):
     """ Device treeview row variables and methods.
 
         Sensors treeview uses dummy call to TreeviewRow() class in order to call
-        FadeIn() and FadeOut() methods.
+        fadeIn() and fadeOut() methods.
 
     """
 
@@ -6231,7 +6256,7 @@ class TreeviewRow(DeviceCommonSelf):
             '', 'end', iid=trg_iid, text=self.text,
             image=self.top.photos[-1], value=self.values)
 
-    def FadeIn(self, item):
+    def fadeIn(self, item):
         """ Fade In over 10 steps of 30 ms """
         toolkit.tv_tag_remove(self.tree, item, 'normal')  # Same as step 10
         for i in range(10):
@@ -6247,7 +6272,7 @@ class TreeviewRow(DeviceCommonSelf):
             except tk.TclError:
                 return  # Changed treeview during fade in
 
-    def FadeOut(self, item):
+    def fadeOut(self, item):
         """ Fade Out over 10 steps of 30 ms """
         toolkit.tv_tag_remove(self.tree, item, 'curr_sel')  # Same as step 10
         for i in range(9, -1, -1):
@@ -6578,9 +6603,9 @@ class SystemMonitor(DeviceCommonSelf):
             v0_print("self.sensors_log[-1]:", self.sensors_log[-1])
             return
 
-        cr.FadeIn(trg_iid)
+        cr.fadeIn(trg_iid)
         time.sleep(3.0)
-        cr.FadeOut(trg_iid)
+        cr.fadeOut(trg_iid)
 
     def InsertTreeRow(self, sensor):
         """ Insert sensors row into sensors treeview
@@ -6661,14 +6686,14 @@ def discover(update=False, start=None, end=None):
         
         :param update: If True, update ni.arp_dicts entry with type_code
         :param start: ni.arp_dicts starting index for loop
-        :param end: ni.arp_dicts ending index (ends just before passed value)
+        :param end: ni.arp_dicts ending index (ends just before passed index)
         :returns: list of known device instances
     """
     _who = "homa.py discover()"
     global ni  # NetworkInformation() class instance used everywhere
-    discovered = []  # List of discovered devices in arp dictionary format
-    instances = []  # List of instances shadowing each discovered device
-    view_order = []  # Order of macs discovered
+    discovered = []  # List of discovered devices in arp dict format + type_code
+    instances = []  # List of device instances shadowing each discovered[] device
+    view_order = []  # List of MACs discovered[] for Network Devices Treeview
 
     v1_print("\n")
     v1_print("="*20, " Test all arp devices for their type ", "="*20)
