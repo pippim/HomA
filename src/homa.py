@@ -147,7 +147,7 @@ import pygatt.exceptions
 
 # Pippim libraries
 import monitor  # Center window on current monitor supports multi-head rigs
-import toolkit  # Various tkinter functions common to mserve apps
+import toolkit  # Various tkinter functions common to Pippim apps
 import message  # For dtb (Delayed Text Box)
 import sql  # For color options - Lots of irrelevant mserve.py code though
 import image as img  # Image processing. E.G. Create Taskbar icon
@@ -998,7 +998,7 @@ class Computer(DeviceCommonSelf):
         self.eyesome_active = False  # Pippim color temperature & brightness.
         self.sunlight_percent = 0  # Percentage of sunlight, 0 = nighttime.
 
-        self.requires = ['ip', 'getent', 'hostnamectl', 'gsettings', 
+        self.requires = ['ip', 'getent', 'hostnamectl', 'gsettings',
                          'get-edid', 'parse-edid', 'xrandr']
         self.installed = []
         self.CheckDependencies(self.requires, self.installed)
@@ -4395,7 +4395,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         # Credit: https://stackoverflow.com/a/62506279
         #style.theme_use("classic")
 
-        style.map("C.TButton",  # mserve play_button() in build_play_btn_frm()
+        style.map("C.TButton",  # Homa command buttons
                   foreground=[('!active', 'Black'), ('pressed', 'White'),
                               ('active', 'Black')],
                   background=[('!active', 'Grey75'), ('pressed', 'ForestGreen'),
@@ -4648,7 +4648,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         menu.bind("<FocusOut>", _closePopup)
 
         # Enable Turn On/Off menu options depending on current power status.
-        if cr.arp_dict['type_code'] == GLO['KDL_TV']:
+        if cr.arp_dict['type_code'] == GLO['KDL_TV'] and cr.inst.powerStatus == "ON":
             cr.inst.PowerSavingMode()  # Get power savings mode
             if cr.inst.power_saving_mode == "OFF":
                 menu.entryconfig(name + " Picture Off ", state=tk.NORMAL)

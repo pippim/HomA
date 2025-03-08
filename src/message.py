@@ -27,6 +27,7 @@ from __future__ import with_statement  # Error handling for file opens
 #       Jan. 18 2025 - Add 'win_grp=None' to AskQuestion(), ShowInfor(), etc.
 #       Jan. 26 2025 - Delayed Text Box use ttk.Button (style="C.TButton").
 #       Feb. 02 2025 - ShowInfo(), AskQuestion() auto-assign Child Window Key.
+#       Mar. 07 2025 - Simply "string_width=28" usage 
 #
 #==============================================================================
 
@@ -433,7 +434,7 @@ class AskCommonSelf:
     """ Variables common to ShowInfo, AskQuestion and AskString
         Must appear before first reference (ShowInfo) """
     def __init__(self, parent, title=None, text=None, confirm='yes', align='center',
-                 thread=None, icon='warning', string=None, string_width=None,
+                 thread=None, icon='warning', string=None, string_width=28,
                  show=None, help=None, win_grp=None):
 
         self.top_level = parent     # Allows .after() calls
@@ -463,10 +464,7 @@ class AskCommonSelf:
             self.string = string    # Default value passed for AskString
         else:
             self.string = ""        # Entry field will initially be blank
-        if string_width:
-            self.string_width = string_width
-        else:
-            self.string_width = 28  # Size of string .Entry variable
+        self.string_width = string_width
 
         # self.result defined here for pycharm syntax highlighting
         self.result = None          # Defined in simpledialog() class
