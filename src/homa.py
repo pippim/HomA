@@ -3640,7 +3640,10 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
                  " | sudo_reset:", sudo_reset)
 
         if len(GLO['LED_LIGHTS_MAC']) != 17:  # Can be "" for new dictionary
-            v0_print(_who, "Invalid GLO['LED_LIGHTS_MAC']:", GLO['LED_LIGHTS_MAC'])
+            v1_print(_who, "Invalid GLO['LED_LIGHTS_MAC']:", GLO['LED_LIGHTS_MAC'])
+            self.device = None
+            self.powerStatus = "?"
+            return self.device
 
         self.cmdStart = time.time()
         self.cmdCommand = ["tc.connect", GLO['LED_LIGHTS_MAC']]
@@ -6106,7 +6109,7 @@ class TreeviewRow(DeviceCommonSelf):
         self.values = None  # Row values - Name lines, Attribute lines, MAC
         self.name_column = None  # Device Name & IP address - values[0]
         self.attribute_column = None  # 3 line device Attributes - values[1]
-        self.mac = None  # MAC address - hidden row values[-1] / values[2]
+        self.mac = None  # MAC address - hidden column values[-1] / values[2]
         # self.mac - arp_dict['mac'] - is non-displayed treeview column 
         # used to reread arp_dict
         

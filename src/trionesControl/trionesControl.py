@@ -38,6 +38,8 @@ def connect(MAC, hci_device="hci0", reset_on_start=True):
         try:
             device = adapter.connect(MAC)
         except pygatt.exceptions.NotConnectedError:
+            # 2025-03-16 message below not making it to caller. Instead getting:
+            #   "Adapter on device: '" + hci_device + "' cannot start!"
             raise pygatt.exceptions.NotConnectedError(
                 "Device MAC: '" + MAC + "' not connected!")
     except pygatt.exceptions.NotConnectedError:

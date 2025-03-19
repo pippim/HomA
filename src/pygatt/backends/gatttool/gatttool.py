@@ -305,6 +305,7 @@ class GATTToolBackend(BLEBackend):
                 searchwindowsize=self._search_window_size,
                 maxread=self._max_read
             )
+
         else:
             self._con = pexpect.spawn(
                 gatttool_cmd, logfile=self._gatttool_logfile,
