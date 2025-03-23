@@ -87,6 +87,7 @@ cp -L ~/HomA/monitor.py .  # symlink
 cp -r ~/HomA/nighttime.png .
 cp -r ~/HomA/picture_off.png .
 cp -r ~/HomA/picture_on.png .
+cp -L ~/HomA/pimtube.py .  # Youtube video controller / ad skipper
 cp -r ~/HomA/pygatt/ .  # Subdirectory with files and subdirectories
 cp -r ~/HomA/refresh.sh .  # Copy of this bash script might be helpful
 cp -r ~/HomA/reset.jpeg .
@@ -132,6 +133,7 @@ git add monitor.py
 git add nighttime.png
 git add picture_off.png
 git add picture_on.png
+git add pimtube.py
 git add pygatt/
 git add refresh.sh
 git add reset.jpeg

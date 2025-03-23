@@ -4072,7 +4072,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                                    command=self.Suspend, state=tk.DISABLED)
         self.file_menu.add_separator()
         self.file_menu.add_command(label="Exit", font=g.FONT, underline=1,
-                                   command=self.closeApp, state=tk.DISABLED)
+                                   command=self.exitApp, state=tk.DISABLED)
 
         mb.add_cascade(label="File", font=g.FONT, underline=0, menu=self.file_menu)
 
@@ -4083,7 +4083,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.edit_menu.add_separator()
         self.edit_menu.add_command(label="Monitor volume", underline=0,
                                    font=g.FONT, state=tk.DISABLED,
-                                   command=self.closeApp)
+                                   command=self.exitApp)
 
         mb.add_cascade(label="Edit", font=g.FONT, underline=0, menu=self.edit_menu)
 
@@ -4119,7 +4119,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.tools_menu.add_command(label="Forget sudo password", underline=0,
                                     font=g.FONT, command=ForgetPassword, state=tk.DISABLED)
         self.tools_menu.add_command(label="Debug information", font=g.FONT,
-                                    underline=0, command=self.closeApp,
+                                    underline=0, command=self.exitApp,
                                     state=tk.DISABLED)
         mb.add_cascade(label="Tools", font=g.FONT, underline=0,
                        menu=self.tools_menu)
@@ -4191,9 +4191,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.tools_menu.entryconfig("Forget sudo password", state=tk.NORMAL)
         self.tools_menu.entryconfig("Debug information", state=tk.DISABLED)
 
-    def closeApp(self, *_args):
+    def exitApp(self, *_args):
         """ <Escape>, X on window, 'Exit from dropdown menu or Close Button"""
-        _who = self.who + "closeApp():"
+        _who = self.who + "exitApp():"
 
         self.suspend_btn['state'] = tk.NORMAL  # 2025-02-11 color was staying blue
 
@@ -4461,9 +4461,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                       help_text, "ne", self.img_mag_glass)
 
         ''' ✘ CLOSE BUTTON  '''
-        self.bind("<Escape>", self.closeApp)
-        self.protocol("WM_DELETE_WINDOW", self.closeApp)
-        self.close_btn = device_button(0, 4, "Close", self.closeApp,
+        self.bind("<Escape>", self.exitApp)
+        self.protocol("WM_DELETE_WINDOW", self.exitApp)
+        self.close_btn = device_button(0, 4, "Exit", self.exitApp,
                                        "Exit HomA.", "ne", pic=self.img_close)
 
     def toggleSensorsDevices(self):
@@ -4812,7 +4812,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         ''' Is system shutting down? '''
         if killer.kill_now:
             v0_print('\nhoma.py refresh() closed by SIGTERM')
-            self.closeApp()
+            self.exitApp()
             return False  # Not required because this point never reached.
 
         ''' Resuming from suspend? '''
@@ -4924,6 +4924,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             Consequently long running processes must reseed self.last_refresh_time
             when they finish.
 
+            2025-03-19 Force Sensors log so temperatures and fan speeds are logged.
+
             2025-01-17 ERROR: Resume did not work for Sony TV, Sony Light, TCL TV,
                 and TCL TV light. It did work for BLE LED Lights. Reason is resume
                 wait is 3 seconds. Increase it to 6 seconds.
@@ -4946,7 +4948,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         # Force rediscovery immediately after resume from suspend
         self.last_rediscover_time = now - GLO['REDISCOVER_SECONDS'] * 10.0
         self.last_refresh_time = now + 1.0  # If abort, don't come back here
-        sm.last_sensor_log = now - GLO['SENSOR_LOG'] - 1.0  # Force initial sensor log
+        sm.last_sensor_log = now - GLO['SENSOR_LOG'] * 2  # Force log
 
     def resumeWait(self, timer=None, alarm=True, title=None, abort=True):
         """ Wait x seconds for devices to come online. If 'timer' passed do a
@@ -4995,7 +4997,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             if self.dtb.forced_abort:
                 break
             if not self.winfo_exists():
-                break  # self.closeApp() has destroyed window
+                break  # self.exitApp() has destroyed window
             self.dtb.update(str(int(start + countdown_sec - time.time())))
             # Suspend uses: 'self.after(150)'
             self.after(100)
@@ -6396,7 +6398,19 @@ class SystemMonitor(DeviceCommonSelf):
         if now - self.last_sensor_check < GLO['SENSOR_CHECK']:
             self.skipped_checks += 1
             return
+        self.last_sensor_check = now
 
+        # Run `sensors` command every GLO['SENSOR_CHECK'] seconds
+        self.number_checks += 1
+        log = True if len(self.sensors_log) == 0 else False
+        event = self.runCommand(['sensors'], _who, log=log)
+        result = event['output']
+
+        # Parse `sensors` output to dictionary key/value pairs
+        dell_found = False
+        self.curr_sensor = {}
+
+        # Check one fan's RPM speed change
         def CheckFanChange(key):
             """ If fan speed changed by more than GLO['FAN_GRANULAR'] RPM, force logging.
                 Called for "Processor Fan" and "Video Fan" A.K.A. "fan3".
@@ -6404,9 +6418,7 @@ class SystemMonitor(DeviceCommonSelf):
             :return: True of curr_sensor == last_sensor
             """
             try:
-                curr = self.curr_sensor[key]
-                last = self.last_sensor[key]
-                if curr == last:
+                if self.curr_sensor[key] == self.last_sensor[key]:
                     self.skipped_fan_same += 1
                     return False
             except (TypeError, IndexError):
@@ -6417,8 +6429,8 @@ class SystemMonitor(DeviceCommonSelf):
             # Speed can fluctuate 2400 RPM, 2600 RPM, 2400 RPM...  18 times
             # over 200 seconds. To reduce excessive fan speed change logging,
             # skip fluctuations <= GLO['FAN_GRANULAR'] RPM.
-            curr = float(curr.split(" ")[0])
-            last = float(last.split(" ")[0])
+            curr = float(self.curr_sensor[key].split(" ")[0])
+            last = float(self.last_sensor[key].split(" ")[0])
             diff = abs(curr - last)
             # Only report fan speed differences > 200 RPM
             if diff <= GLO['FAN_GRANULAR']:
@@ -6430,15 +6442,7 @@ class SystemMonitor(DeviceCommonSelf):
             self.last_sensor_log = time.time() - GLO['SENSOR_LOG'] * 2
             return True
 
-        self.number_checks += 1
-        log = True if len(self.sensors_log) == 0 else False
-        event = self.runCommand(['sensors'], _who, log=log)
-        result = event['output']
-        self.last_sensor_check = now
-
-        # Parse `sensors` output to dictionary key/value pairs
-        dell_found = False
-        self.curr_sensor = {}
+        # Process `sensors` output lines
         for res in result.split("\n"):
             parts = res.split(":")
             # Keys not logged: SODIMM:, temp1:, id 0: Core 0:, Core 1:...
