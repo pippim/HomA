@@ -20,6 +20,7 @@ warnings.filterwarnings("ignore", "ResourceWarning")  # PIL python 3 unclosed fi
 #       2024-12-01 - Create GitHub repo. Add dropdown menus and Big Number Calc.
 #       2025-01-08 - Create Bluetooth LED Light Strip support.
 #       2025-02-10 - Support Python 3 shebang.
+#       2025-03-26 - Auto assign iid in Sensors Treeview fixes duplicate keys.
 #
 # ==============================================================================
 
@@ -1517,11 +1518,15 @@ class NetworkInfo(DeviceCommonSelf):
         self.view_order = []  # Sortable list of MAC addresses matching instances
         for device in self.devices:
             # SONY.light (192.168.0.15) at 50:d4:f7:eb:41:35 [ether] on enp59s0
-            parts = device.split()
-            name = parts[0]  # Can be "unknown" when etc/self.hosts has no details
-            ip = parts[1][1:-1]
-            mac = parts[3]
-            alias = self.get_alias(mac)
+            try:
+                parts = device.split()
+                name = parts[0]  # Can be "unknown" when etc/self.hosts has no details
+                ip = parts[1][1:-1]
+                mac = parts[3]
+                alias = self.get_alias(mac)
+            except IndexError:
+                v0_print(_who, "List index error: '" + str(parts) + "'.")
+                name = ip = mac = alias = "N/A"
             arp_mac = mac + "  " + ip.ljust(15) + name.ljust(16) + alias
             v3_print(arp_mac)
             mac_dict = {"mac": mac, "ip": ip, "name": name, "alias": alias}
@@ -6596,23 +6601,30 @@ class SystemMonitor(DeviceCommonSelf):
         """ Flash the last row in Sensors Treeview """
         _who = self.who + "FlashLastRow():"
         cr = TreeviewRow(self)  # also used by Applications() devices treeview
-        iid = self.sensors_log[-1]['delta']  # delta is seconds since app started
+        sec = self.sensors_log[-1]['delta']  # delta is seconds since app started
 
         # iid is Number right justified 8 = 5 whole + decimal + 2 fraction
-        trg_iid = "{0:>8.2f}".format(iid)  # E.G. iid = "2150.40" seconds
-        trg_iid = str(trg_iid)  # 2025-01-19 strangely type is float today.
+        sec_str = "{0:>8.2f}".format(sec)  # E.G. sec = "2150.40" seconds
+        sec_str = str(sec_str)  # 2025-01-19 strangely type is float today.
 
         try:
-            _item = self.tree.item(trg_iid)
+            #_item = self.tree.item(sec_str)  # 2025-03-26
+            _item = self.tree.item(self.getLastRowIid())  # 2025-03-26
         except tk.TclError:
-            v0_print("\n" + _who, "trg_iid not found: '" + trg_iid + "'",
-                     " |", type(trg_iid))
+            v0_print("\n" + _who, "sec_str not found: '" + sec_str + "'",
+                     " |", type(sec_str))
             v0_print("self.sensors_log[-1]:", self.sensors_log[-1])
             return
 
-        cr.fadeIn(trg_iid)
+        #cr.fadeIn(sec_str)  # 2025-03-26
+        cr.fadeIn(self.getLastRowIid())  # 2025-03-26
         time.sleep(3.0)
-        cr.fadeOut(trg_iid)
+        #cr.fadeOut(sec_str)  # 2025-03-26
+        cr.fadeOut(self.getLastRowIid())  # 2025-03-26
+
+    def getLastRowIid(self):
+        """ Return IID for last row of Sensors Treeview """
+        return self.tree.get_children()[-1]
 
     def InsertTreeRow(self, sensor):
         """ Insert sensors row into sensors treeview
@@ -6630,19 +6642,21 @@ class SystemMonitor(DeviceCommonSelf):
                 return "N/A"
 
         # Possible image showing temperature of CPU?
-        trg_iid = "{0:>8.2f}".format(sensor['delta'])
+        sec_str = "{0:>8.2f}".format(sensor['delta'])
         try:
             self.tree.insert(
-                '', 'end', iid=trg_iid,
-                value=(trg_iid,
+                '', 'end', iid=None,  # iid=sec_str,  2025-03-26 auto assign
+                value=(sec_str,
                        opt('CPU').rjust(7) + " / " + opt('Processor Fan').rjust(8),
                        opt('GPU').rjust(7) + " / " + opt('Video Fan').rjust(8),
                        dt.datetime.fromtimestamp(sensor['time']).
                        strftime('%I:%M %p').strip('0').rjust(8)))
         except tk.TclError:
-            v0_print(_who, "trg_iid already exists in Sensors Treeview:", trg_iid)
+            v0_print(_who, "sec_str already exists in Sensors Treeview:", sec_str)
+            # 2025-03-26 TODO: Make key unique by auto-assigning iid
 
-        self.tree.see(trg_iid)
+        #self.tree.see(sec_str)  # 2025-03-26  #
+        self.tree.see(self.getLastRowIid())  # 2025-03-26  #
         # 2024-12-28: Occasionally iid not found in FlashLastRow() so update_idletasks
         self.tree.update_idletasks()
 
