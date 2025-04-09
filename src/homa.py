@@ -637,7 +637,9 @@ class Globals(DeviceCommonSelf):
             "REFRESH_MS": 16,  # Refresh tooltip fades 60 frames per second
             "REDISCOVER_SECONDS": 60,  # Check for device changes every x seconds
             "RESUME_TEST_SECONDS": 30,  # > x seconds disappeared means system resumed
-            "RESUME_DELAY_RESTART": 5,  # Allow x seconds for network to come up
+            "RESUME_DELAY_RESTART": 10,  # Allow x seconds for network to come up
+            # Sony TV error 1792. Initial 3 sec. March 2025 6 sec. April 2025 7 sec.
+            # April 2025 new router slower try 10 sec.
             "SUNLIGHT_PERCENT": "/usr/local/bin/.eyesome-percent",  # file contains 0% to 100%
 
             "LED_LIGHTS_MAC": "",  # Bluetooth LED Light Strip MAC address
@@ -1203,6 +1205,9 @@ class Computer(DeviceCommonSelf):
             Prior to calling cp.turnOff(), Application().turnOff() calls
             turnAllPower("OFF") to turn off all other devices. If rebooting, rather
             than suspending, then devices are left powered up.
+
+            If Dell BIOS "Fan Performance Mode" is turned on suspend can fail.
+
         """
         _who = self.who + "turnOff():"
         v2_print(_who, "Turn Off Computer:", self.ip)
@@ -1341,14 +1346,6 @@ class Computer(DeviceCommonSelf):
 class NetworkInfo(DeviceCommonSelf):
     """ Network Information from arp and getent (/etc/hosts)
 
-        If Android devices aren't automatically discovered:
-
-            adb kill-server && adb start-server
-            devices -l
-            # if android device missing:
-                adb connect <IP address>
-            # Run File Dropdown Menu option "Rediscover now"
-
 
         ni = NetworkInfo() called on startup
         rd = NetworkInfo() rediscovery called every minute
@@ -1429,45 +1426,32 @@ class NetworkInfo(DeviceCommonSelf):
         _host_data = {}  # keyed by host_mac, value = list [IP, name, alias, host_mac, last_IP]
         self.host_macs = []
         for host in self.hosts:
+            # 192.168.0.16    SONY.WiFi android-47cdabb50f83a5ee 18:4F:32:8D:AA:97
+            parts = host.split()
+            name = parts[1]  # SONY.WiFi
+            alias = ' '.join(parts[2:-1])  # android-47cdabb50f83a5ee
+            ip = parts[0]  # 192.168.0.16
+
             result = re.findall(p, host)  # regex MAC Address
-            if result:
-                # 192.168.0.16    SONY.WiFi android-47cd abb50f83a5ee 18:4F:32:8D:AA:97
-                parts = host.split()
-                name = parts[1]  # Can be "unknown" when etc/hosts has no details
-                alias = ' '.join(parts[2:-1])
-                ip = parts[0]
-                # The above Android device has two self.host_macs:
-                # ['47cd abb50f83', '18:4F:32:8D:AA:97'] 192.168.0.16
-                mac = str(result[-1])
-                host_mac = mac + "  " + ip.ljust(15) + name.ljust(16) + alias
-                v3_print(host_mac)
-                #host_dict = {"mac": mac, "ip": ip, "name": name, "alias": alias}
-                # 2024-10-14 - Future conversion from host_mac to host_dict
-                self.host_macs.append(host_mac)
-                # Assign Computer() attributes
+            if result:  # MAC found
+                # result = ['47cdabb50f83', '18:4F:32:8D:AA:97']
+                mac = str(result[-1])  # Last entry = '18:4F:32:8D:AA:97'
+
+                # Assign cp = Computer() instance attributes
                 if mac == cp.ether_mac or mac == cp.wifi_mac:
                     cp.name = name  # computer name
                     cp.alias = alias  # computer alias
                     if mac == cp.ether_mac and cp.ether_ip == "":
-                        v3_print("Assigning cp.ether_mac:", ip)
+                        v3_print("Assigning cp.ether_ip:", ip)
                         cp.ether_ip = ip
                     if mac == cp.wifi_mac and cp.wifi_ip == "":
-                        v3_print("Assigning cp.wifi_mac:", ip)
+                        v3_print("Assigning cp.wifi_ip:", ip)
                         cp.wifi_ip = ip
-            else:
-                parts = host.split()
-                name = parts[1]  # Can be "unknown" when /etc/hosts has no details
-                alias = ' '.join(parts[2:-1])
-                ip = parts[0]
-                # No MAC
-                # ['47cd abb50f83', '18:4F:32:8D:AA:97'] 192.168.0.16
+
+            else:  # No MAC (result = None)
                 mac = "No MAC for: " + ip
-                host_mac = mac + "  " + ip.ljust(15) + name.ljust(16) + alias
-                v3_print(host_mac)
-                #host_dict = {"mac": mac, "ip": ip, "name": name, "alias": alias}
-                # 2024-10-14 - Future conversion from host_mac to host_dict
-                self.host_macs.append(host_mac)
-                # Assign Computer() attributes
+
+                # Assign cp = Computer() instance attributes
                 if ip == cp.ether_ip or ip == cp.wifi_ip:
                     cp.name = name  # computer name
                     cp.alias = alias  # computer alias
@@ -1475,6 +1459,12 @@ class NetworkInfo(DeviceCommonSelf):
                         cp.ether_ip = ip  # Can be overridden by MAC later
                     if cp.wifi_ip == "":
                         cp.wifi_ip = ip  # Can be overridden by MAC later
+
+            host_mac = mac + "  " + ip.ljust(15) + name.ljust(16) + alias
+            v3_print(host_mac)
+            #host_dict = {"mac": mac, "ip": ip, "name": name, "alias": alias}
+            # 2024-10-14 - Future conversion from host_mac to host_dict
+            self.host_macs.append(host_mac)
 
         # Append self.devices with Computer() attributes
         v3_print("\n==================== cp = Computer.__init()  ===================")
@@ -1517,14 +1507,15 @@ class NetworkInfo(DeviceCommonSelf):
         self.instances = []  # TclGoogleAndroidTV, SonyBraviaKdlTV, etc. instances
         self.view_order = []  # Sortable list of MAC addresses matching instances
         for device in self.devices:
-            # SONY.light (192.168.0.15) at 50:d4:f7:eb:41:35 [ether] on enp59s0
+            # e.g. "SONY.light (192.168.0.15) at 50:d4:f7:eb:41:35 [ether] on enp59s0"
+            parts = None
             try:
                 parts = device.split()
                 name = parts[0]  # Can be "unknown" when etc/self.hosts has no details
                 ip = parts[1][1:-1]
                 mac = parts[3]
                 alias = self.get_alias(mac)
-            except IndexError:
+            except IndexError:  # name = parts[0] ERROR
                 v0_print(_who, "List index error: '" + str(parts) + "'.")
                 name = ip = mac = alias = "N/A"
             arp_mac = mac + "  " + ip.ljust(15) + name.ljust(16) + alias
@@ -2553,6 +2544,14 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/audio/v1_0/g
 
 class TclGoogleAndroidTV(DeviceCommonSelf):
     """ TCL Google Android TV
+
+        If Android devices aren't automatically discovered:
+
+            adb kill-server && adb start-server
+            devices -l
+            # if android device missing:
+                adb connect <IP address>
+            # Run File Dropdown Menu option "Rediscover now"
 
 $ adb devices -l
 List of devices attached
@@ -3913,6 +3912,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.img_devices = img.tk_image("wifi.png", 26, 26)
         self.img_suspend = img.tk_image("lightning_bolt.png", 26, 26)
         self.img_mag_glass = img.tk_image("mag_glass.png", 26, 26)
+        self.img_checkmark = img.tk_image("checkmark.png", 26, 26)
 
         # Right-click popup menu images common to all devices
         self.img_turn_off = img.tk_image("turn_off.png", 42, 26)
@@ -4113,16 +4113,24 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         # Tools Dropdown Menu
         self.tools_menu = tk.Menu(mb, tearoff=0)
+        sub_menu = tk.Menu(self.tools_menu, tearoff=0)
+        sub_menu.add_command(label='ON', font=g.FONT, underline=1,
+                             command=lambda: self.turnAllLightsPower('ON'))
+        sub_menu.add_command(label='OFF', font=g.FONT, underline=1,
+                             command=lambda: self.turnAllLightsPower('OFF'))
+        self.tools_menu.add_cascade(label="Turn all lights power", font=g.FONT,
+                                    underline=0, menu=sub_menu)
+        self.tools_menu.add_command(label="Forget sudo password", underline=0,
+                                    font=g.FONT, command=ForgetPassword, state=tk.DISABLED)
+
+        self.tools_menu.add_separator()
+
         self.tools_menu.add_command(label="Big number calculator", font=g.FONT,
                                     underline=0, command=self.OpenCalculator,
                                     state=tk.DISABLED)
         self.tools_menu.add_command(label="Timer " + str(GLO['TIMER_SEC']) + " seconds",
                                     font=g.FONT, underline=0,
                                     command=lambda: self.resumeWait(timer=GLO['TIMER_SEC']))
-        self.tools_menu.add_separator()
-
-        self.tools_menu.add_command(label="Forget sudo password", underline=0,
-                                    font=g.FONT, command=ForgetPassword, state=tk.DISABLED)
         self.tools_menu.add_command(label="Debug information", font=g.FONT,
                                     underline=0, command=self.exitApp,
                                     state=tk.DISABLED)
@@ -4644,6 +4652,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         menu.add_command(label="Move " + name + " Down", font=g.FONT, state=tk.DISABLED,
                          image=self.img_down, compound=tk.LEFT,
                          command=lambda: self.moveRowDown(cr))
+        menu.add_command(label="Forget " + name, font=g.FONT, image=self.img_close,
+                         compound=tk.LEFT, command=lambda: self.forgetDevice(cr))
 
         menu.add_separator()
         menu.add_command(label="Help", font=g.FONT, command=lambda: g.web_help(help_id),
@@ -4797,6 +4807,82 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         dr.Update(cr.item)  # Update destination row with current row
         cr.Update(dr.item)  # Update current row with destination row
 
+    def forgetDevice(self, cr):
+        """ Forget Device - when device removed or IP changed.
+            - Remove from Devices Treeview
+            - Delete arp_dict from ni.arp_dicts
+            - Delete MAC Address from ni.view_order list
+
+        LISTS
+        ni.devices     Devices from `arp -a`
+        ni.hosts       Devices from `getent hosts`
+        ni.host_macs   Optional MAC addresses at end of /etc/hosts
+        ni.view_order  Treeview list of MAC addresses
+
+        LISTS of DICTIONARIES
+        ni.arp_dicts   First time discovered, thereafter read from disk
+        ni.instances   [{mac:99, instance:TclGoogleAndroidTV}...{}]
+
+        """
+        _who = self.who + "forgetDevice():"
+
+        for arp_ndx, arp_dict in enumerate(ni.arp_dicts):
+            if arp_dict['mac'] == cr.mac:
+                v1_print(_who, "Found existing ni.arp_dict:", arp_dict['name'],
+                         "arp_ndx:", arp_ndx)
+                break
+        else:
+            v0_print(_who, "Not found ni.arp_dict!")
+            return
+
+        for inst_ndx, inst_dict in enumerate(ni.instances):
+            if inst_dict['mac'] == cr.mac:
+                v1_print(_who, "Found existing ni.instances:", inst_dict['mac'],
+                         "inst_ndx:", inst_ndx)
+                break
+        else:
+            v0_print(_who, "Not found ni.instances!")
+            return
+
+        for iid, view in enumerate(ni.view_order):
+            if view == cr.mac:
+                v1_print(_who, "Found existing ni.view_order 'iid':", iid)
+                break
+        else:
+            v0_print(_who, "Not found ni.view_order!")
+            return
+
+        # Confirmation prompt
+        title = "Confirm removal."
+        text = "Are you sure you want to remove: '" + arp_dict['name'] + "'"
+        answer = message.AskQuestion(self, title, text, "no", win_grp=self.win_grp,
+                                     thread=self.refreshThreadSafe)
+
+        text += "\n\t\tAnswer was: " + answer.result
+        v3_print(title, text)
+
+        v3_print(_who, "self.win_grp AFTER :")  # AskQuestion() win_grp debugging
+        v3_print(self.win_grp.window_list)
+
+        if answer.result != 'yes':
+            return  # Don't delete pids
+
+        ni.arp_dicts.pop(arp_ndx)
+        ni.instances.pop(inst_ndx)
+
+        # renumber iid for following treeview rows
+        last_item = int(cr.item)
+        new_count = len(cr.tree.get_children())
+        v1_print(_who, "last_item:", last_item, "new_count:", new_count)
+        while last_item < new_count - 1:
+            dr = TreeviewRow(self)  # Destination treeview row instance
+            dr.Get(str(last_item + 1))  # Get source row values
+            v1_print(_who, "Reassigning iid:", dr.item, "to:", last_item)
+            dr.Update(str(last_item))  # Update destination row with current row
+            last_item += 1
+
+        cr.tree.delete(str(new_count - 1))  # Delete the last treeview row
+
     def refreshApp(self, tk_after=True):
         """ Sleeping loop until need to do something. Fade tooltips. Resume from
             suspend. Rediscover devices.
@@ -4942,7 +5028,10 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         _who = self.who + "resumeAfterSuspend():"
         self.isActive = True  # Application GUI is active again
 
+        start_time = time.time()
         self.resumeWait()  # Display countdown waiting for devices to come online
+        delta = int(time.time() - start_time)
+        v0_print(_who, "Forced", delta, "second wait for network to come up.")
         v1_print("\n" + _who, "ni.view_order:", ni.view_order)
 
         # Turn all devices on
@@ -4983,6 +5072,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             if title is None:  # E.G. title="Scanning Bluetooth devices"
                 title = "Countdown timer"
             if self.rediscover_done is not True:  # 2025-01-08
+                v0_print(_who, "Rediscovery in progress. Aborting Countdown")
                 return  # if rediscovery, machine locks up when timer finishes.
                 # 2025-01-10 TODO: Disable timer menu option when rediscovery is
                 #   running or when timer is already running.
@@ -5094,6 +5184,63 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 v1_print("inst.device:", inst.device)
                 v1_print("BluetoothStatus:", inst.BluetoothStatus,
                          "powerStatus:", inst.powerStatus)
+
+            # Update Devices Treeview with power status
+            if not self.usingDevicesTreeview:
+                continue  # No Devices Treeview to update
+
+            # Get treeview row based on matching MAC address + type
+            # Note that Laptop MAC address can have two types (Base and Display)
+            cr = TreeviewRow(self)  # Setup treeview row processing instance
+            iid = cr.getIidForInst(inst)  # Get iid number and set instance
+            if iid is None:
+                continue  # Instance not in Devices Treeview, perhaps a smartphone?
+
+            old_text = cr.text  # Treeview row old power state "  ON", etc.
+            cr.text = "  " + str(resp)  # Display treeview row new power state
+            if cr.text != old_text:
+                v1_print(_who, cr.mac, "Power status changed from: '"
+                         + old_text.strip() + "' to: '" + cr.text.strip() + "'.")
+            cr.Update(iid)  # Update iid with new ['text']
+
+            # Display row by row when there is processing lag
+            self.tree.update_idletasks()  # Slow mode display each row.
+
+            # MAC address stored in treeview row hidden values[-1]
+            v2_print("\n" + _who, "i:", i, "cr.mac:", cr.mac)
+            v2_print("cr.inst:", cr.inst)
+
+        v2_print()  # Blank line to separate debugging output
+
+    def turnAllLightsPower(self, state):
+        """ Set power state to "ON" or "OFF" for Smart Plug instances.
+            Called by Tools dropdown menu.
+            If devices treeview is mounted, update power status text
+        """
+        _who = self.who + "turnAllLightsPower(" + state + "):"
+        night = cp.getNightLightStatus()
+        v1_print(_who, "Nightlight status: '" + night + "'")
+
+        # Loop through ni.instances
+        for i, instance in enumerate(ni.instances):
+            inst = instance['instance']
+
+            # Only select TP-Link / Kasa Smart Plug Bias Lights
+            if inst.type_code != GLO['HS1_SP']:
+                continue
+
+            if state == "ON" and inst.powerStatus == "OFF":
+                v1_print(_who, "Turning power 'ON' from 'OFF':", inst.name)
+                resp = inst.turnOn()
+                inst.powerStatus = str(resp)
+            elif state == "OFF" and inst.powerStatus == "ON":
+                v1_print(_who, "Turning power 'OFF' from 'ON':", inst.name)
+                resp = inst.turnOff()
+                inst.powerStatus = str(resp)
+            else:
+                v0_print(_who, "state is not 'ON' or 'OFF':", state)
+                #resp = "?"  # Necessary for pyCharm checker only
+                return
 
             # Update Devices Treeview with power status
             if not self.usingDevicesTreeview:
@@ -5325,7 +5472,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
             arp_inst = ni.inst_for_mac(mac)
             if bool(arp_inst):
-                v2_print(_who, "found instance:", arp_inst['mac'], arp_mac['name'])
+                v2_print(_who, "found instance:", arp_inst['mac'])
                 if mac not in ni.view_order:
                     v0_print(_who, "arp exists, instance exists, but no view order")
                     v0_print("Inserting", rediscover['mac'], rediscover['name'])
@@ -5338,7 +5485,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                     new_row = len(self.tree.get_children())
                     tr.Add(new_row)
                     self.tree.see(str(new_row))
-                    # 2025-01-16 - At this point HomA locks up ???
                 continue
 
             # Instance doesn't exist for existing arp mac
@@ -5414,7 +5560,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         if msg is None:
             msg = "Sudo password required for laptop display.\n\n"
         answer = message.AskString(
-            self, text=msg, thread=self.Refresh, show='*',
+            self, text=msg, thread=self.refreshApp, show='*',
             title="Enter sudo password", icon="information", win_grp=self.win_grp)
 
         # Setting laptop display power requires sudo prompt which causes fake resume
@@ -5432,6 +5578,16 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.last_refresh_time = time.time()  # Refresh idle loop last entered time
         return password  # Will be <None> if invalid password entered
 
+    def refreshThreadSafe(self):
+        """ Prevent self.refreshApp rerunning a second rediscovery during
+            error message waiting for acknowledgement
+        """
+        self.last_refresh_time = time.time()  # Prevent resume from suspend
+        self.last_rediscover_time = self.last_refresh_time
+        self.refreshApp(tk_after=False)
+        self.after(10)
+        self.update()  # Suspend button stays blue after mouseover ends>?
+
     def ShowInfo(self, title, text, icon="information", align="center"):
         """ Show message with thread safe refresh that doesn't invoke rediscovery.
 
@@ -5439,17 +5595,17 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 From Application initialize with:   inst.app = self
                 From Instance call method with:     self.app.ShowInfo()
         """
-        def thread_safe():
-            """ Prevent self.Refresh rerunning a second rediscovery during
-                Bluetooth connect error message waiting for acknowledgement
-            """
-            self.last_refresh_time = time.time()  # Prevent resume from suspend
-            self.last_rediscover_time = self.last_refresh_time
-            self.refreshApp(tk_after=False)
-            self.after(10)
-            self.update()  # Suspend button stays blue after mouseover ends>?
+        #def thread_safe():
+        #    """ Prevent self.refreshApp rerunning a second rediscovery during
+        #        Bluetooth connect error message waiting for acknowledgement
+        #    """
+        #    self.last_refresh_time = time.time()  # Prevent resume from suspend
+        #    self.last_rediscover_time = self.last_refresh_time
+        #    self.refreshApp(tk_after=False)
+        #    self.after(10)
+        #    self.update()  # Suspend button stays blue after mouseover ends>?
 
-        message.ShowInfo(self, thread=thread_safe, icon=icon, align=align,
+        message.ShowInfo(self, thread=self.ThreadSafe, icon=icon, align=align,
                          title=title, text=text, win_grp=self.win_grp)
 
     def Preferences(self):
@@ -5522,7 +5678,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         all_notebook = toolkit.makeNotebook(
             self.notebook, listTabs, listFields, listHelp, GLO, "TNotebook.Tab",
             "Notebook.TFrame", "C.TButton", close, tt=self.tt,
-            help_btn_image=self.img_mag_glass, close_btn_image=self.img_close)
+            help_btn_image=self.img_mag_glass, close_btn_image=self.img_checkmark)
         self.edit_pref_active = True
         self.enableDropdown()
 
@@ -6053,8 +6209,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         if high_pid_perc:
             text += str(high_pid_perc) + " job(s) have high CPU percentage.\n\n"
         text += "Do you want to cancel the job(s)?\n"  # centered: \t breaks
-        answer = message.AskQuestion(self, title, text, 'no',
-                                     thread=self.Refresh, win_grp=self.win_grp)
+        answer = message.AskQuestion(self, title, text, 'no', win_grp=self.win_grp,
+                                     thread=self.refreshThreadSafe)
 
         text += "\n\t\tAnswer was: " + answer.result
         v3_print(title, text)
@@ -6208,7 +6364,7 @@ class TreeviewRow(DeviceCommonSelf):
         elif type_code == GLO['LAPTOP_D']:  # Laptop Display image
             photo = img.tk_image("laptop_d.jpg", 300, 180)
         elif type_code == GLO['ROUTER_M']:  # Laptop Display image
-            photo = img.tk_image("router_m.png", 300, 180)
+            photo = img.tk_image("router2.jpg", 300, 180)
         else:
             v0_print(_who, "Unknown 'type_code':", type_code)
             photo = None
@@ -6674,6 +6830,448 @@ class SystemMonitor(DeviceCommonSelf):
             return "break"  # Don't let regular event handler do scroll of 5
 
 
+# ==============================================================================
+#
+#       SonyTvVolume() class. Tkinter slider to set SonyTv volume level
+#
+# ==============================================================================
+class SonyTvVolume:
+    """
+    2025-03-30 Copied from mserve.py tvVolume() class.
+
+    Usage by caller:
+
+    self.tv_vol = tvVolume(parent, name, title, text, tooltips=self.tt,
+                           thread=self.get_refresh_thread,
+                           playlists=self.playlists, info=self.info)
+          - Music must be playing (name=ffplay) or at least a song paused.
+
+    if self.tv_vol and self.tv_vol.top:
+        - Volume top level exists so lift() overtop of self.lib_top
+
+    Disabled during Loudness Normalization.
+
+    """
+
+    def __init__(self, top=None, name="ffplay", title=None, text=None,
+                 tooltips=None, thread=None, playlists=None,
+                 info=None, get_config=None, save_config=None):
+        """
+        """
+        # self-ize parameter list
+        self.parent = top  # self.parent is self.lib_top
+        self.name = name  # Process name to search for current volume
+        self.title = title  # E.G. "Set volume for mserve"
+        self.text = text  # "Adjust mserve volume to match other apps"
+        self.tt = tooltips  # Tooltips pool for buttons
+        self.get_thread_func = thread  # E.G. self.get_refresh_thread
+        self.playlists = playlists
+        self.info = info
+        self.get_config = get_config  # get_hockey_state
+        self.save_config = save_config  # save_hockey_state
+
+        self.last_sink = None
+        self.last_volume = None
+        self.curr_volume = None
+        self.slider = None
+        self.mon = None  # Monitors() class
+
+        # 2025-03-30 fields added after move from mserve.py tvVolume() class.
+        self.useDaytime = self.useNighttime = 0  # Automatic volume for Day / Night?
+        self.volDaytime = self.volNighttime = 0  # Volume for Day / Night
+        self.secDaytime = self.secNighttime = 0  # +/- seconds for Sunrise/Sunset
+
+        self.slider_frm = None  # Volume slider frame
+
+        ''' self.ffplay_mute  LEFT: 🔉 U+F1509  RIGHT: 🔊 U+1F50A 
+            🔇 (1f507) 🔈 (1f508) 🔉 (1f509) 🔊 (1f50a)
+        '''
+        self.ffplay_mute = tk.Label(
+            self.slider_frm, borderwidth=0, highlightthickness=0,
+            text="    🔉", justify=tk.CENTER, font=g.FONT)  # justify not working
+        self.ffplay_mute.grid(row=0, column=0, sticky=tk.W)
+
+        def volume_mute():
+            """ Click on volume mute icon (speaker with diagonal line on left) """
+            self.check_sinks()
+            self.pav_ctl.sink = self.force_sink(
+                self.pav_ctl.sink, self.pav_ctl.pid, trace="ffplay_mute button")
+            pav.fade(self.pav_ctl.sink,
+                     float(pav.get_volume(self.pav_ctl.sink)),
+                     0, .5, step_cb=self.init_ffplay_slider)
+            self.init_ffplay_slider(0)  # Final step to 0 display
+
+        self.ffplay_mute.bind("<Button-1>", lambda _: volume_mute())
+
+        # self.ffplay_mute.bind("<Button-1>", lambda _: pav.fade(
+        #    # 2024-04-29 change play_ctl to pav_ctl
+        #    self.pav_ctl.sink, float(pav.get_volume(self.pav_ctl.sink)),
+        #    25, .5, step_cb=self.init_ffplay_slider))
+
+        # focus in/out aren't working :(
+        self.ffplay_mute.bind("<FocusIn>", lambda _: print("focus in"))
+        self.ffplay_mute.bind("<FocusOut>", lambda _: print("focus out"))
+
+        text = "Speaker with one wave.\n"
+        text += "Click to set volume to {}%."
+        self.tt.add_tip(self.ffplay_mute, tool_type='label',
+                        text=text, anchor="sw")
+
+        ''' self.ffplay_full  RIGHT: 🔊 U+1F50A 
+            🔇 (1f507) 🔈 (1f508) 🔉 (1f509) 🔊 (1f50a)
+        '''
+        self.ffplay_full = tk.Label(
+            self.slider_frm, borderwidth=0, highlightthickness=0,
+            text="    🔊", font=g.FONT)  # justify not working
+        self.ffplay_full.grid(row=0, column=2)
+
+        def volume_full():
+            """ Click on full volume icon (speaker with three waves on right) """
+            self.check_sinks()
+            self.pav_ctl.sink = self.force_sink(
+                self.pav_ctl.sink, self.pav_ctl.pid, trace="ffplay_full button")
+            max_vol = self.get_max_volume()
+            pav.fade(self.pav_ctl.sink,
+                     float(pav.get_volume(self.pav_ctl.sink)),
+                     max_vol, .5, step_cb=self.init_ffplay_slider)
+            self.init_ffplay_slider(max_vol)  # Final step to 100 display
+
+        self.ffplay_full.bind("<Button-1>", lambda _: volume_full())
+
+        # self.ffplay_full.bind("<Button-1>", lambda _: pav.fade(
+        # 2024-04-29 change play_ctl to pav_ctl
+        # self.pav_ctl.sink, float(pav.get_volume(self.pav_ctl.sink)),
+        # 100, .5, step_cb=self.init_ffplay_slider))
+
+        text = "Speaker with three waves.\n"
+        text += "Click to set volume to {}%."
+        self.tt.add_tip(self.ffplay_full, tool_type='label',
+                        text=text, anchor="se")
+
+        ''' Volume Slider https://www.tutorialspoint.com/python/tk_scale.htm '''
+        self.ffplay_slider = tk.Scale(  # highlight color doesn't seem to work?
+            self.slider_frm, orient=tk.HORIZONTAL, tickinterval=0, showvalue=0,
+            highlightcolor="Blue", activebackgroun="Gold", troughcolor="Black",
+            command=self.set_ffplay_sink, borderwidth=0, cursor='boat red red')
+        self.ffplay_slider.grid(row=0, column=1, padx=4, ipady=1, sticky=tk.EW)
+
+        text = "{} Volume:\n\n"
+        text += "Click and drag slider to change volume.\n"
+        text += "Click space left of slider to reduce volume.\n"
+        text += "Click space right of slider to increase volume.\n"
+        text += "Click small speaker on left for {}% volume.\n"
+        text += "Click large speaker on right for {}% volume."
+        self.tt.add_tip(self.ffplay_slider, tool_type='label',
+                        text=text, anchor="sc")
+
+        ''' Controls to resize art to fit frame spanning metadata # rows '''
+        self.play_frm.bind("<Configure>", self.on_resize)
+        self.start_w = self.play_frm.winfo_reqheight()
+        self.start_h = self.play_frm.winfo_reqwidth()
+
+        ''' Regular geometry is no good. Linked to lib_top is better '''
+        self.top = tk.Toplevel()
+        try:
+            xy = (self.parent.winfo_x() + g.PANEL_HGT * 3,
+                  self.parent.winfo_y() + g.PANEL_HGT * 3)
+        except AttributeError:  # Music Location Tree instance has no attribute 'winfo_x'
+            print("self.parent failed to get winfo_x")
+            xy = (100, 100)
+
+        self.top.minsize(width=g.BTN_WID * 10, height=g.PANEL_HGT * 10)
+        self.top.geometry('+%d+%d' % (xy[0], xy[1]))
+        self.top.title("Volume During TV Commercials - mserve")
+        self.top.configure(background="#eeeeee")  # Replace "LightGrey"
+        self.top.columnconfigure(0, weight=1)
+        self.top.rowconfigure(0, weight=1)
+
+        ''' Set program icon in taskbar '''
+        img.taskbar_icon(self.top, 64, 'white', 'lightskyblue', 'black')
+
+        ''' Create master frame '''
+        self.vol_frm = tk.Frame(self.top, borderwidth=g.FRM_BRD_WID,
+                                relief=tk.RIDGE, bg="#eeeeee")
+        self.vol_frm.grid(column=0, row=0, sticky=tk.NSEW)
+        self.vol_frm.columnconfigure(0, weight=1)
+        self.vol_frm.columnconfigure(1, weight=5)
+        self.vol_frm.rowconfigure(0, weight=1)
+        ms_font = g.FONT
+
+        ''' Instructions '''
+        PAD_X = 5
+        if not self.text:  # If text wasn't passed as a parameter use default
+            self.text = "\nSet mserve volume during Hockey TV Commercials\n\n" + \
+                        "When TV commercials appear during a hockey game,\n" + \
+                        "you can click the commercial button and mserve\n" + \
+                        "will play music for the duration of the commercials.\n\n" + \
+                        "Sometimes the volume of the hockey game is lower than\n" + \
+                        "normal and you have the system volume turned up.\n" + \
+                        "In this case, you want to set mserve to a lower volume here. \n"
+        tk.Label(self.vol_frm, text=self.text, justify="left", bg="#eeeeee",
+                 font=ms_font) \
+            .grid(row=0, column=0, columnspan=3, sticky=tk.W, padx=PAD_X)
+
+        ''' Create images for checked and unchecked radio buttons '''
+        box_height = int(g.MON_FONTSIZE * 2.2)
+        self.radio_boxes = img.make_checkboxes(
+            box_height, 'WhiteSmoke', 'LightGray', 'Green')
+
+        def check_button_var(txt, scr_name, row, col):
+            """ Create TK label text and radio box value. """
+            tk.Label(self.vol_frm, text=txt, font=g.FONT, bg="#eeeeee"). \
+                grid(row=row, column=col, sticky=tk.W)
+            fld = tk.Checkbutton(
+                self.vol_frm, variable=scr_name, anchor=tk.W, bg="#eeeeee",
+                image=self.radio_boxes[0], selectimage=self.radio_boxes[2]
+            )
+            fld.grid(row=row, column=col + 1, sticky=tk.W, padx=5, pady=5)
+            return fld
+
+        self.commercial_secs = tk.IntVar()
+        self.intermission_secs = tk.IntVar()
+        self.tv_application = tk.StringVar()
+        self.tv_move_window = tk.BooleanVar()
+        self.tv_window_anchor = tk.StringVar()
+        self.tv_move_with_compiz = tk.BooleanVar()
+        self.tv_monitor = tk.StringVar()
+        self.mon = monitor.Monitors()
+        """
+        mon.string_list:
+            Screen 1, HDMI-0, 1920x1080, +0+=0
+            Screen 2, DP-1-1, 3840x2160, +1920+0
+            Screen 3, eDP-1-1, 1920x1080, +3870+2160
+
+        Monitor SQL Configuration: 20-char Name, MAC, IP, ED ID, Manufacturer,
+        Model, Serial Number, Purchase Date, warranty, 60-char name, physical size,
+        LAN MAC, LAN IP, WiFi MAC, WiFi IP, Backlight MAC, Backlight IP,
+        adaptive brightness, communication channel, communication language, power
+        on command, power off command, screen off command, screen on command,
+        volume up command, volume down command, mute command, un-mute command,
+        disable eyesome command, enable eyesome command, xrandr name, monitor 0-#,
+        screen width, height, x-offset, y-offset, image (300x300 or so)
+        """
+        tk.Label(self.vol_frm, text="Commercial seconds:", bg="#eeeeee",
+                 font=ms_font).grid(row=1, column=0, sticky=tk.W)
+        tk.Entry(self.vol_frm, textvariable=self.commercial_secs,
+                 font=ms_font).grid(row=1, column=1, sticky=tk.W)
+        tk.Label(self.vol_frm, text="Intermission seconds:", bg="#eeeeee",
+                 font=ms_font).grid(row=2, column=0, sticky=tk.W)
+        tk.Entry(self.vol_frm, textvariable=self.intermission_secs,
+                 font=ms_font).grid(row=2, column=1, sticky=tk.W)
+        tk.Label(self.vol_frm, text="TV application name:", bg="#eeeeee",
+                 font=ms_font).grid(row=3, column=0, sticky=tk.W)
+        tk.Entry(self.vol_frm, textvariable=self.tv_application,
+                 font=ms_font).grid(row=3, column=1, sticky=tk.W)
+        tk.Label(self.vol_frm, text="TV Monitor:", bg="#eeeeee",
+                 font=ms_font).grid(row=4, column=0, sticky=tk.W)
+        # 2024-07-04 - Style needed to change color of 'readonly'
+        # https://stackoverflow.com/a/18610520/6929343
+        ttk.Combobox(self.vol_frm, textvariable=self.tv_monitor,
+                     height=len(self.mon.string_list), values=self.mon.string_list,
+                     width=len(self.mon.string_list[0]), state="readonly",
+                     font=ms_font).grid(row=4, column=1, sticky=tk.W)
+        _fld_move_window = check_button_var(
+            "Move play window to TV?", self.tv_move_window, 5, 0)
+        _fld_move_with_compiz = check_button_var(
+            "Tricky move with Compiz?", self.tv_move_with_compiz, 6, 0)
+        ''' 
+Defined top of file mserve.py:
+TV_APP_NAME = "Firefox"  # Hockey TV application running on Firefox browser
+TV_VOLUME = 60  # Hockey TV mserve plays music at 60% volume level
+TV_BREAK1 = 90  # Hockey TV commercial break is 90 seconds
+TV_BREAK2 = 1080  # Hockey TV intermission is 18 minutes
+TV_MONITOR = 0  # Monitor hosting Hockey TV broadcast
+TV_MOVE_WINDOW = True  # During TV commercials, play window moves over top
+TV_WINDOW_ANCHOR = "center"  # Center play window on Hockey monitor
+TV_MOVE_WITH_COMPIZ = False  # Smooth monitor jump but prone to glitches        
+        '''
+
+        ''' Volume During TV Commercials Slider '''
+        self.slider = tk.Scale(self.vol_frm, from_=100, to=25, tickinterval=5,
+                               command=self.set_sink, bg="#eeeeee")
+        self.slider.grid(row=0, column=3, rowspan=7, padx=5, pady=5, sticky=tk.NS)
+
+        ''' button frame '''
+        bottom_frm = tk.Frame(self.vol_frm, bg="#eeeeee")
+        bottom_frm.grid(row=10, columnspan=4, pady=(10, 5), sticky=tk.E)
+
+        ''' Apply Button '''
+        self.apply_button = tk.Button(bottom_frm, text="✔ Apply",
+                                      width=g.BTN_WID2 - 6, font=g.FONT,
+                                      command=self.apply)
+        self.apply_button.grid(row=0, column=0, padx=10, pady=5, sticky=tk.E)
+        if self.tt:
+            self.tt.add_tip(self.apply_button, "Save Volume Slider changes and exit.",
+                            anchor="nw")
+        self.top.bind("<Return>", self.apply)  # DO ONLY ONCE?
+
+        ''' Help Button - 
+            https://www.pippim.com/programs/mserve.html#HelpTvVolume '''
+        ''' ⧉ Help - Videos and explanations on pippim.com '''
+
+        help_text = "Open a new window in the default web browser for\n"
+        help_text += "videos and explanations about this function.\n"
+        help_text += "https://www.pippim.com/programs/mserve.html#\n"
+
+        help_btn = tk.Button(
+            bottom_frm, text="⧉ Help", font=g.FONT,
+            width=g.BTN_WID2 - 4, command=lambda: g.web_help("HelpTvVolume"))
+        help_btn.grid(row=0, column=1, padx=10, pady=5, sticky=tk.E)
+        if self.tt:
+            self.tt.add_tip(help_btn, help_text, anchor="ne")
+
+        ''' Close Button '''
+        self.close_button = tk.Button(bottom_frm, text="✘ Close",
+                                      width=g.BTN_WID2 - 6, font=g.FONT,
+                                      command=self.close)
+        self.close_button.grid(row=0, column=2, padx=(10, 5), pady=5,
+                               sticky=tk.E)
+        if self.tt:
+            self.tt.add_tip(self.close_button, "Close Volume Slider, ignore changes.",
+                            anchor="ne")
+        self.top.bind("<Escape>", self.close)  # DO ONLY ONCE?
+        self.top.protocol("WM_DELETE_WINDOW", self.close)
+
+        ''' Get current volume & Read stored volume '''
+        self.last_volume, self.last_sink = self.get_volume()  # Reset this value when ending
+        if not self.read_vol():
+            message.ShowInfo(self.parent, "Initialization of mserve in progress.",
+                             "Cannot adjust volume until playlist loaded into mserve.",
+                             icon='error', thread=self.get_thread_func)
+            self.close()
+
+        # Adjusting volume with no sound source isn't helpful
+        if self.last_volume is None:
+            title = "No Sound is playing."
+            text = "Cannot adjust volume until a song is playing."
+            message.ShowInfo(self.parent, title, text,
+                             icon='warning', thread=self.get_thread_func)
+            self.info.cast(title + "\n" + text, 'warning')
+            self.close()
+
+        if self.top:  # May have been closed above.
+            self.top.update_idletasks()
+
+    def get_volume(self, name=None):
+        """ Get volume of 'ffplay' before resetting volume """
+        if name is None:
+            name = self.name  # self.name defaults to "ffplay"
+
+        all_sinks = pav.get_all_sinks()  # Recreates pav.sinks_now
+        for Sink in all_sinks:
+            if Sink.name == name:
+                return int(Sink.volume), Sink.sink_no_str
+
+        return None, None
+
+    def set_sink(self, value=None):
+        """ Called when slider changes value. Set sink volume to slider setting.
+            Credit: https://stackoverflow.com/a/19534919/6929343 """
+        if value is None:
+            print("tvVolume.set_sink() 'value' argument is None")
+            return
+        curr_vol, curr_sink = self.get_volume()
+        pav.set_volume(curr_sink, value)
+        self.curr_volume = value  # Record for saving later
+
+    def read_vol(self):
+        """ Get last saved volume.  Based on get_hockey. If nothing found
+            set defaults. """
+        self.curr_volume = 100  # mserve volume when TV commercial on air
+        if not self.get_config(set_menu=False):
+            return None
+
+        ''' Setup screen fields  '''
+        self.curr_volume = TV_VOLUME
+        self.commercial_secs.set(TV_BREAK1)
+        self.intermission_secs.set(TV_BREAK2)
+        self.tv_application.set(TV_APP_NAME)
+        self.tv_monitor.set(self.mon.string_list[TV_MONITOR])
+        self.tv_move_window.set(TV_MOVE_WINDOW)
+        self.tv_move_with_compiz.set(TV_MOVE_WITH_COMPIZ)
+        if self.last_volume:
+            pav.fade(self.last_sink, self.last_volume, self.curr_volume, 1)
+        self.slider.set(self.curr_volume)
+        self.top.update_idletasks()
+        return True
+
+    def save_vol(self):
+        """ Save volume setting during TV Hockey Broadcast Commercials
+
+        From: MusicLocationTree().self.save_hockey_state():
+
+        Comments = "Hockey TV Commercial Buttons used?"
+        tv_dict = dict()
+        tv_dict['TV_MONITOR'] = TV_MONITOR
+        tv_dict['TV_MOVE_WINDOW'] = TV_MOVE_WINDOW
+        tv_dict['TV_WINDOW_ANCHOR'] = TV_WINDOW_ANCHOR
+        tv_dict['TV_MOVE_WITH_COMPIZ'] = TV_MOVE_WITH_COMPIZ
+        Target = json.dumps(tv_dict)
+
+        self.save_config_for_loc(
+            'hockey_state', state, TV_APP_NAME, Size=TV_VOLUME, Count=TV_BREAK1,
+            Seconds=float(TV_BREAK2), Target=Target, Comments=Comments)
+
+        """
+
+        global TV_APP_NAME, TV_VOLUME, TV_BREAK1, TV_BREAK2
+        global TV_MONITOR, TV_MOVE_WINDOW, TV_MOVE_WITH_COMPIZ
+
+        # If we don't rewrite fields they get blanked out. Action=Location
+        try:
+            TV_BREAK1 = self.commercial_secs.get()
+            TV_BREAK2 = self.intermission_secs.get()
+        except ValueError:
+            message.ShowInfo(self.top, "Invalid Seconds Entered.",
+                             "Commercial or Intermission contains non-digit(s).",
+                             icon='error', thread=self.get_thread_func)
+            return False
+
+        TV_VOLUME = self.curr_volume
+        TV_APP_NAME = self.tv_application.get()
+        try:
+            TV_MONITOR = self.mon.string_list.index(self.tv_monitor.get())
+        except IndexError as _err:
+            print(_err)
+            TV_MONITOR = 0
+        TV_MOVE_WINDOW = self.tv_move_window.get()
+        TV_MOVE_WITH_COMPIZ = self.tv_move_with_compiz.get()
+
+        _volume, sink = self.get_volume(TV_APP_NAME)
+        if sink is None:
+            title = "Invalid TV Application Name."
+            text = "The application '" + TV_APP_NAME + \
+                   "', does not have a stream opened for sound.\n\n" + \
+                   "Ensure the application has opened a stream with sound."
+            self.info.cast(title + "\n\n" + text, 'error')
+            message.ShowInfo(self.top, title, text, icon='error',
+                             thread=self.get_thread_func)
+            return False
+
+        self.save_config()
+
+        return True
+
+    def close(self, *_args):
+        """ Close Volume During TV Commercials Window """
+        if self.tt and self.top:
+            self.tt.close(self.top)
+        self.top.destroy()
+        self.top = None  # Indicate volume slider is closed
+
+        ''' Adjust volume for playing mserve song back to starting level '''
+        curr_volume, curr_sink = self.get_volume()  # last_sink may have changed
+        if curr_volume and self.last_volume:
+            # curr_volume will be None when shutting down.
+            pav.fade(curr_sink, curr_volume, self.last_volume, 1)  # 1 second fade
+
+    # noinspection PyUnusedLocal
+    def apply(self, *args):
+        """ Save volume setting """
+        if self.save_vol():  # calls save_hockey_state()
+            self.close()
+
+
 def v0_print(*args, **kwargs):
     """ Information printing silenced by argument -s / --silent """
     if not p_args.silent:
@@ -6752,7 +7350,7 @@ v1_print(sys.argv[0], "- Home Automation", " | verbose1:", p_args.verbose1,
          " | verbose2:", p_args.verbose2, " | verbose3:", p_args.verbose3,
          "\n  | fast:", p_args.fast, " | silent:", p_args.silent)
 
-''' Global classes '''
+''' Global class instances accessed by various other classes '''
 root = None  # Tkinter toplevel
 app = None  # Application GUI
 cfg = sql.Config()  # Colors configuration SQL records
@@ -6864,6 +7462,12 @@ def save_files():
     glo.saveFile()
 
 
+def dummy_thread():
+    """ Needed for ShowInfo from root window. """
+    root.update()
+    root.after(30)
+
+
 def main():
     """ Save current directory, change to ~/homa directory, load app GUI
         When existing restore original current directory.
@@ -6899,9 +7503,55 @@ def main():
         for i, entry in enumerate(ni.instances):
             v1_print("  ", str(i+1) + ".", entry)
 
-    ''' Open Main Application Window '''
+    ''' Tkinter root window '''
     root = tk.Tk()
     root.withdraw()
+
+    ''' Is another copy of homa running? '''
+    # result = os.popen("ps aux | grep -v grep | grep python").read().splitlines()
+    apps_running = ext.get_running_apps(PYTHON_VER)
+    this_pid = os.getpid()  # Don't commit suicide!
+    h_pid = homa_pid = 0  # Running PIDs found later
+
+    ''' Loop through all running apps with 'python' in name '''
+    for pid, app in apps_running:
+        if app == "h" and pid != this_pid:
+            h_pid = pid  # 'm' splash screen found
+        if app == "homa.py" and pid != this_pid:
+            homa_pid = pid  # 'homa.py' found
+
+    ''' One or more fingerprints indicating another copy running? '''
+    if h_pid or homa_pid:
+        title = "Another copy of homa is running!"
+        text = "Cannot start two copies of homa. Switch to the other version."
+        text += "\n\nIf the other version crashed, the process(es) still running"
+        text += " can be killed:\n\n"
+        if h_pid:
+            text += "\t'm' (" + str(h_pid) + ") - homa splash screen\n"
+        if homa_pid:
+            text += "\t'homa.py' (" + str(homa_pid) + \
+                    ") - homa without splash screen\n"
+        text += "\nDo you want to kill previous crashed version?"
+
+        print(title + "\n\n" + text)
+        answer = message.AskQuestion(
+            root, title=title, text=text, align='left', confirm='no',
+            icon='error', thread=dummy_thread)
+
+        if answer.result != 'yes':
+            exit()
+
+        if h_pid:
+            # print("killing h_pid:", h_pid)
+            if not ext.kill_pid_running(h_pid):
+                print("killing h_pid FAILED!:", h_pid)
+        if homa_pid:
+            # print("killing homa_pid:", homa_pid)
+            if not ext.kill_pid_running(homa_pid):
+                print("killing homa_pid FAILED!:", homa_pid)
+
+
+    ''' Open Main Application Window '''
     app = Application(root)  # Treeview of ni.discovered[{}, {}...{}]
 
     app.mainloop()
