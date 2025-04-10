@@ -4809,8 +4809,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
     def forgetDevice(self, cr):
         """ Forget Device - when device removed or IP changed.
-            - Remove from Devices Treeview
-            - Delete arp_dict from ni.arp_dicts
+            - Remove cr.item from Devices Treeview
+            - Delete arp_dict from ni.arp_dicts list
+            - Delete inst_dict from ni.instances list
             - Delete MAC Address from ni.view_order list
 
         LISTS
@@ -4818,6 +4819,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         ni.hosts       Devices from `getent hosts`
         ni.host_macs   Optional MAC addresses at end of /etc/hosts
         ni.view_order  Treeview list of MAC addresses
+        self.photos    Copy of treeview images saved from garbage collection
 
         LISTS of DICTIONARIES
         ni.arp_dicts   First time discovered, thereafter read from disk
@@ -4872,16 +4874,16 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         # renumber iid for following treeview rows
         last_item = int(cr.item)
-        new_count = len(cr.tree.get_children())
+        new_count = len(cr.tree.get_children()) - 1
         v1_print(_who, "last_item:", last_item, "new_count:", new_count)
-        while last_item < new_count - 1:
-            dr = TreeviewRow(self)  # Destination treeview row instance
-            dr.Get(str(last_item + 1))  # Get source row values
-            v1_print(_who, "Reassigning iid:", dr.item, "to:", last_item)
-            dr.Update(str(last_item))  # Update destination row with current row
+        while last_item < new_count:
+            cr.Get(str(last_item + 1))  # Get source row values
+            cr.Update(str(last_item))  # Update current row with source row
+            v0_print(_who, "Reassigned iid:", cr.item, "to:", last_item)
             last_item += 1
 
-        cr.tree.delete(str(new_count - 1))  # Delete the last treeview row
+        cr.tree.delete(str(new_count))  # Delete the last treeview row moved
+        self.photos.pop(new_count)  # Delete the last photo moved
 
     def refreshApp(self, tk_after=True):
         """ Sleeping loop until need to do something. Fade tooltips. Resume from
@@ -6295,9 +6297,14 @@ class TreeviewRow(DeviceCommonSelf):
         self.attribute_column = self.values[1]  # Host alias / MAC / Type Code
         self.mac = self.values[2]  # arp_dict['mac'] is non-displayed value
 
-        self.arp_dict = ni.arp_for_mac(self.mac)
-        self.inst_dict = ni.inst_for_mac(self.mac)
-        self.inst = self.inst_dict['instance']
+        try:
+            self.arp_dict = ni.arp_for_mac(self.mac)
+            self.inst_dict = ni.inst_for_mac(self.mac)
+            self.inst = self.inst_dict['instance']
+        except IndexError:
+            v0_print(_who, "Catastrophic Error. MAC not found:", self.mac)
+            v0_print("  Name:", self.name_column)
+            # Occurred 2025-04-09 for first time.
 
     def getIidForInst(self, inst):
         """ Using passed instance, get the treeview row. """
@@ -6620,7 +6627,8 @@ class SystemMonitor(DeviceCommonSelf):
                 CheckFanChange(parts[0])  # Over 200 RPM change will be logged.
             if "PU" in parts[0]:
                 # 2025-02-09 For python 3 degree in bytes use str(+66.0°C)
-                self.curr_sensor[parts[0]] = str(parts[1].strip()).replace("+", "")
+                self.curr_sensor[parts[0]] = \
+                    str(parts[1].strip()).replace("+", "").replace(".0", "")
 
         if not dell_found:
             return  # Not an Alienware 17R3 or similar DELL machine
@@ -6659,7 +6667,7 @@ class SystemMonitor(DeviceCommonSelf):
             # TODO: first check if Dell fans can be discovered.
             v0_print()
             v0_print("= = = = = System Monitor Processor Temps & Fans = = = = =")
-            v0_print(" Seconds | CPU Temp Fan RPM | GPU Temp Fan RPM |   Time  ")
+            v0_print(" Seconds | CPU Temp/Fan RPM | GPU Temp/Fan RPM |   Time  ")
             v0_print("-------- | ---------------- | ---------------- | --------")
 
         def opt(key):
@@ -6677,8 +6685,8 @@ class SystemMonitor(DeviceCommonSelf):
             # When tree_only is True, printing has already been done to console
             if not tree_only:
                 v0_print("{0:>8.2f}".format(sensor['delta']),  # "999.99" format
-                         '|', opt('CPU').rjust(8), opt('Processor Fan').rjust(8),
-                         '|', opt('GPU').rjust(8), opt('Video Fan').rjust(8),
+                         '|', opt('CPU').rjust(6) + " /", opt('Processor Fan').rjust(8),
+                         '|', opt('GPU').rjust(6) + " /", opt('Video Fan').rjust(8),
                          '|', dt.datetime.now().strftime('%I:%M %p').strip('0').rjust(8))
 
             if self.treeview_active:
