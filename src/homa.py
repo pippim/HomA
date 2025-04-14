@@ -840,6 +840,7 @@ class Globals(DeviceCommonSelf):
         MAC = "MAC-address"
         WID = 15  # Default Width
         DEC = MIN = MAX = CB = None  # Decimal places, Minimum, Maximum, Callback
+        # 0=Hidden, 1=Sony, 2=TCL, 3=SmartPlug, 4=LED, 5=Misc, 6=Refresh, 7=Computer
         listFields = [
             # name, tab#, ro/rw, input as, stored as, width, decimals, min, max,
             #   edit callback, tooltip text
@@ -869,7 +870,7 @@ class Globals(DeviceCommonSelf):
              "Time HomA was started or resumed.\nUsed for elapsed time printing."),
             ("REFRESH_MS", 6, RW, INT, INT, 3, DEC, MIN, MAX, CB,
              "Refresh tooltip fades 60 frames per second"),
-            ("REDISCOVER_SECONDS", 6, RW, INT, INT, 3, DEC, MIN, MAX, CB,
+            ("REDISCOVER_SECONDS", 6, RW, INT, INT, 5, DEC, MIN, MAX, CB,
              "Check devices changes every x seconds"),
             ("RESUME_TEST_SECONDS", 6, RW, INT, INT, 3, DEC, MIN, MAX, CB,
              "> x seconds disappeared means system resumed"),
@@ -2251,18 +2252,32 @@ https://stackoverflow.com/questions/2829613/how-do-you-tell-if-a-string-contains
         v2_print(_who, "curl reply_dict:", reply)  # E.G. {'result': [], 'id': 55}
         return embedId == RESTid
 
+    def checkPowerOffSuspend(self, forgive=False):
+        """ If TV powered off with remote control. If so suspend system.
+            Called from app.refreshApp() every 16 milliseconds
+            Copied from /mnt/e/bin/tvpowered
+        """
+        _who = self.who + "checkPowerOffSuspend():"
+        self.getPower()
+        if self.powerStatus != "OFF":
+            return False
+
+        v0_print(_who, "Suspending due to Sony TV powerStatus:", self.powerStatus)
+
+        return True  # Parent will delay rediscovery 1 minute
+
     def checkVolumeChange(self, forgive=False):
         """ If current volume is different than last volume spam notify-send
-
+            Called from app.refreshApp() every 16 milliseconds
             Copied from /mnt/e/bin/tvpowered
         """
         _who = self.who + "checkVolumeChange():"
         if self.powerStatus != "ON":
-            return
+            return False
 
-        self.getVolume()
+        self.getVolume(forgive=True)  # Occasionally get curl error 124 timeout
         if self.volume == self.volumeLast:
-            return
+            return False
         self.volumeLast = self.volume
 
         percentBar = self.makePercentBar(int(self.volume))
@@ -2271,13 +2286,20 @@ https://stackoverflow.com/questions/2829613/how-do-you-tell-if-a-string-contains
             "-h", "string:x-canonical-private-synchronous:volume",
             "--icon=/usr/share/icons/gnome/48x48/devices/audio-speakers.png",
             "Volume: {} {}".format(self.volume, percentBar)]
+
+        curr_logging = GLO['LOG_EVENTS']  # Are events being logged?
+        GLO['LOG_EVENTS'] = False  # Could already be off but oh well
+        # Average command time is 0.025 seconds but never logged
         event = self.runCommand(command_line_list, _who, forgive=forgive)
-        if event['returncode'] != 0:
-            # 2024-10-19 - Always returns '124' which is timeout exit code
-            #   https://stackoverflow.com/a/42615416/6929343
+
+        if curr_logging:  # If logging was on turn it back on
+            GLO['LOG_EVENTS'] = True
+        if event['returncode'] != 0:  # Was there an error?
             if forgive is False:
-                v0_print(_who, self.ip, "Error:", event['returncode'])
-            return "?"  # self.powerStatus already has this value
+                v0_print(_who, "Error:", event['returncode'])
+                v0_print(" ", self.cmdString)
+
+        return True  # Parent will delay rediscovery 1 minute
 
     def getPower(self, forgive=False):
         """ Return "ON", "OFF" or "?" if error.
@@ -5012,12 +5034,18 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         if not self.winfo_exists():  # Second check needed June 2023
             return False  # self.close() has set to None
 
+        life_span = time.time() - GLO['APP_RESTART_TIME']
+
         ''' Is there a TV to be monitored for power off to suspend system? '''
-        # 2024-12-23 TODO: SETUP FOR SONY TV REST API
+        if self.sonySaveInst and life_span > 20:  # Give 20 seconds to settle down
+            if self.sonySaveInst.checkPowerOffSuspend():
+                self.Suspend()
+                return True  # Restart wakeup from sleep processes
 
         ''' Is there an audio channel to be monitored for volume up/down display? '''
-        if self.sonySaveInst:
-            self.sonySaveInst.checkVolumeChange()
+        if self.sonySaveInst and life_span > 20:  # Give 20 seconds to settle down
+            if self.sonySaveInst.checkVolumeChange():
+                self.last_rediscover_time = time.time()
 
         ''' Always give time slice to tooltips - requires sql.py color config '''
         self.tt.poll_tips()  # Tooltips fade in and out
