@@ -9,6 +9,7 @@ Description: HomA - Home Automation - Main **homa** Python Module
 
 from __future__ import print_function  # Must be first import
 from __future__ import with_statement  # Error handling for file opens
+from __future__ import division  # integer division results in float
 import warnings  # 'warnings' advises which methods aren't supported
 warnings.filterwarnings("ignore", "ResourceWarning")  # PIL python 3 unclosed file
 
@@ -250,6 +251,31 @@ class DeviceCommonSelf:
                     return exe_file
 
         return None
+
+    def makePercentBar(self, percent):
+        """ Make percentage bar of UTF-8 characters 0 to 100%
+            Initial purpose is to spam volume level with `notify-send` as the TV
+                remote control changes volume with + / - keys.
+            Although Sony TV shows the volume percentage that doesn't help if
+                TV picture is turned off and audio only is active.
+
+            Copied from /mnt/e/bin/tvpowered bash script VolumeBar() function.
+        """
+        _who = self.who + "makePercentBar():"
+
+        Arr = ["█", "▏", "▎", "▍", "▌", "▋", "▊", "█"]
+        FullBlock = percent // len(Arr)
+        Bar = Arr[0] * FullBlock
+
+        PartBlock = percent % len(Arr)  # Size of partial block (array index)
+        if PartBlock > 0:  # Add partial blocks Arr[1-7] (▏▎▍▌▋▊█)
+            Bar += Arr[PartBlock]
+
+        if FullBlock < 12:  # Add padding utf-8 (▒) when < 96% (12 full blocks)
+            cnt = 12 - FullBlock if PartBlock else 13 - FullBlock
+            Bar += "▒" * cnt
+
+        return Bar
 
     def runCommand(self, command_line_list, who=None, forgive=False, log=True):
         """ Run command and return dictionary of results. Print to console
@@ -1622,9 +1648,6 @@ class NetworkInfo(DeviceCommonSelf):
                      {'error': [403, 'Forbidden']}
         """
         _who = self.who + "curl():"
-        # $1 = JSON String in pretty format converted to file for cURL --data.
-        # $2 = Sony subsystem to talk to, eg accessControl, audio, system, etc.
-        # 3  = variable name to receive reply from TV
         if not self.dependencies_installed:
             v1_print(_who, "curl dependencies are not installed. Aborting...")
             return None
@@ -1638,16 +1661,14 @@ class NetworkInfo(DeviceCommonSelf):
         event = self.runCommand(command_line_list, _who, forgive=forgive)
 
         if event['returncode'] != 0:
+            # 2025-04-12 - Missing key/value: {"id": 99}
+            v0_print(_who, "event['returncode']:", event['returncode'])
             return {"result": [{"status": event['returncode']}]}
 
         try:
             reply_dict = json.loads(str(event['output']))  # str to convert from bytes
         except ValueError:
-            v2_print(_who, "Invalid 'output':", event['output'])  # Sample below on 2024-10-08
-            # NetworkInfo().curl() Invalid 'text': <html><head></head><body>
-            # 		This document has moved to a new <a href="http://192.168.0.1/login.htm">location</a>.
-            # 		Please update your documents to reflect the new location.
-            # 		</body></html>
+            v0_print(_who, "Invalid 'output':", event['output'])
             reply_dict = {"result": [{"status": _who + "json.loads(event['output']) failed!"}]}
 
         v3_print(_who, "reply_dict:", reply_dict)
@@ -1655,7 +1676,8 @@ class NetworkInfo(DeviceCommonSelf):
 
     def os_curl(self, JSON_str, subsystem, ip, forgive=False):
         """ Use os.popen curl to communicate with REST API
-            2024-10-21 - os_curl supports Sony Picture On/Off using os.popen()
+            2024-10-21 - os_curl supports Sony Picture On/Off using os.popen(). When
+                using regular ni.curl() Sony REST API returns {"error": 403}
         """
         _who = self.who + "os_curl():"
 
@@ -1671,8 +1693,6 @@ class NetworkInfo(DeviceCommonSelf):
             ' -s -H "Content-Type: application/json; charset=UTF-8" ' +\
             ' -H "X-Auth-PSK: ' + GLO['SONY_PWD'] + '" --data ' + "'" + JSON_str + "'" +\
             ' http://' + ip + '/sony/' + subsystem
-
-        #v3_print("\n" + _who, "self.cmdString:", self.cmdString, "\n")
 
         ''' run command with os.popen() because sp.Popen() fails on ">" '''
         f = os.popen(self.cmdString + " 2>&1")
@@ -1700,10 +1720,6 @@ class NetworkInfo(DeviceCommonSelf):
             reply_dict = json.loads(text[0])
         except ValueError:
             v2_print(_who, "Invalid 'text':", text)  # Sample below on 2024-10-08
-            # NetworkInfo().curl() Invalid 'text': <html><head></head><body>
-            # 		This document has moved to a new <a href="http://192.168.0.1/login.htm">location</a>.
-            # 		Please update your documents to reflect the new location.
-            # 		</body></html>
             reply_dict = {"result": [{"status": _who + "json.loads(text) failed!"}]}
 
         v3_print(_who, "reply_dict:", reply_dict)
@@ -2188,8 +2204,18 @@ https://stackoverflow.com/questions/2829613/how-do-you-tell-if-a-string-contains
 
         self.type = "SonyBraviaKdlTV"
         self.type_code = GLO['KDL_TV']
-        self.power_saving_mode = "?"  # set with PowerSavingMode()
-        self.volume = "?"  # Set with getVolume()
+
+        self.powerSavingMode = "?"  # set with getPowerSavingMode()
+        self.volume = "?"  # Set with getVolume()  # 28
+        self.volumeLast ="?"  # Last recorded volume for spamming notify-send
+        self.volumeSpeaker = "?"
+        self.volumeHeadphones = "?"
+        self.outputTerminal = "?"  # Set with getSoundSettings()  # Speaker
+        self.tvPosition = "?"  # Set with getSpeakerSettings()  # Table or Wall
+        self.subwooferLevel = "?"  # Set with getSpeakerSettings()  # 17
+        self.subwooferFreq = "?"  # Set with getSpeakerSettings()  # 10
+        self.subwooferPhase = "?"  # Set with getSpeakerSettings()  # normal
+        self.subwooferPower = "?"  # Set with getSpeakerSettings()  # on
 
         self.requires = ['curl']
         self.installed = []
@@ -2201,29 +2227,73 @@ https://stackoverflow.com/questions/2829613/how-do-you-tell-if-a-string-contains
         if not self.dependencies_installed:
             v1_print(_who, "Sony Bravia KDL TV dependencies are not installed.")
 
+    def makeCommon(self, fname, RESTid, parm_list, ver="1.0"):
+        """ Make common _who and JSON_str. Print v2 line """
+        # noinspection PyProtectedMember
+        _who = self.who + sys._getframe(1).f_code.co_name + "():"
+        JSON_str = '{"method": "' + fname + '", "id": ' + RESTid + \
+                   ', "params": ' + parm_list + ', "version": "' + ver + '"}'
+        v2_print(_who, 'Send: "id": ' + RESTid + ', "params": ' +
+                 parm_list + ', to:', self.ip)
+        return _who, JSON_str
+
+    def checkReply(self, reply, RESTid):
+        """ Verify correct RESTid embedded in reply from REST API """
+        _who = self.who + "checkReply():"
+        try:
+            embedId = str(reply['id'])  # Reply id returned as integer
+            if embedId != RESTid:
+                v0_print(_who, "embedId: ", embedId, "!= RESTid:", RESTid)
+        except (TypeError, KeyError):
+            embedId = ""
+            v0_print(_who, "TypeError / KeyError:", reply)
+
+        v2_print(_who, "curl reply_dict:", reply)  # E.G. {'result': [], 'id': 55}
+        return embedId == RESTid
+
+    def checkVolumeChange(self, forgive=False):
+        """ If current volume is different than last volume spam notify-send
+
+            Copied from /mnt/e/bin/tvpowered
+        """
+        _who = self.who + "checkVolumeChange():"
+        if self.powerStatus != "ON":
+            return
+
+        self.getVolume()
+        if self.volume == self.volumeLast:
+            return
+        self.volumeLast = self.volume
+
+        percentBar = self.makePercentBar(int(self.volume))
+        command_line_list = [
+            "notify-send", "--urgency=critical", "HomA",
+            "-h", "string:x-canonical-private-synchronous:volume",
+            "--icon=/usr/share/icons/gnome/48x48/devices/audio-speakers.png",
+            "Volume: {} {}".format(self.volume, percentBar)]
+        event = self.runCommand(command_line_list, _who, forgive=forgive)
+        if event['returncode'] != 0:
+            # 2024-10-19 - Always returns '124' which is timeout exit code
+            #   https://stackoverflow.com/a/42615416/6929343
+            if forgive is False:
+                v0_print(_who, self.ip, "Error:", event['returncode'])
+            return "?"  # self.powerStatus already has this value
+
     def getPower(self, forgive=False):
         """ Return "ON", "OFF" or "?" if error.
-            Called by TestSonyOn, TestSonyOff and TestIfSony methods.
+            Called by self.app.getPower() and self.isDevice().
 
 https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/getPowerStatus/index.html
 
         """
 
-        _who = self.who + "getPower():"
-        v2_print(_who, "Get Power Status for:", self.ip)
-
-        # Copy and paste JSON strings from Sony website:
-        # https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/getPowerStatus/index.html
-        JSON_str = \
-            '{"method": "getPowerStatus", "id": 50, "params": [], "version": "1.0"}'
+        RESTid = "50"
+        _who, JSON_str = self.makeCommon("getPowerStatus", RESTid, '[]')
         reply_dict = ni.curl(JSON_str, "system", self.ip, forgive=forgive)
+        self.powerStatus = "?"  # Can be "ON", "OFF" or "?"
+        if not forgive and not self.checkReply(reply_dict, RESTid):
+            return self.powerStatus
 
-        #echo "ReturnState: $ReturnState reply_dict: $reply_dict"    # Remove # for debugging
-        # reply_dict: {"result":[{"status":"active"}],"id":50}
-        #    or: {"result":[{"status":"standby"}],"id":50}
-
-        # Does 'active' substring exist in TV's reply?
-        v2_print(_who, "curl reply_dict:", reply_dict)
         try:
             reply = reply_dict['result'][0]['status']
         except (KeyError, IndexError):
@@ -2249,19 +2319,17 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/
         return self.powerStatus
 
     def turnOn(self, forgive=False):
-        """ Turn On Sony Bravia KDL TV using os_curl """
+        """ Turn On Sony Bravia KDL TV using os_curl
+            https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/setPowerStatus/index.html
+        """
 
-        _who = self.who + "turnOn():"
-        v2_print(_who, 'Send: "id": 55, "params": [{"status": true}], to:', self.ip)
-
-        # Copy and paste JSON strings from Sony website:
-        # https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/getPowerStatus/index.html
-        JSON_str = \
-            '{"method": "setPowerStatus", "id": 55, ' +\
-            '"params": [{"status": true}], "version": "1.0"}'
-
+        RESTid = "55"
+        _who, JSON_str = self.makeCommon("setPowerStatus", RESTid, '[{"status": true}]')
         reply_dict = ni.os_curl(JSON_str, "system", self.ip, forgive=forgive)
-        v2_print(_who, "curl reply_dict:", reply_dict)  # {'result': [], 'id': 55}
+        self.powerStatus = "?"  # Can be "ON", "OFF" or "?"
+        if not forgive and not self.checkReply(reply_dict, RESTid):
+            return self.powerStatus
+
         ret = "ON"
         try:
             result = reply_dict['result']  # can be KeyError
@@ -2276,19 +2344,16 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/
         return ret
 
     def turnOff(self, forgive=False):
-        """ Turn Off Sony Bravia KDL TV using os_curl """
+        """ Turn Off Sony Bravia KDL TV using os_curl
+            https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/setPowerStatus/index.html
+        """
 
-        _who = self.who + "turnOff():"
-        v2_print(_who, 'Send: "id": 55, "params": [{"status": false}], to:', self.ip)
-
-        # Copy and paste JSON strings from Sony website:
-        # https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/getPowerStatus/index.html
-        JSON_str = \
-            '{"method": "setPowerStatus", "id": 55, ' +\
-            '"params": [{"status": false}], "version": "1.0"}'
-
+        RESTid = "55"
+        _who, JSON_str = self.makeCommon("setPowerStatus", RESTid, '[{"status": false}]')
         reply_dict = ni.os_curl(JSON_str, "system", self.ip, forgive=forgive)
-        v2_print(_who, "curl reply_dict:", reply_dict)  # {'result': [], 'id': 55}
+        self.powerStatus = "?"  # Can be "ON", "OFF" or "?"
+        if not forgive and not self.checkReply(reply_dict, RESTid):
+            return self.powerStatus
         ret = "OFF"
         try:
             result = reply_dict['result']  # can be KeyError
@@ -2302,7 +2367,7 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/
         self.powerStatus = ret  # Can be "ON", "OFF" or "?"
         return self.powerStatus
 
-    def PowerSavingMode(self, forgive=False):
+    def getPowerSavingMode(self, forgive=False):
         """ Get Sony Bravia KDL TV power savings mode """
 
         # "off" - Power saving mode is disabled.  The panel is turned on.
@@ -2310,15 +2375,13 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/
         # "high" - Power saving mode is enabled at a high level.
         # "pictureOff" - Power saving mode is enabled with the panel output off.
 
-        _who = self.who + "PowerSavingMode():"
-        v2_print(_who, 'Send: "id": 51, "params": [], to:', self.ip)
-
-        # Copy and paste JSON strings from Sony website:
-        # https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/getPowerStatus/index.html
-        JSON_str = \
-            '{"method": "getPowerSavingMode", "id": 51, "params": [], "version": "1.0"}'
-
+        RESTid = "51"
+        _who, JSON_str = self.makeCommon("getPowerSavingMode", RESTid, '[]')
         reply_dict = ni.curl(JSON_str, "system", self.ip, forgive=forgive)
+        self.powerSavingMode = "?"  # Can be "ON", "OFF" or "?"
+        if not forgive and not self.checkReply(reply_dict, RESTid):
+            return self.powerSavingMode
+
         try:
             reply = reply_dict['result'][0]['mode']
         except (KeyError, IndexError):
@@ -2327,60 +2390,75 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/
 
         # {'result': [{'mode': 'off'}], 'id': 51}
         if isinstance(reply, int):
-            v3_print(_who, "Integer found:", reply)  # 7
-            self.power_saving_mode = "?"
+            v0_print(_who, "Integer found:", reply)  # 7
+            self.powerSavingMode = "?"
         elif u"pictureOff" == reply:
-            self.power_saving_mode = "ON"  # Reduce states from Off / Low / High / Picture Off
+            self.powerSavingMode = "ON"  # Reduce states from Off / Low / High / Picture Off
         elif u"off" == reply:
-            self.power_saving_mode = "OFF"
+            self.powerSavingMode = "OFF"
         else:
-            v3_print(_who, "Something weird in reply:", reply)
-            self.power_saving_mode = "?"
+            v0_print(_who, "Something weird in reply:", reply)
+            self.powerSavingMode = "?"
 
-        return self.power_saving_mode
+        return self.powerSavingMode
 
     def turnPictureOn(self, forgive=False):
-        """ Turn On Sony Bravia KDL TV Picture using os_curl """
+        """ Turn On Sony Bravia KDL TV Picture using ni.os_curl()
+            https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/setPowerSavingMode/index.html
+        """
 
-        # https://pro-bravia.sony.net/develop/integrate/rest-api
-        # /spec/service/system/v1_0/setPowerSavingMode/index.html
-
-        _who = self.who + "turnPictureOn():"
-        v2_print(_who, 'Send: "id": 52, "params": [{"mode": "off"}], to:', self.ip)
-
-        # Copy and paste JSON strings from Sony website:
-        # https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/getPowerStatus/index.html
-        JSON_str = \
-            '{"method": "setPowerSavingMode", "id": 52, "params": [{"mode": "off"}], "version": "1.0"}'
+        RESTid = "52"
+        _who, JSON_str = self.makeCommon("setPowerSavingMode", RESTid, '[{"mode": "off"}]')
 
         reply_dict = ni.os_curl(JSON_str, "system", self.ip, forgive=forgive)
-
-        v2_print(_who, "curl reply_dict:", reply_dict)
+        #reply_dict = ni.curl(JSON_str, "system", self.ip, forgive=forgive)
+        self.checkReply(reply_dict, RESTid)
 
         try:
             err = reply_dict['error']
             return "Err: " + str(err[0])  # 403, Forbidden
+            # error only occurs when using ni.curl() instead of ni.os_curl()
         except KeyError:
             pass  # No error
 
         return "ON"
 
     def turnPictureOff(self, forgive=False):
-        """ Turn Off Sony Bravia KDL TV Picture using os_curl """
+        """ Turn Off Sony Bravia KDL TV Picture using ni.os_curl()
+            https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/setPowerSavingMode/index.html
+        """
 
-        # https://pro-bravia.sony.net/develop/integrate/rest-api
-        # /spec/service/system/v1_0/setPowerSavingMode/index.html
+        RESTid = "52"
+        _who, JSON_str = self.makeCommon("setPowerSavingMode", RESTid,
+                                         '[{"mode": "pictureOff"}]')
 
-        _who = self.who + "turnPictureOff():"
-        v2_print(_who, 'Send: "id": 52, "params": [{"mode": "pictureOff"}], to:', self.ip)
-
-        # Copy and paste JSON strings from Sony website:
-        # https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/getPowerStatus/index.html
-        JSON_str = \
-            '{"method": "setPowerSavingMode", "id": 52, "params": [{"mode": "pictureOff"}], "version": "1.0"}'
         reply_dict = ni.os_curl(JSON_str, "system", self.ip, forgive=forgive)
+        # 2025-04-12 Single quotes are around --data json packet
+        ''' FROM Tools, View timings:
+NetworkInfo().os_curl(): timeout 0.2 curl -s -H "Content-Type: application/json; 
+charset=UTF-8"  -H "X-Auth-PSK: 123" --data 
+    '{"method": "setPowerSavingMode", "id": 52, "params": [{"mode": "pictureOff"}], 
+    "version": "1.0"}'
+http://192.168.0.19/sony/system
+        '''
 
-        v2_print(_who, "curl reply_dict:", reply_dict)
+        ''' FROM Tools, View timings:
+NetworkInfo().curl(): timeout 0.2 curl -s -H "Content-Type: application/json; 
+charset=UTF-8" -H "X-Auth-PSK: 123" --data 
+    {"method": "setPowerSavingMode", "id": 52, "params": [{"mode": "pictureOff"}], 
+    "version": "1.0"} 
+http://192.168.0.19/sony/system
+
+        What "normal" looks like:
+
+NetworkInfo().curl(): timeout 0.2 curl -s -H "Content-Type: application/json; 
+charset=UTF-8" -H "X-Auth-PSK: 123" --data 
+    {"method": "getPowerStatus", "id": 50, "params": [], 
+    "version": "1.0"} 
+http://192.168.0.19/sony/system
+        
+        '''
+        self.checkReply(reply_dict, RESTid)
 
         try:
             err = reply_dict['error']
@@ -2390,24 +2468,51 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/
 
         return "Pic. OFF"
 
+    def getAllSettings(self, no_log=True):
+        """ Get ALL Sony Bravia KDL TV Settings """
+
+        curr_logging = GLO['LOG_EVENTS']
+        if no_log and curr_logging:
+            GLO['LOG_EVENTS'] = False  # Override event logging
+
+        self.getPower()
+        self.getVolume(target="headphones")
+        self.getVolume()  # Only gets speaker volume, not headphones volume
+        self.getSoundSettings()
+        self.getPowerSavingMode()
+        self.tvPosition = self.getSpeakerSettings()  # target="tvPosition"
+        self.subwooferLevel = self.getSpeakerSettings(target="subwooferLevel")
+        self.subwooferFreq = self.getSpeakerSettings(target="subwooferFreq")
+        self.subwooferPhase = self.getSpeakerSettings(target="subwooferPhase")
+        self.subwooferPower = self.getSpeakerSettings(target="subwooferPower")
+
+        if no_log and curr_logging:
+            GLO['LOG_EVENTS'] = True  # Restore event logging
+
     def getSoundSettings(self, forgive=False):
         """ Get Sony Bravia KDL TV Sound Settings (Version 1.1)
 https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/audio/v1_1/getSoundSettings/index.html
+
+        Returns:
+
+        If "target" is "outputTerminal"
+            "speaker" - Audio is output from the speaker.
+            "speaker_hdmi" - Audio is output from the speaker and HDMI.
+            "hdmi" - Audio is output from HDMI.
+            "audioSystem" - Audio is output from HDMI or digital audio output.
+
         """
 
-        _who = self.who + "getSoundSettings():"
-        v2_print(_who, 'Send: "id": 73, "params": [], to:', self.ip)
-
-        # Copy and paste JSON strings from Sony website:
-        # https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/getPowerStatus/index.html
-        JSON_str = \
-            '{"method": "getSoundSettings", "id": 73, ' \
-            '"params": [{"target": "outputTerminal"}], "version": "1.1"}'
-
+        RESTid = "73"
+        _who, JSON_str = self.makeCommon("getSoundSettings", RESTid,
+                                         '[{"target": "outputTerminal"}]', ver="1.1")
         reply_dict = ni.curl(JSON_str, "audio", self.ip, forgive=forgive)
-        v2_print(_who, "curl reply_dict:", reply_dict)
+        self.checkReply(reply_dict, RESTid)
+        # USB Subwoofer is off:
         # SonyBraviaKdlTV().getSoundSettings(): curl reply_dict: {'result': [[
         # {'currentValue': 'speaker', 'target': 'outputTerminal'}]], 'id': 73}
+
+        # USB Subwoofer is on:
         #print(_who, "curl reply_dict:", reply_dict)
         # "outputTerminal" - Selecting speakers or terminals to output sound.
         # {
@@ -2420,73 +2525,47 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/audio/v1_1/g
 
         try:
             reply = reply_dict['result'][0][0]['currentValue']
+            self.outputTerminal = reply
         except (KeyError, IndexError):
             reply = reply_dict  # Probably "7" for not a Sony TV
         v2_print(_who, "curl reply:", reply)
         # SonyBraviaKdlTV().getSoundSettings(): curl reply: speaker
 
-        if True is True:
-            return
+        return reply
 
-        return
-
-    def getSpeakerSettings(self, forgive=False):
-        """ Get Sony Bravia KDL TV Sound Settings (Version 1.1)
+    def getSpeakerSettings(self, target="tvPosition", forgive=False):
+        """ Get Sony Bravia KDL TV Speaker Settings
 https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/audio/v1_0/getSpeakerSettings/index.html
+
+        Return values based on target parameter:
+
+            '"params": [{"target": "tvPosition"}], "version": "1.0"}'  # tableTop
+            '"params": [{"target": "subwooferLevel"}], "version": "1.0"}'  # 17
+            '"params": [{"target": "subwooferFreq"}], "version": "1.0"}'  # 10
+            '"params": [{"target": "subwooferPhase"}], "version": "1.0"}'  # normal
+            '"params": [{"target": "subwooferPower"}], "version": "1.0"}'  # on
         """
 
-        _who = self.who + "getSpeakerSettings():"
-        v2_print(_who, 'Send: "id": 73, "params": [], to:', self.ip)
-
-        # Copy and paste JSON strings from Sony website:
-        # https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/getPowerStatus/index.html
-        JSON_str = \
-            '{"method": "getSpeakerSettings", "id": 67, ' \
-            '"params": [{"target": "tvPosition"}], "version": "1.0"}'  # tableTop
-            #'"params": [{"target": "tvPosition"}], "version": "1.0"}'  # tableTop
-            # Settings below ignore the fact the subwoofer is powered off
-            #'"params": [{"target": "subwooferLevel"}], "version": "1.0"}'  # 17
-            #'"params": [{"target": "subwooferFreq"}], "version": "1.0"}'  # 10
-            #'"params": [{"target": "subwooferPhase"}], "version": "1.0"}'  # normal
-            #'"params": [{"target": "subwooferPower"}], "version": "1.0"}'  # on
-
+        RESTid = "67"
+        parm = '[{"target": "' + target + '"}]'
+        _who, JSON_str = self.makeCommon("getSpeakerSettings", RESTid, parm)
         reply_dict = ni.curl(JSON_str, "audio", self.ip, forgive=forgive)
-        v2_print(_who, "curl reply_dict:", reply_dict)
-        # SonyBraviaKdlTV().getSoundSettings(): curl reply_dict: {'result': [[
-        # {'currentValue': 'speaker', 'target': 'outputTerminal'}]], 'id': 73}
-        #print(_who, "curl reply_dict:", reply_dict)
-        # "outputTerminal" - Selecting speakers or terminals to output sound.
-        # {
-        #     "result": [[{
-        #         "currentValue": "audioSystem",
-        #         "target": "outputTerminal"
-        #     }]],
-        #     "id": 73
-        # }
+        self.checkReply(reply_dict, RESTid)
 
         try:
             reply = reply_dict['result'][0][0]['currentValue']
-        except (KeyError, IndexError):
+        except (TypeError, KeyError, IndexError):
             reply = reply_dict  # Probably "7" for not a Sony TV
-        v2_print(_who, "curl reply:", reply)
-        # SonyBraviaKdlTV().getSoundSettings(): curl reply: speaker
 
-        if True is True:
-            return
+        return reply
 
-        return
+    def getVolume(self, target="speaker", forgive=False):
+        """ Get Sony Bravia KDL TV volume
+            Currently just speaker volume, but headphone volume can be returned too.
+        """
 
-    def getVolume(self, forgive=False):
-        """ Get Sony Bravia KDL TV volume """
-
-        _who = self.who + "getVolume():"
-        v2_print(_who, 'Send: "id": 33, "params": [], to:', self.ip)
-
-        # Copy and paste JSON strings from Sony website:
-        # https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/getPowerStatus/index.html
-        JSON_str = \
-            '{"method": "getVolumeInformation", "id": 33, "params": [], "version": "1.0"}'
-
+        RESTid = "33"
+        _who, JSON_str = self.makeCommon("getVolumeInformation", RESTid, '[]')
         reply_dict = ni.curl(JSON_str, "audio", self.ip, forgive=forgive)
         v2_print(_who, "curl reply_dict:", reply_dict)
         # SonyBraviaKdlTV().getVolume(): curl reply_dict: {'result': [[
@@ -2502,16 +2581,19 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/audio/v1_0/g
         # 'mute': False}]], 'id': 33}
 
         try:
-            reply = reply_dict['result'][0][0]['volume']
+            if target == "speaker":
+                reply = reply_dict['result'][0][0]['volume']
+                self.volumeSpeaker = reply
+            else:
+                reply = reply_dict['result'][0][1]['volume']  # headphones
+                self.volumeHeadphones = reply
+            self.volume = reply
         except (KeyError, IndexError):
             reply = reply_dict  # Probably "7" for not a Sony TV
         v2_print(_who, "curl reply:", reply)
         # SonyBraviaKdlTV().getVolume(): curl reply: 28
 
-        if True is True:
-            return
-
-        return
+        return reply
 
     def isDevice(self, forgive=False):
         """ Return True if active or standby, False if power off or no communication
@@ -3868,6 +3950,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         global sm  # This machines fan speed and CPU temperatures
 
+        ''' Sony TV '''
+        self.sonySaveInst = None
+
         ''' Bluetooth Low Energy LED Light Strip Breathing Colors '''
         global ble  # Inside global ble, assign app = Application() which points here
         self.bleSaveInst = None  # For breathing colors monitoring of the real inst
@@ -4002,6 +4087,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         ''' Assign this Application() instance to network devices (inst.app) variable:
                 - Laptop Display() and Router() needs to call .GetPassword() method.
+                - Sony TV assigned to self.sonySaveInst (Only the last Sony TV!)
                 - BLE LED Light Strip() needs to call .ShowInfo() method.  '''
         for instance in ni.instances:
             inst = instance['instance']
@@ -4011,6 +4097,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 inst.app = self  # BluetoothLedLightStrip calls app.ShowInfo()
                 ble.app = self  # For functions called from Dropdown menu
                 self.bleSaveInst = inst  # For breathing colors monitoring
+            elif inst.type_code == GLO['KDL_TV']:
+                self.sonySaveInst = inst  # For volume change
 
         ''' Polling and processing with refresh tkinter loop forever '''
         while self.refreshApp():  # Run forever until quit
@@ -4583,7 +4671,11 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                              font=g.FONT, state=tk.DISABLED,
                              image=self.img_picture_off, compound=tk.LEFT,
                              command=lambda: self.turnPictureOff(cr))
-            cr.inst.getVolume()
+            menu.add_command(label=name + " Settings ",
+                             font=g.FONT, state=tk.NORMAL,
+                             image=self.img_mag_glass, compound=tk.LEFT,
+                             command=lambda: self.DisplaySony(cr))
+
             menu.add_separator()
 
         if cr.arp_dict['type_code'] == GLO['BLE_LS']:
@@ -4667,13 +4759,13 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         # Enable Turn On/Off menu options depending on current power status.
         if cr.arp_dict['type_code'] == GLO['KDL_TV'] and cr.inst.powerStatus == "ON":
-            cr.inst.PowerSavingMode()  # Get power savings mode
-            if cr.inst.power_saving_mode == "OFF":
+            cr.inst.getPowerSavingMode()  # Get power savings mode
+            if cr.inst.powerSavingMode == "OFF":
                 menu.entryconfig(name + " Picture Off ", state=tk.NORMAL)
-            elif cr.inst.power_saving_mode == "ON":
+            elif cr.inst.powerSavingMode == "ON":
                 menu.entryconfig(name + " Picture On ", state=tk.NORMAL)
             else:
-                pass  # power_saving_mode == "?"
+                pass  # powerSavingMode == "?"
 
         # Enable turn on/off based on current power status
         if cr.inst.powerStatus != "ON":  # Other options are "OFF" and "?"
@@ -4729,8 +4821,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         cr.tree.update_idletasks()
 
     def breatheColors(self, cr):
-        """ Mouse right button click selected "Set LED Lights Color".
-            Note if cr.device in error a 10 second timeout can occur.
+        """ Mouse right button click selected "Breathing colors".
         """
         _who = self.who + "breatheColors():"
         resp = cr.inst.breatheColors()
@@ -4925,7 +5016,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         # 2024-12-23 TODO: SETUP FOR SONY TV REST API
 
         ''' Is there an audio channel to be monitored for volume up/down display? '''
-        # 2025-03-01 TODO: SETUP FOR SONY TV REST API
+        if self.sonySaveInst:
+            self.sonySaveInst.checkVolumeChange()
 
         ''' Always give time slice to tooltips - requires sql.py color config '''
         self.tt.poll_tips()  # Tooltips fade in and out
@@ -5560,9 +5652,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         """ Get Sudo password with message.AskString(show='*'...). """
 
         if msg is None:
-            msg = "Sudo password required for laptop display.\n\n"
+            msg = "Sudo password required for laptop display and Bluetooth.\n\n"
         answer = message.AskString(
-            self, text=msg, thread=self.refreshApp, show='*',
+            self, text=msg, thread=self.refreshThreadSafe, show='*',
             title="Enter sudo password", icon="information", win_grp=self.win_grp)
 
         # Setting laptop display power requires sudo prompt which causes fake resume
@@ -5607,7 +5699,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         #    self.after(10)
         #    self.update()  # Suspend button stays blue after mouseover ends>?
 
-        message.ShowInfo(self, thread=self.ThreadSafe, icon=icon, align=align,
+        message.ShowInfo(self, thread=self.refreshThreadSafe, icon=icon, align=align,
                          title=title, text=text, win_grp=self.win_grp)
 
     def Preferences(self):
@@ -6020,6 +6112,100 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         ''' Button frame background shows monitor facsimile color of LED lights '''
         self.event_btn_frm.configure(bg=self.bleSaveInst.monitor_color)
+
+    def DisplaySony(self, cr):
+        """ Display Sony KDL/Bravia TV controls in real time.
+            Slider for setting volume.
+            Slider buttons for Night and Day Volume.
+            Picture On/Off checkbox.
+            Subwoofer On/Off checkbox. (Not sure if this will work)
+            Scrollbox for all current Sony TV settings.
+
+            Calls DisplayCommon to create Window, Frame and Scrollbox.
+        """
+        _who = self.who + "DisplaySony():"
+        sony = cr.inst_dict['instance']
+        title = "Sony TV Settings"
+
+        x, y = hc.GetMouseLocation()
+        scrollbox = self.DisplayCommon(_who, title, x=x, y=y, width=1200,
+                                       help="ViewBluetoothDevices")
+        if scrollbox is None:
+            return  # Window already opened and method is running
+
+        sony.getAllSettings()  # defaults to no_log=True
+
+        # Tabs for static header parameters and dynamic body statistics
+        tabs = ("400", "right", "550", "right", "700", "right",
+                "750", "left", "1125", "right")  # Note "numeric" aligns on commas when no decimals!
+
+        def reset_tabs(event):
+            """ https://stackoverflow.com/a/46605414/6929343 """
+            event.widget.configure(tabs=tabs)
+
+        scrollbox.configure(tabs=tabs)
+        scrollbox.bind("<Configure>", reset_tabs)
+
+        def in4(name1, value1, name2=None, value2=None):
+            """ Insert 2 parameter variable pairs into custom scrollbox """
+            line = name1 + ":\t" + str(value1) + "\t\t|\t"
+            if name2 and value2:
+                line += name2 + ":\t" + str(value2) + "\n"
+            scrollbox.insert("end", line)
+
+        ''' Single column mode with TV Position shown
+        in4("Power Status", sony.powerStatus)
+        in4("Power Saving Mode", sony.powerSavingMode)
+        in4("TV Position", sony.tvPosition)
+        in4("Speaker Volume", sony.volumeSpeaker)
+        in4("Headphones Volume", sony.volumeHeadphones)
+        in4("Subwoofer Level", sony.subwooferLevel)
+        in4("Subwoofer Freq", sony.subwooferFreq)
+        in4("Subwoofer Phase", sony.subwooferPhase)
+        in4("Subwoofer Power", sony.subwooferPower)
+        scrollbox.insert("end", "\n\n")
+        '''
+        ''' Double column mode with TV Position hidden
+        '''
+        in4("Power Status", sony.powerStatus,
+            "Subwoofer Power", sony.subwooferPower)
+        in4("Power Saving Mode", sony.powerSavingMode,
+            "Subwoofer Phase", sony.subwooferPhase)
+        in4("Speaker Volume", sony.volumeSpeaker,
+            "Subwoofer Level", sony.subwooferLevel)
+        in4("Headphones Volume", sony.volumeHeadphones,
+            "Subwoofer Freq", sony.subwooferFreq)
+        scrollbox.insert("end", "\n\n")
+
+
+        self.last_red = self.last_green = self.last_blue = 0
+
+        # Body is only updated when red, green or blue change
+        if self.last_red == self.bleSaveInst.red and \
+                self.last_green == self.bleSaveInst.green and \
+                self.last_blue == self.bleSaveInst.blue:
+            return
+
+        self.last_red = self.bleSaveInst.red
+        self.last_green = self.bleSaveInst.green
+        self.last_blue = self.bleSaveInst.blue
+
+        # Delete dynamic lines in custom scrollbox
+        scrollbox.delete(6.0, "end")
+
+        all_lines = self.bleSaveInst.monitorBreatheColors()
+        scrollbox.insert("end", all_lines)
+
+        scrollbox.highlight_pattern("Blue:", "blue")
+        scrollbox.highlight_pattern("Green:", "green")
+        scrollbox.highlight_pattern("Red:", "red")
+
+        scrollbox.highlight_pattern("Function", "yellow")
+        scrollbox.highlight_pattern("Milliseconds", "yellow")
+        scrollbox.highlight_pattern("Count", "yellow", upper_and_lower=False)
+        scrollbox.highlight_pattern("Average", "yellow")
+        scrollbox.highlight_pattern("Lowest", "yellow")
+        scrollbox.highlight_pattern("Highest", "yellow")
 
     def DisplayCommon(self, _who, title, x=None, y=None, width=1200, height=500,
                       close_cb=None, help=None):
