@@ -22,6 +22,7 @@ warnings.filterwarnings("ignore", "ResourceWarning")  # PIL python 3 unclosed fi
 #       2025-01-08 - Create Bluetooth LED Light Strip support.
 #       2025-02-10 - Support Python 3 shebang.
 #       2025-03-26 - Auto assign iid in Sensors Treeview fixes duplicate keys.
+#       2025-04-18 - Spam Sony TV Remote. Refresh from 16ms to 33ms for CPU %.
 #
 # ==============================================================================
 
@@ -59,7 +60,7 @@ warnings.filterwarnings("ignore", "ResourceWarning")  # PIL python 3 unclosed fi
 ''' check configuration. '''
 import inspect
 import os
-os.environ["SUDO_PROMPT"] = ""  # Change prompt "[sudo] password for <USER>:"
+os.environ["SUDO_PROMPT"] = ""  # Remove prompt "[sudo] password for <USER>:"
 
 try:
     filename = inspect.stack()[1][1]  # If there is a parent, it must be 'h'
@@ -143,20 +144,20 @@ except NameError:  # name 'reload' is not defined
     pass  # Python 3 already in unicode by default
 
 # Vendor libraries preinstalled in subdirectories (ttkwidgets not used)
-import trionesControl.trionesControl as tc  # Bluetooth LED Light strips wrapper
 import pygatt  # Bluetooth Low Energy (BLE) low-level communication
-import pygatt.exceptions
+import pygatt.exceptions  # pygatt error messages also used by trionesControl
+import trionesControl.trionesControl as tc  # Bluetooth LED Light pygatt wrapper
 
 # Pippim libraries
+import sql  # For color options - Lots of irrelevant mserve.py code though
 import monitor  # Center window on current monitor supports multi-head rigs
 import toolkit  # Various tkinter functions common to Pippim apps
 import message  # For dtb (Delayed Text Box)
-import sql  # For color options - Lots of irrelevant mserve.py code though
 import image as img  # Image processing. E.G. Create Taskbar icon
-import external as ext  # Call external functions, programs, etc.
 import timefmt as tmf  # Time formatting, ago(), days(), hh_mm_ss(), etc.
-from calc import Calculator  # Big Number calculator
+import external as ext  # Call external functions, programs, etc.
 import homa_common as hc  # hc.ValidateSudoPassword()
+from calc import Calculator  # Big Number calculator
 
 
 class DeviceCommonSelf:
@@ -360,7 +361,9 @@ class DeviceCommonSelf:
 
 
 class Router(DeviceCommonSelf):
-    """ Router """
+    """ Router isn't physically powered on/off. Network Service is started
+        and stopped.
+    """
 
     def __init__(self, mac=None, ip=None, name=None, alias=None):
         """ DeviceCommonSelf(): Variables used by all classes """
@@ -649,22 +652,22 @@ class Globals(DeviceCommonSelf):
             "CONFIG_FNAME": "config.json",  # Future configuration file.
             "DEVICES_FNAME": "devices.json",  # mirrors ni.arp_dicts[{}, {}, ... {}]
             "VIEW_ORDER_FNAME": "view_order.json",  # Read into ni.view_order[mac1, mac2, ... mac9]
-            # Timeouts improve device interface performance
 
+            # Timeouts improve device interface performance
             "PLUG_TIME": "2.0",  # Smart plug timeout to turn power on/off
             "CURL_TIME": "0.2",  # Anything longer means not a Sony TV or disconnected
             "ADB_CON_TIME": "0.3",  # Android TV Test if connected timeout
             "ADB_PWR_TIME": "2.0",  # Android TV Test power state timeout
             "ADB_KEY_TIME": "5.0",  # Android keyevent KEYCODE_SLEEP or KEYCODE_WAKEUP timeout
             "ADB_MAGIC_TIME": "0.2",  # Android TV Wake on Lan Magic Packet wait time.
-            # Application timings and global working variables
 
+            # Application timings and global working variables
             "APP_RESTART_TIME": time.time(),  # Time started or resumed. Use for elapsed time print
-            "REFRESH_MS": 16,  # Refresh tooltip fades 60 frames per second
+            "REFRESH_MS": 33,  # Refresh tooltip fades 30 frames per second
             "REDISCOVER_SECONDS": 60,  # Check for device changes every x seconds
             "RESUME_TEST_SECONDS": 30,  # > x seconds disappeared means system resumed
             "RESUME_DELAY_RESTART": 10,  # Allow x seconds for network to come up
-            # Sony TV error 1792. Initial 3 sec. March 2025 6 sec. April 2025 7 sec.
+            # Sony TV error # 1792. Initial 3 sec. March 2025 6 sec. April 2025 7 sec.
             # April 2025 new router slower try 10 sec.
             "SUNLIGHT_PERCENT": "/usr/local/bin/.eyesome-percent",  # file contains 0% to 100%
 
@@ -681,8 +684,8 @@ class Globals(DeviceCommonSelf):
             "SENSOR_CHECK": 1.0,  # Check `sensors` (CPU/GPU temp & fan speeds) every x seconds
             "SENSOR_LOG": 3600.0,  # Log `sensors` every x seconds. Log more if fan speed changes
             "FAN_GRANULAR": 200,  # Skip logging when fan changes <= FAN_GRANULAR
-            # Device type global identifier hard-coded in "inst.type_code"
 
+            # Device type global identifier hard-coded in "inst.type_code"
             "HS1_SP": 10,  # TP-Link Kasa WiFi Smart Plug HS100, HS103 or HS110 using hs100.sh
             "KDL_TV": 20,  # Sony Bravia KDL Android TV using REST API (curl)
             "TCL_TV": 30,  # TCL Google Android TV using adb (after wakeonlan)
@@ -1648,7 +1651,8 @@ class NetworkInfo(DeviceCommonSelf):
                 Use os_curl instead to prevent error message:
                      {'error': [403, 'Forbidden']}
         """
-        _who = self.who + "curl():"
+        # noinspection PyProtectedMember
+        _who = self.who + sys._getframe(1).f_code.co_name + "().curl():"
         if not self.dependencies_installed:
             v1_print(_who, "curl dependencies are not installed. Aborting...")
             return None
@@ -1663,7 +1667,10 @@ class NetworkInfo(DeviceCommonSelf):
 
         if event['returncode'] != 0:
             # 2025-04-12 - Missing key/value: {"id": 99}
-            v0_print(_who, "event['returncode']:", event['returncode'])
+            if forgive:
+                v1_print(_who, "event['returncode']:", event['returncode'])
+            else:
+                v0_print(_who, "event['returncode']:", event['returncode'])
             return {"result": [{"status": event['returncode']}]}
 
         try:
@@ -1680,7 +1687,8 @@ class NetworkInfo(DeviceCommonSelf):
             2024-10-21 - os_curl supports Sony Picture On/Off using os.popen(). When
                 using regular ni.curl() Sony REST API returns {"error": 403}
         """
-        _who = self.who + "os_curl():"
+        # noinspection PyProtectedMember
+        _who = self.who + sys._getframe(1).f_code.co_name + "().os_curl():"
 
         self.cmdCaller = _who  # self.cmdXxx vars in DeviceCommonSelf() class
         self.cmdStart = time.time()
@@ -1710,7 +1718,11 @@ class NetworkInfo(DeviceCommonSelf):
         self.logEvent(who, forgive=forgive, log=True)
 
         if returncode is not None:
-            if forgive is False:
+            if forgive:
+                v1_print(_who, "text:")
+                v1_print(" ", text)  # string, list
+                v1_print(_who, "returncode:", returncode)
+            else:
                 v0_print(_who, "text:")
                 v0_print(" ", text)  # string, list
                 v0_print(_who, "returncode:", returncode)
@@ -1833,6 +1845,611 @@ class NetworkInfo(DeviceCommonSelf):
             return instance
 
         return {}
+
+
+class TreeviewRow(DeviceCommonSelf):
+    """ Device treeview row variables and methods.
+
+        Sensors treeview uses dummy call to TreeviewRow() class in order to call
+        fadeIn() and fadeOut() methods.
+
+    """
+
+    def __init__(self, top):
+        """ DeviceCommonSelf(): Variables used by all classes
+        :param top: Toplevel created by Application() class instance.
+        """
+        DeviceCommonSelf.__init__(self, "TreeviewRow().")  # Define self.who
+
+        self.top = top  # 2025-01-13 top is not passed as argument???
+        self.tree = self.top.tree  # Shortcut
+        self.photos = self.top.photos  # Shortcut
+        self.isActive = self.top.isActive  # If False, HomA is shutting down
+        self.item = None  # Treeview Row iid
+        self.photo = None  # Photo image
+        self.text = None  # Row text, E.G. "ON", "OFF"
+
+        self.values = None  # Row values - Name lines, Attribute lines, MAC
+        self.name_column = None  # Device Name & IP address - values[0]
+        self.attribute_column = None  # 3 line device Attributes - values[1]
+        self.mac = None  # MAC address - hidden column values[-1] / values[2]
+        # self.mac - arp_dict['mac'] - is non-displayed treeview column
+        # used to reread arp_dict
+
+        self.arp_dict = None  # device dictionary
+        self.inst = None  # device instance
+        self.inst_dict = None  # instance dictionary
+
+    def Get(self, item):
+        """ Get treeview row """
+
+        _who = self.who + "Get():"
+        if not self.isActive:
+            return  # Shutting down
+
+        self.item = str(item)  # iid - Corrupted after swapping rows!
+        # CANNOT USE: self.photo = self.top.tree.item(item)['image']
+        self.photo = self.photos[int(item)]
+        self.text = self.top.tree.item(self.item)['text']
+
+        self.values = self.top.tree.item(self.item)['values']
+        self.name_column = self.values[0]  # Host name / IP address
+        self.attribute_column = self.values[1]  # Host alias / MAC / Type Code
+        self.mac = self.values[2]  # arp_dict['mac'] is non-displayed value
+
+        try:
+            self.arp_dict = ni.arp_for_mac(self.mac)
+            self.inst_dict = ni.inst_for_mac(self.mac)
+            self.inst = self.inst_dict['instance']
+        except IndexError:
+            v0_print(_who, "Catastrophic Error. MAC not found:", self.mac)
+            v0_print("  Name:", self.name_column)
+            # Occurred 2025-04-09 for first time.
+
+    def getIidForInst(self, inst):
+        """ Using passed instance, get the treeview row. """
+        if not self.isActive:
+            return  # Shutting down
+
+        for iid in self.tree.get_children():
+            self.Get(iid)
+            if self.inst.mac == inst.mac and self.inst.type == inst.type:
+                return iid
+
+        return None  # Passed instance is not in treeview
+
+    def Update(self, item):
+        """ Set treeview row - Must call .Get() beforehand.
+            Handles item being a str() or an int()
+            :param item: Target row can be different than original self.item
+            :returns: nothing
+        """
+        _who = self.who + "Update():"
+        if not self.isActive:
+            return  # Shutting down
+
+        self.top.photos[int(item)] = self.photo  # changes if swapping rows
+        self.top.tree.item(
+            str(item), image=self.photo, text=self.text, values=self.values)
+
+        if self.item != str(item):  # Swapping rows
+            v1_print(_who, "NOT resetting iid from self.item:", self.item,
+                     "to:", str(item))
+
+    def New(self, mac):
+        """ Create default treeview row
+            During startup / resume, BLE LED Light Strips require extra connect
+        """
+
+        _who = self.who + "New():"
+        if not self.isActive:
+            return  # Shutting down
+        self.arp_dict = ni.arp_for_mac(mac)
+
+        # self.mac is non-displayed treeview column used to reread arp_dict
+        self.mac = mac  # MAC address
+        self.inst_dict = ni.inst_for_mac(mac)  # instance dictionary
+        try:
+            self.inst = self.inst_dict['instance']
+        except KeyError:
+            v0_print("self.inst_dict has no 'instance' key:", self.inst_dict)
+            v0_print("self.arp_dict has no instance:", self.arp_dict)
+            # return  # 2025-01-12 need self.values defined
+
+        try:
+            type_code = self.arp_dict['type_code']
+        except KeyError:
+            v0_print(_who, "Key 'type_code' not in 'arp_dict':", self.arp_dict)
+            type_code = None
+
+        # TV's are 16/9 = 1.8. Treeview uses 300/180 image = 1.7.
+        if type_code == GLO['HS1_SP']:  # TP-Line Kasa Smart Plug HS100 image
+            photo = img.tk_image("bias.jpg", 300, 180)
+        elif type_code == GLO['KDL_TV']:  # Sony Bravia KDL TV image
+            photo = img.tk_image("sony.jpg", 300, 180)
+        elif type_code == GLO['TCL_TV']:  # TCL / Google Android TV image
+            photo = img.tk_image("tcl.jpg", 300, 180)
+        elif type_code == GLO['BLE_LS']:  # Bluetooth Low Energy LED Light Strip
+            photo = img.tk_image("led_lights.jpg", 300, 180)
+        elif type_code == GLO['DESKTOP']:  # Desktop computer image
+            photo = img.tk_image("computer.jpg", 300, 180)
+        elif type_code == GLO['LAPTOP_B']:  # Laptop Base image
+            photo = img.tk_image("laptop_b.jpg", 300, 180)
+        elif type_code == GLO['LAPTOP_D']:  # Laptop Display image
+            photo = img.tk_image("laptop_d.jpg", 300, 180)
+        elif type_code == GLO['ROUTER_M']:  # Laptop Display image
+            photo = img.tk_image("router2.jpg", 300, 180)
+        else:
+            v0_print(_who, "Unknown 'type_code':", type_code)
+            photo = None
+
+        self.photo = photo
+
+        # 2025-01-12 no instance
+        if self.inst is None:
+            status = "?"
+            type_code = "?"
+            name = "?"
+        else:
+            status = self.inst.powerStatus
+            type_code = self.inst.type
+            name = self.inst.name
+
+        # Did program just start, or is power status already known?
+        # if self.inst.powerStatus == "?":  # Initial boot  # 2025-01-12
+        if status == "?":  # Initial boot
+            self.text = "Wait..."  # Power status checked when updating treeview
+        else:
+            self.text = "  " + self.inst.powerStatus  # Power state already known
+        self.name_column = name  # inst.name or "?" if not found
+        self.name_column += "\nIP: " + self.arp_dict['ip']
+        self.attribute_column = self.arp_dict['alias']
+        self.attribute_column += "\nMAC: " + self.arp_dict['mac']
+        self.attribute_column += "\n" + type_code  # inst.type or "?" if not found
+        self.values = (self.name_column, self.attribute_column, self.mac)
+
+    def Add(self, item):
+        """ Set treeview row - Must call .New() beforehand.
+            Handles item being a str() or an int()
+            :param item: Target row can be different than original self.item
+            :returns: nothing
+        """
+        _who = self.who + "Add():"
+        if not self.isActive:
+            return  # Shutting down
+        trg_iid = str(item)  # Target row can be different than original self.item
+        # Inserting into treeview must save from garbage collection
+        # using self.top.photos in Toplevel instance. Note self.photo is in this
+        # TreeviewRow instance and not in Toplevel instance.
+        self.top.photos.append(self.photo)
+
+        ''' 2024-11-29 - Use faster method for repainting devices treeview '''
+        if p_args.fast:
+            text = "Wait..."  # Wait for idle loop
+        elif self.inst is not None:  # 2025-01-12 new error self.inst is None
+            self.inst.getPower()
+            text = "  " + self.inst.powerStatus
+        else:
+            text = " Error!"
+
+        self.text = text
+
+        self.top.tree.insert(
+            '', 'end', iid=trg_iid, text=self.text,
+            image=self.top.photos[-1], value=self.values)
+
+    def fadeIn(self, item):
+        """ Fade In over 10 steps of 30 ms """
+        if not self.isActive:
+            return  # Shutting down
+        toolkit.tv_tag_remove(self.tree, item, 'normal')  # Same as step 10
+        for i in range(10):
+            try:
+                if i != 0:
+                    toolkit.tv_tag_remove(self.tree, item, 'fade' + str(i - 1))
+                if i != 9:
+                    toolkit.tv_tag_add(self.tree, item, 'fade' + str(i))
+                else:
+                    toolkit.tv_tag_add(self.tree, item, 'curr_sel')  # Same as step 10
+                self.tree.update()  # Change from .top to .tree for SystemMonitor to use
+                self.tree.after(10)  # 20 milliseconds
+            except tk.TclError:
+                return  # Changed treeview during fade in
+
+    def fadeOut(self, item):
+        """ Fade Out over 10 steps of 30 ms """
+        if not self.isActive:
+            return  # Shutting down
+        toolkit.tv_tag_remove(self.tree, item, 'curr_sel')  # Same as step 10
+        for i in range(9, -1, -1):
+            try:
+                if i != 9:
+                    toolkit.tv_tag_remove(self.tree, item, 'fade' + str(i))
+                if i > 0:
+                    toolkit.tv_tag_add(self.tree, item, 'fade' + str(i))
+                else:
+                    toolkit.tv_tag_add(self.tree, item, 'normal')  # Same as step 10
+                self.tree.update()
+                self.tree.after(10)  # 10 milliseconds
+            except tk.TclError:
+                return  # Changed tree during fade out
+
+
+class SystemMonitor(DeviceCommonSelf):
+    """ System Monitor - sensors CPU/GPU Temp and Fan Speeds.
+
+        Print results to console unless `homa.py -s` (silent) was used.
+    """
+
+    def __init__(self, top):
+        """ DeviceCommonSelf(): Variables used by all classes
+        :param top: Toplevel created by Application() class instance.
+        """
+        DeviceCommonSelf.__init__(self, "SystemMonitor().")  # Define self.who
+
+        import socket
+        # https://docs.python.org/3/library/socket.html#socket.getaddrinfo
+        hostname = socket.gethostname()
+        # print("Your Computer hostname is:", hostname)  # alien
+
+        _IPAddr = socket.gethostbyname(hostname)
+        # print("Your Computer IP Address is:", _IPAddr)  # 127.0.1.1
+
+        _IPAddr_ex = socket.gethostbyname_ex(hostname)
+        # print("Your Computer IP Address_ex is:")
+        # for tup in IPAddr_ex:
+        #    print(tup)
+        # ('Alien',
+        # ['AW', '17R3', 'WiFi', '9c:b6:d0:10:37:f7',
+        #  'AW', '17R3', 'Ethernet', '28:f1:0e:2a:1a:ed'],
+        # ['127.0.1.1', '192.168.0.10', '192.168.0.12'])
+
+        _who = self.who + "__init__():"
+
+        self.top = top  # Copy of toplevel for creating treeview
+        self.tree = self.top.tree  # Pre-existing Applications() devices tree
+        self.photos = self.top.photos  # Applications() device photos
+        self.isActive = self.top.isActive
+        self.item = None  # Applications() Treeview Row iid
+        self.photo = None  # Applications() Photo image
+        self.text = None  # Applications() Row text, E.G. "ON", "OFF"
+
+        self.values = None  # Applications() Row values - Name lines, Attribute lines, MAC
+        self.name_column = None  # Applications() Device Name & IP address - values[0]
+        self.attribute_column = None  # Applications() 3 line device Attributes - values[1]
+        self.mac = None  # Applications() MAC address - hidden row values[-1] / values[2]
+
+        self.arp_dict = None  # Applications() device dictionary
+        self.inst = None  # Applications() device instance
+        self.inst_dict = None  # Applications() instance dictionary
+
+        self.type = "System Monitor"
+        self.type_code = 900  # 2025-03-01 Fake type_code, need code setup
+        self.requires = ['ifconfig', 'iwconfig', 'sensors', 'top']
+        self.installed = []
+        self.CheckDependencies(self.requires, self.installed)
+
+        v3_print(_who, "Dependencies:", self.requires)
+        v3_print(_who, "Installed?  :", self.installed)
+        if not self.dependencies_installed:
+            v1_print(_who, "System Monitor dependencies are not installed.")
+
+        self.last_sensor_check = 0.0  # check every x seconds
+        self.last_sensor_log = 0.0  # log every x seconds
+        self.skipped_checks = 0  # Skipped check when last check < x seconds
+        self.number_checks = 0  # Number of checks
+        self.skipped_fan_same = 0  # Don't log when fan speed the same
+        self.skipped_fan_200d = 0  # Don't log when fan speed different by 200 RPM
+        self.skipped_logs = 0  # Skipped logs due to time or fan speed ~ the same
+        self.number_logs = 0  # Number of logs
+        self.sensors_log = []  # List of self.curr_sensor dictionaries
+        self.curr_sensor = None  # Dict {"Processor Fan": "4500 RPM", ... }
+        self.last_sensor = None  # Last version of curr_sensor
+
+        ''' Sensor treeview - redeclare self.tree - Applications().tree '''
+        self.treeview_created = False  # If false create treeview first time
+        self.treeview_active = False  # If false then Application devices tree active
+        # Note devices tree must be reset to height 1 before self.treeview displayed
+        self.fade_in_row = None  # 300ms flash new row in treeview
+        self.fade_in_time = None
+        self.fade_in_step = None
+
+    def Sensors(self):
+        """ Wait for appropriate sleep time to expire.
+            Call `sensors` (if installed), else return.
+            If not dell machine with `sensors` output, then return.
+            Record CPU & GPU temperatures and fan speeds to self.sensors_log.
+        """
+
+        _who = self.who + "Sensors():"
+        if not self.CheckInstalled('sensors'):
+            return
+
+        ''' Sample output from `sensors` (first 7 lines):
+            $ sensors
+            dell_smm-virtual-0
+            Adapter: Virtual device
+            Processor Fan: 5200 RPM
+            Video Fan:     5000 RPM
+            CPU:            +59.0°C  
+            GPU:            +64.0°C  
+            SODIMM:         +61.0°C  
+
+        '''
+        now = time.time()
+        if now - self.last_sensor_check < GLO['SENSOR_CHECK']:
+            self.skipped_checks += 1
+            return
+        self.last_sensor_check = now
+
+        # Run `sensors` command every GLO['SENSOR_CHECK'] seconds
+        self.number_checks += 1
+        log = True if len(self.sensors_log) == 0 else False
+        event = self.runCommand(['sensors'], _who, log=log)
+        result = event['output']
+
+        # Parse `sensors` output to dictionary key/value pairs
+        dell_found = False
+        self.curr_sensor = {}
+
+        # Check one fan's RPM speed change
+        def CheckFanChange(key):
+            """ If fan speed changed by more than GLO['FAN_GRANULAR'] RPM, force logging.
+                Called for "Processor Fan" and "Video Fan" A.K.A. "fan3".
+            :param key: 'Processor Fan' or 'Video Fan', etc.
+            :return: True of curr_sensor == last_sensor
+            """
+            try:
+                if self.curr_sensor[key] == self.last_sensor[key]:
+                    self.skipped_fan_same += 1
+                    return False
+            except (TypeError, IndexError):
+                # First time last log doesn't exist. Treat as fan speed change.
+                self.last_sensor_log = time.time() - GLO['SENSOR_LOG'] * 2
+                return True
+
+            # Speed can fluctuate 2400 RPM, 2600 RPM, 2400 RPM...  18 times
+            # over 200 seconds. To reduce excessive fan speed change logging,
+            # skip fluctuations <= GLO['FAN_GRANULAR'] RPM.
+            curr = float(self.curr_sensor[key].split(" ")[0])
+            last = float(self.last_sensor[key].split(" ")[0])
+            diff = abs(curr - last)
+            # Only report fan speed differences > 200 RPM
+            if diff <= GLO['FAN_GRANULAR']:
+                # print("skipping diff:", diff)
+                self.skipped_fan_200d += 1
+                return False  # Don't override last with current
+
+            # Fan speed changed. Force logging by resetting last log time.
+            self.last_sensor_log = time.time() - GLO['SENSOR_LOG'] * 2
+            return True
+
+        # Process `sensors` output lines
+        for res in result.split("\n"):
+            parts = res.split(":")
+            # Keys not logged: SODIMM:, temp1:, id 0: Core 0:, Core 1:...
+            if len(parts) != 2:
+                if "dell_smm-virtual-0" in res:
+                    dell_found = True
+                continue  # Line doesn't have Key/Value pair
+            if "fan" in parts[0].lower():
+                if "fan3" in parts[0]:
+                    # 2024-11-12 - Glitch "Video Fan" was replaced with "fan3" today.
+                    # 2025-01-26 noticed that "Video Fan" has returned and "fan3" gone.
+                    parts[0] = "Video Fan"
+                self.curr_sensor[parts[0]] = parts[1].strip()
+                CheckFanChange(parts[0])  # Over 200 RPM change will be logged.
+            if "PU" in parts[0]:
+                # 2025-02-09 For python 3 degree in bytes use str(+66.0°C)
+                self.curr_sensor[parts[0]] = \
+                    str(parts[1].strip()).replace("+", "").replace(".0", "")
+
+        if not dell_found:
+            return  # Not an Alienware 17R3 or similar DELL machine
+
+        # Is it time to log data?
+        if now - self.last_sensor_log < GLO['SENSOR_LOG']:
+            self.skipped_logs += 1
+            return
+
+        # Add dictionary to list
+        self.last_sensor_log = now
+        log_delta = round(now - GLO['APP_RESTART_TIME'], 2)
+        self.curr_sensor['delta'] = log_delta
+        self.curr_sensor['time'] = time.time()
+        self.sensors_log.append(self.curr_sensor)
+        self.number_logs += 1
+        self.last_sensor = self.curr_sensor
+
+        self.Print()  # print the last log and/or insert tree row
+
+    def Print(self, start=-1, end=-1, tree_only=False):
+        """ Print self.sensors_log[start:end] to console
+            2024-11-03 - Rudimentary format with hard-coded keys.
+            2024-11-22 - Now homa.py called from homa-indicator.py with no console.
+            2024-11-24 - Enhance with treeview to show sensors.
+        """
+
+        if start == -1:
+            start = len(self.sensors_log) - 1
+        if end == -1:
+            end = len(self.sensors_log)
+
+        def headings():
+            """ Print headings when log count = 1 """
+
+            # TODO: first check if Dell fans can be discovered.
+            v0_print()
+            v0_print("= = = = = System Monitor Processor Temps & Fans = = = = =")
+            v0_print(" Seconds | CPU Temp/Fan RPM | GPU Temp/Fan RPM |   Time  ")
+            v0_print("-------- | ---------------- | ---------------- | --------")
+
+        def opt(key):
+            """ Return optional key or N/A if not found. """
+            try:
+                return sensor[key]
+            except KeyError:
+                return "N/A"
+
+        if len(self.sensors_log) == 1 and not tree_only:
+            headings()  # If first sensors log, print headings
+
+        for i in range(start, end):
+            sensor = self.sensors_log[i]
+            # When tree_only is True, printing has already been done to console
+            if not tree_only:
+                v0_print("{0:>8.2f}".format(sensor['delta']),  # "999.99" format
+                         '|', opt('CPU').rjust(6) + " /", opt('Processor Fan').rjust(8),
+                         '|', opt('GPU').rjust(6) + " /", opt('Video Fan').rjust(8),
+                         '|', dt.datetime.now().strftime('%I:%M %p').strip('0').rjust(8))
+
+            if self.treeview_active:
+                self.InsertTreeRow(sensor)
+                if i == len(self.sensors_log) - 1:
+                    # 2025-01-20 getting error flashing when last row not inserted yet
+                    self.FlashLastRow()  # fade in color, pause, fade out color
+
+    def populateSensorsTree(self):
+        """ Populate treeview using self.sensor_log [{}, {}... {}]
+            Treeview IID is string seconds: "0.1", "1.1", "2.2" ... "9999.9"
+        """
+        _who = self.who + "populateSensorsTree():"
+
+        ''' Treeview style is large images in cell 0 '''
+        style = ttk.Style()
+        style.configure("Treeview.Heading", font=(None, g.MED_FONT),
+                        rowheight=int(g.LARGE_FONT * 2.2))  # FONT14 alias
+        row_height = int(g.LARGE_FONT * 2.2)
+        style.configure("Treeview", font=g.FONT14, rowheight=row_height,
+                        background="WhiteSmoke", fieldbackground="WhiteSmoke")
+
+        ''' Create treeview frame with scrollbars '''
+        # Also once image placed into treeview row, it can't be read from the row.
+        self.tree = ttk.Treeview(self.top, column=('Seconds', 'CPU', 'GPU', 'Time'),
+                                 selectmode='none', style="Treeview", show="headings")
+
+        self.tree.grid(row=0, column=0, sticky='nsew')
+        v_scroll = tk.Scrollbar(self.top, orient=tk.VERTICAL,
+                                width=14, command=self.tree.yview)
+        v_scroll.grid(row=0, column=1, sticky=tk.NS)
+        self.tree.configure(yscrollcommand=v_scroll.set)
+
+        # Oct 1, 2023 - MouseWheel event does NOT capture any events
+        self.tree.bind("<MouseWheel>", lambda event: self.MouseWheel(event))
+        # Button-4 is mousewheel scroll up event
+        self.tree.bind("<Button-4>", lambda event: self.MouseWheel(event))
+        # Button-5 is mousewheel scroll down event
+        self.tree.bind("<Button-5>", lambda event: self.MouseWheel(event))
+
+        # Setup column heading - #0, #1, #2 denotes the 1st, 2nd & 3rd, etc. columns
+        self.tree.heading('#1', text='Seconds', anchor=tk.E)
+        self.tree.heading('#2', text='CPU Temp / Fan Speed')  # anchor defaults to center
+        self.tree.heading('#3', text='GPU Temp / Fan Speed')
+        self.tree.heading('#4', text='Time')
+        # anchor defaults to left
+        self.tree.column('Seconds', anchor=tk.E, width=100, stretch=True)
+        self.tree.column('CPU', anchor='center', width=250, stretch=True)
+        self.tree.column('GPU', anchor='center', width=250, stretch=True)
+        self.tree.column('Time', anchor='center', width=100, stretch=True)
+
+        # Give some padding between image and left border, between tree & scroll bars
+        self.tree["padding"] = (10, 10, 10, 10)  # left, top, right, bottom
+
+        # Treeview Row Colors
+        self.tree.tag_configure('curr_sel', background='#004900',
+                                foreground="White")  # Right click on row
+        self.tree.tag_configure('highlight', background='LightSkyBlue',
+                                foreground="Black")  # Mouse over row
+        self.tree.tag_configure('normal', background='WhiteSmoke',
+                                foreground="Black")  # Nothing special
+
+        # Fade in/out Row: Black fg faded green bg to White fg dark green bg
+        green_back = ["#93fd93", "#7fe97f", "#6bd56b", "#57c157", "#43ad43",
+                      "#39a339", "#258f25", "#117b11", "#006700", "#004900"]
+        green_fore = ["#000000", "#202020", "#404040", "#606060", "#808080",
+                      "#aaaaaa", "#cccccc", "#dddddd", "#eeeeee", "#ffffff"]
+        for i in range(10):
+            self.tree.tag_configure('fade' + str(i), background=green_back[i],
+                                    foreground=green_fore[i])  # Nothing special
+
+        # Build Sensors treeview
+        self.Print(start=0, end=-1, tree_only=True)
+
+    def FlashLastRow(self):
+        """ Flash the last row in Sensors Treeview """
+        _who = self.who + "FlashLastRow():"
+        cr = TreeviewRow(self)  # also used by Applications() devices treeview
+        sec = self.sensors_log[-1]['delta']  # delta is seconds since app started
+
+        # iid is Number right justified 8 = 5 whole + decimal + 2 fraction
+        sec_str = "{0:>8.2f}".format(sec)  # E.G. sec = "2150.40" seconds
+        sec_str = str(sec_str)  # 2025-01-19 strangely type is float today.
+
+        try:
+            # _item = self.tree.item(sec_str)  # 2025-03-26
+            _item = self.tree.item(self.getLastRowIid())  # 2025-03-26
+        except tk.TclError:
+            v0_print("\n" + _who, "sec_str not found: '" + sec_str + "'",
+                     " |", type(sec_str))
+            v0_print("self.sensors_log[-1]:", self.sensors_log[-1])
+            return
+
+        # cr.fadeIn(sec_str)  # 2025-03-26
+        cr.fadeIn(self.getLastRowIid())  # 2025-03-26
+        time.sleep(3.0)
+        # cr.fadeOut(sec_str)  # 2025-03-26
+        cr.fadeOut(self.getLastRowIid())  # 2025-03-26
+
+    def getLastRowIid(self):
+        """ Return IID for last row of Sensors Treeview """
+        return self.tree.get_children()[-1]
+
+    def InsertTreeRow(self, sensor):
+        """ Insert sensors row into sensors treeview
+            :param sensor: = {delta: seconds, CPU: temp, Processor Fan: rpm,
+                              GPU: temp, Video Fan: rpm}
+
+        """
+        _who = self.who + "InsertTreeRow():"
+
+        def opt(key):
+            """ Return optional key or N/A if not found. """
+            try:
+                return sensor[key]  # in Python 3, value is bytes
+            except KeyError:
+                return "N/A"
+
+        # Possible image showing temperature of CPU?
+        sec_str = "{0:>8.2f}".format(sensor['delta'])
+        try:
+            self.tree.insert(
+                '', 'end', iid=None,  # iid=sec_str,  2025-03-26 auto assign
+                value=(sec_str,
+                       opt('CPU').rjust(7) + " / " + opt('Processor Fan').rjust(8),
+                       opt('GPU').rjust(7) + " / " + opt('Video Fan').rjust(8),
+                       dt.datetime.fromtimestamp(sensor['time']).
+                       strftime('%I:%M %p').strip('0').rjust(8)))
+        except tk.TclError:
+            v0_print(_who, "sec_str already exists in Sensors Treeview:", sec_str)
+            # 2025-03-26 TODO: Make key unique by auto-assigning iid
+
+        # self.tree.see(sec_str)  # 2025-03-26  #
+        self.tree.see(self.getLastRowIid())  # 2025-03-26  #
+        # 2024-12-28: Occasionally iid not found in FlashLastRow() so update_idletasks
+        self.tree.update_idletasks()
+
+    @staticmethod
+    def MouseWheel(event):
+        """ Mousewheel scroll defaults to 5 units """
+        if True is True:  # 2024-11-24 - initial creation
+            return  # Leave at default 5 rows scrolling
+
+        if event.num == 4:  # Override mousewheel scroll up
+            event.widget.yview_scroll(-1, "units")  # tree = event.widget
+            return "break"  # Don't let regular event handler do scroll of 5
+        if event.num == 5:  # Override mousewheel scroll down
+            event.widget.yview_scroll(1, "units")  # tree = event.widget
+            return "break"  # Don't let regular event handler do scroll of 5
 
 
 class LaptopDisplay(DeviceCommonSelf):
@@ -2254,17 +2871,17 @@ https://stackoverflow.com/questions/2829613/how-do-you-tell-if-a-string-contains
 
     def checkPowerOffSuspend(self, forgive=False):
         """ If TV powered off with remote control. If so suspend system.
-            Called from app.refreshApp() every 16 milliseconds
+            Called from app.refreshApp() every 16 to 33 milliseconds
             Copied from /mnt/e/bin/tvpowered
         """
         _who = self.who + "checkPowerOffSuspend():"
-        self.getPower()
+        self.getPower(forgive=forgive)
         if self.powerStatus != "OFF":
-            return False
+            return False  # Sony power status is "ON" or "?" or "Error:"
 
         v0_print(_who, "Suspending due to Sony TV powerStatus:", self.powerStatus)
 
-        return True  # Parent will delay rediscovery 1 minute
+        return True  # app.refreshApp will suspend system now
 
     def checkVolumeChange(self, forgive=False):
         """ If current volume is different than last volume spam notify-send
@@ -2275,7 +2892,7 @@ https://stackoverflow.com/questions/2829613/how-do-you-tell-if-a-string-contains
         if self.powerStatus != "ON":
             return False
 
-        self.getVolume(forgive=True)  # Occasionally get curl error 124 timeout
+        self.getVolume(forgive=forgive)  # Occasionally get curl error 124 timeout
         if self.volume == self.volumeLast:
             return False
         self.volumeLast = self.volume
@@ -2324,19 +2941,16 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/
         #print("reply:", reply, " | type(reply):", type(reply))
         if isinstance(reply, int):
             v3_print(_who, "Integer reply:", reply)  # 7
-            return "?"
         elif u"active" == reply:
             self.powerStatus = "ON"  # Can be "ON", "OFF" or "?"
         elif u"standby" == reply:
             self.powerStatus = "OFF"  # Can be "ON", "OFF" or "?"
         else:
             v3_print(_who, "Something weird: ?")  # Router
-            self.powerStatus = "?"  # Can be "ON", "OFF" or "?"
 
         # 2024-12-04 - Some tests
         #self.getSoundSettings()
         #self.getSpeakerSettings()
-        #self.getVolume()
 
         return self.powerStatus
 
@@ -2352,18 +2966,15 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/
         if not forgive and not self.checkReply(reply_dict, RESTid):
             return self.powerStatus
 
-        ret = "ON"
         try:
             result = reply_dict['result']  # can be KeyError
             if result:  # result should be empty (tests False)
                 v0_print(_who, "reply_dict['result']' should be empty:", result)
-                ret = "Error"
         except KeyError:
             v0_print(_who, "Invalid reply_dict['result']':", reply_dict)
-            ret = "Error"
 
-        self.powerStatus = ret  # Can be "ON", "OFF" or "?"
-        return ret
+
+        return self.getPower(forgive=forgive)
 
     def turnOff(self, forgive=False):
         """ Turn Off Sony Bravia KDL TV using os_curl
@@ -2376,18 +2987,15 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/
         self.powerStatus = "?"  # Can be "ON", "OFF" or "?"
         if not forgive and not self.checkReply(reply_dict, RESTid):
             return self.powerStatus
-        ret = "OFF"
+
         try:
             result = reply_dict['result']  # can be KeyError
             if result:  # result should be empty (tests False)
                 v0_print(_who, "reply_dict['result']' should be empty:", result)
-                ret = "Error"
         except KeyError:
             v0_print(_who, "Invalid reply_dict['result']':", reply_dict)
-            ret = "Error"
 
-        self.powerStatus = ret  # Can be "ON", "OFF" or "?"
-        return self.powerStatus
+        return self.getPower(forgive=forgive)
 
     def getPowerSavingMode(self, forgive=False):
         """ Get Sony Bravia KDL TV power savings mode """
@@ -2732,7 +3340,6 @@ Application().Rediscover(): FOUND NEW INSTANCE or REDISCOVERED LOST INSTANCE:
         _who = self.who + "Connect():"
         v2_print(_who, "Attempt to connect to:", self.ip)
 
-        # MAGIC_TIME needs 5 seconds for timeout
         # $ time adb connect 192.168.0.17
         # * daemon not running. starting it now on port 5037 *
         # * daemon started successfully *
@@ -2757,20 +3364,36 @@ Application().Rediscover(): FOUND NEW INSTANCE or REDISCOVERED LOST INSTANCE:
 
             # 2025-01-13 Added but should not be needed except isDevice timeout is
             #   now too short.
-            command_line_list = ["adb", "connect", self.ip]
+            command_line_list = ["adb", "connect", self.ip]  # can take 6 seconds
             _event = self.runCommand(command_line_list, _who, forgive=forgive)
+
+            # Reply = "connected to 192.168.0.17:5555"
+            # Reply = "already connected to 192.168.0.17:5555"
+            # Reply = "unable to connect to 192.168.0.17:5555"
+            # Reply = "error: device offline"
 
             cnt += 1
             if cnt > 60:
                 v0_print(_who, "Timeout after", cnt, "attempts")
                 return False
 
-        return True
+        return True  # isDevice() returned True ("connected" in reply)
 
     def getPower(self, forgive=False):
         """ Return "ON", "OFF" or "?".
             Calls 'timeout 2.0 adb shell dumpsys input_method | grep -i screenon'
                 which replies with 'true' or 'false'.
+
+2025-04-22 broken in morning: screenOn no longer appears. Worked in afternoon
+
+adb shell dumpsys input_method | grep -i "screenOn"
+    screenOn = true
+────────────────────────────────────────────────────────────────────────────────────────────
+adb shell dumpsys power | grep -i "Display Power"
+Display Power: state=ON
+────────────────────────────────────────────────────────────────────────────────────────────
+adb shell dumpsys display| grep -i mScreenState
+  mScreenState=ON
 
         """
 
@@ -2786,8 +3409,6 @@ Application().Rediscover(): FOUND NEW INSTANCE or REDISCOVERED LOST INSTANCE:
 
         if event['returncode'] != 0:
             if forgive is False:
-                #v1_print(_who, "pipe.returncode:", pipe.returncode)
-                #if pipe.returncode == 124:
                 if event['returncode'] == 124:
                     v1_print(_who, self.ip, "timeout after:", GLO['ADB_PWR_TIME'])
                     self.powerStatus = "?"  # Can be "ON", "OFF" or "?"
@@ -2796,10 +3417,6 @@ Application().Rediscover(): FOUND NEW INSTANCE or REDISCOVERED LOST INSTANCE:
             return self.powerStatus
 
         Reply = event['output']
-        # Reply = "connected to 192.168.0.17:5555"
-        # Reply = "already connected to 192.168.0.17:5555"
-        # Reply = "unable to connect to 192.168.0.17:5555"
-        # Reply = "error: device offline"
 
         if "true" in Reply:
             self.powerStatus = "ON"  # Can be "ON", "OFF" or "?"
@@ -2883,12 +3500,23 @@ Application().Rediscover(): FOUND NEW INSTANCE or REDISCOVERED LOST INSTANCE:
         if timeout is None:
             timeout = GLO['ADB_CON_TIME']
         command_line_list = ["timeout", timeout, "adb", "connect", self.ip]
-        command_line_str = ' '.join(command_line_list)
 
-        # NEED self.runCommand to log events !!!!
-        # event = self.runCommand(command_line_list, _who, forgive=forgive)
+        # 2025-04-22 upgrade to self.runCommand to log events
+        event = self.runCommand(command_line_list, _who, forgive=forgive)
+        v2_print(_who, "reply from grep 'screenOn':", event['output'], event['error'])
 
+        if event['returncode'] != 0:
+            if forgive is False:
+                if event['returncode'] == 124:
+                    v0_print(_who, self.ip, "timeout after:", timeout)
+                else:
+                    v0_print(_who, self.ip, "Return Code:", event['returncode'])
+                    v0_print(_who, self.ip, "Error:", self.cmdError)
+            return False
 
+        Reply = event['output']
+
+        ''' 2025-04-22 old code
         pipe = sp.Popen(command_line_list, stdout=sp.PIPE, stderr=sp.PIPE)
         text, err = pipe.communicate()  # This performs .wait() too
 
@@ -2902,6 +3530,7 @@ Application().Rediscover(): FOUND NEW INSTANCE or REDISCOVERED LOST INSTANCE:
             if forgive is False:
                 v0_print(_who, "pipe.returncode:", pipe.returncode)
             return False
+        '''
 
         # Reply = "connected to 192.168.0.17:5555"
         # Reply = "already connected to 192.168.0.17:5555"
@@ -3770,6 +4399,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
             # Count sequential errors and after x times ShowInfo()
             self.connect_errors += 1
             if self.connect_errors > retry:
+                # if self.app.suspending or self.app.resuming no message
                 self.showMessage(err, count=self.connect_errors)
                 self.connect_errors = 0  # Reset for new sequential count
             else:
@@ -3844,7 +4474,11 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         msg += "Always try: 'Turn on " + self.name + "' a few times for quick fix."
         v1_print(_who, msg + "\n")
         if self.app is not None:
-            self.app.ShowInfo("Not connected", msg, "error", align="left")
+            if not self.app.suspending and not self.app.resuming:
+                self.app.ShowInfo("Not connected", msg, "error", align="left")
+            else:
+                v0_print(_who, "Cannot display message when suspending or resuming.")
+                v0_print(msg)
 
     def getPower(self):
         """ Return "ON", "OFF" or "?".
@@ -3893,6 +4527,7 @@ $ ps aux | grep gatttool | grep -v grep | wc -l
 
         try:
             tc.powerOn(self.device)
+            self.already_breathing_colors = False
             self.powerStatus = "ON"  # Can be "ON", "OFF" or "?"
             v1_print(_who, "self.suspendPowerOff:", self.suspendPowerOff)
             # BluetoothLedLightStrip().turnOn(): self.suspendPowerOff: 1
@@ -3902,6 +4537,9 @@ $ ps aux | grep gatttool | grep -v grep | wc -l
             if self.suspendPowerOff:
                 self.breatheColors()  # Restart breathing
                 self.suspendPowerOff = 0
+            else:
+                # 2025-04-22 Always turn on breathe colors
+                self.breatheColors()  # Start breathing
 
             return self.powerStatus  # Success !
 
@@ -3929,6 +4567,7 @@ $ ps aux | grep gatttool | grep -v grep | wc -l
 
         try:
             tc.powerOff(self.device)
+            self.already_breathing_colors = False
             self.powerStatus = "OFF"  # Can be "ON", "OFF" or "?"
             return self.powerStatus
         except pygatt.exceptions.NotConnectedError as err:
@@ -3983,7 +4622,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         self.isActive = True  # Set False when exiting or suspending
         self.requires = ['arp', 'getent', 'timeout', 'curl', 'adb', 'hs100.sh', 'aplay',
-                         'ps', 'grep', 'xdotool', 'wmctrl']
+                         'ps', 'grep', 'xdotool', 'wmctrl', 'nmcli']
         self.installed = []
         self.CheckDependencies(self.requires, self.installed)
 
@@ -4000,6 +4639,11 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         ''' TkFixedFont, TkMenuFont, TkHeadingFont, TkCaptionFont, TkSmallCaptionFont,
             TkIconFont and TkTooltipFont - It is not advised to change these fonts.
             https://www.tcl-lang.org/man/tcl8.6/TkCmd/font.htm '''
+
+        self.suspend_time = 0.0  # last time system suspended
+        self.suspending = False  # When True suppress error messages
+        self.resume_time = 0.0  # last time system resumed from suspend
+        self.resuming = False  # When True suppress error messages
 
         self.last_refresh_time = time.time()  # Refresh idle loop last entered time
         # Normal 1 minute delay to rediscover is shortened at boot time if fast start
@@ -4223,27 +4867,42 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         # Tools Dropdown Menu
         self.tools_menu = tk.Menu(mb, tearoff=0)
-        sub_menu = tk.Menu(self.tools_menu, tearoff=0)
-        sub_menu.add_command(label='ON', font=g.FONT, underline=1,
-                             command=lambda: self.turnAllLightsPower('ON'))
-        sub_menu.add_command(label='OFF', font=g.FONT, underline=1,
-                             command=lambda: self.turnAllLightsPower('OFF'))
+        lights_menu = tk.Menu(self.tools_menu, tearoff=0)
+        lights_menu.add_command(label='ON', font=g.FONT, underline=1, background="green",
+                                command=lambda: self.turnAllLightsPower('ON'))
+        lights_menu.add_command(label='OFF', font=g.FONT, underline=1, background="red",
+                                command=lambda: self.turnAllLightsPower('OFF'))
         self.tools_menu.add_cascade(label="Turn all lights power", font=g.FONT,
-                                    underline=0, menu=sub_menu)
+                                    underline=0, menu=lights_menu)
         self.tools_menu.add_command(label="Forget sudo password", underline=0,
                                     font=g.FONT, command=ForgetPassword, state=tk.DISABLED)
 
         self.tools_menu.add_separator()
 
         self.tools_menu.add_command(label="Big number calculator", font=g.FONT,
-                                    underline=0, command=self.OpenCalculator,
+                                    underline=0, command=self.openCalculator,
                                     state=tk.DISABLED)
         self.tools_menu.add_command(label="Timer " + str(GLO['TIMER_SEC']) + " seconds",
                                     font=g.FONT, underline=0,
                                     command=lambda: self.resumeWait(timer=GLO['TIMER_SEC']))
-        self.tools_menu.add_command(label="Debug information", font=g.FONT,
-                                    underline=0, command=self.exitApp,
-                                    state=tk.DISABLED)
+        theme_menu = tk.Menu(self.tools_menu, tearoff=0)
+        #     # background="LemonChiffon"    VERY NICE Debug information
+        #     # background="NavajoWhite"     VERY NICE
+        #     # background="LightSalmon"     BEST at night
+        theme_menu.add_command(label='WhiteSmoke', font=g.FONT, underline=0,
+                               background="WhiteSmoke",
+                               command=lambda: self.setColorScheme('WhiteSmoke'))
+        theme_menu.add_command(label='LemonChiffon', font=g.FONT, underline=0,
+                               background="LemonChiffon",
+                               command=lambda: self.setColorScheme('LemonChiffon'))
+        theme_menu.add_command(label='NavajoWhite', font=g.FONT, underline=0,
+                               background="NavajoWhite",
+                               command=lambda: self.setColorScheme('NavajoWhite'))
+        theme_menu.add_command(label='LightSalmon', font=g.FONT, underline=5,
+                               background="LightSalmon",
+                               command=lambda: self.setColorScheme('LightSalmon'))
+        self.tools_menu.add_cascade(label="Color scheme", font=g.FONT,
+                                    underline=0, menu=theme_menu)
         mb.add_cascade(label="Tools", font=g.FONT, underline=0,
                        menu=self.tools_menu)
 
@@ -4312,9 +4971,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.tools_menu.entryconfig("Forget sudo password", state=tk.DISABLED)
         else:
             self.tools_menu.entryconfig("Forget sudo password", state=tk.NORMAL)
-        self.tools_menu.entryconfig("Debug information", state=tk.DISABLED)
 
-    def exitApp(self, *_args):
+    def exitApp(self, kill_now=False, *_args):
         """ <Escape>, X on window, 'Exit from dropdown menu or Close Button"""
         _who = self.who + "exitApp():"
 
@@ -4326,7 +4984,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             msg = "Countdown timer is running."
         if not self.rediscover_done:  # Cannot suspend during rediscovery.
             msg = "Device rediscovery is in progress for a few seconds."
-        if msg:  # Cannot suspend when other jobs are active
+        if msg and not kill_now:  # Cannot suspend when other jobs are active
             self.ShowInfo("Cannot Close now.", msg, icon="error")
             v0_print(_who, "Aborting Close.", msg)
             return
@@ -4609,7 +5267,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.usingDevicesTreeview = False
             self.tree.destroy()  # Destroy Network Devices Treeview
             sm.treeview_active = True
-            sm.populateDevicesTree()  # Build Sensors Treeview using sm.Print(start=0, end=-1)
+            sm.populateSensorsTree()  # Build Sensors Treeview using sm.Print(start=0, end=-1)
         elif "Devices" in self.sensors_devices_btn['text']:
             self.sensors_devices_btn['text'] = toolkit.normalize_tcl(self.sensors_btn_text)
             self.sensors_devices_btn['image'] = self.img_sensors
@@ -4707,15 +5365,15 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             menu.add_command(label=name_string,
                              font=g.FONT, state=tk.DISABLED,
                              image=self.img_set_color, compound=tk.LEFT,
-                             command=lambda: self.setColor(cr))
+                             command=lambda: self.setLEDColor(cr))
             menu.add_command(label="Nighttime brightness",
                              font=g.FONT, state=tk.DISABLED,
                              image=self.img_nighttime, compound=tk.LEFT,
-                             command=lambda: self.setNight(cr))
+                             command=lambda: self.setLEDNight(cr))
             menu.add_command(label="Breathing colors",
                              font=g.FONT, state=tk.DISABLED,
                              image=self.img_breathing, compound=tk.LEFT,
-                             command=lambda: self.breatheColors(cr))
+                             command=lambda: self.breatheLEDColors(cr))
 
             menu.add_separator()
 
@@ -4734,7 +5392,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
             menu.entryconfig(name_string, state=state)
             menu.entryconfig("Nighttime brightness", state=state)
-            if cr.inst.already_breathing_colors:
+            if cr.inst.already_breathing_colors is True:
                 menu.entryconfig("View Breathing Statistics", state=tk.NORMAL)
                 state = tk.DISABLED  # Override if breathing colors already running
             menu.entryconfig("Breathing colors", state=state)
@@ -4795,6 +5453,11 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         if cr.inst.powerStatus != "OFF":  # Other options are "ON" and "?"
             menu.entryconfig("Turn Off " + name, state=tk.NORMAL)
 
+        # Never allow turning off computer by menu (breaks suspend process)
+        if cr.arp_dict['type_code'] == GLO['LAPTOP_B'] or \
+                cr.arp_dict['type_code'] == GLO['DESKTOP']:
+            menu.entryconfig("Turn Off " + name, state=tk.DISABLED)
+
         # Enable moving row up and moving row down
         all_iid = self.tree.get_children()  # Get all item iid in treeview
         if item != all_iid[0]:  # Enable moving row up if not at top?
@@ -4822,30 +5485,30 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         cr.tree.item(cr.item, text=text)
         cr.tree.update_idletasks()
 
-    def setColor(self, cr):
+    def setLEDColor(self, cr):
         """ Mouse right button click selected "Set LED Lights Color".
             Note if cr.device in error a 10 second timeout can occur.
         """
-        _who = self.who + "setColor():"
+        _who = self.who + "setLEDColor():"
         resp = cr.inst.setColor()
         text = "  " + str(resp)
         cr.tree.item(cr.item, text=text)
         cr.tree.update_idletasks()
 
-    def setNight(self, cr):
+    def setLEDNight(self, cr):
         """ Mouse right button click selected "Nighttime brightness".
             Note if cr.device in error a 10 second timeout can occur.
         """
-        _who = self.who + "setNight():"
+        _who = self.who + "setLEDNight():"
         resp = cr.inst.setNight()
         text = "  " + str(resp)
         cr.tree.item(cr.item, text=text)
         cr.tree.update_idletasks()
 
-    def breatheColors(self, cr):
+    def breatheLEDColors(self, cr):
         """ Mouse right button click selected "Breathing colors".
         """
-        _who = self.who + "breatheColors():"
+        _who = self.who + "breatheLEDColors():"
         resp = cr.inst.breatheColors()
         self.last_refresh_time = time.time()
         if not self.isActive:
@@ -5000,7 +5663,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
     def refreshApp(self, tk_after=True):
         """ Sleeping loop until need to do something. Fade tooltips. Resume from
-            suspend. Rediscover devices.
+            suspend. Monitor Sony TV settings. Rediscover devices.
 
             When a message is displayed, or input is requested, lost time causes
             a fake resume from suspend condition. After dialog boxes, use command:
@@ -5011,14 +5674,14 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         _who = self.who + "refreshApp()"
         self.update_idletasks()
-        if not self.winfo_exists():
-            self.isActive = False
+
+        if not self.winfo_exists():  # Application window destroyed?
             return False  # self.close() has destroyed window
 
         ''' Is system shutting down? '''
         if killer.kill_now:
             v0_print('\nhoma.py refresh() closed by SIGTERM')
-            self.exitApp()
+            self.exitApp(kill_now=True)
             return False  # Not required because this point never reached.
 
         ''' Resuming from suspend? '''
@@ -5030,29 +5693,39 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.resumeAfterSuspend()  # Resume Wait + Conditionally Power on devices
             now = time.time()  # can be 15 seconds or more later
             GLO['APP_RESTART_TIME'] = now  # Reset app started time to resume time
+            self.last_rediscover_time = 0.0  # Force rediscovery
 
-        if not self.winfo_exists():  # Second check needed June 2023
+        if not self.winfo_exists():  # Application window destroyed?
             return False  # self.close() has set to None
 
+        ''' Special Sony TV features '''
         life_span = time.time() - GLO['APP_RESTART_TIME']
+        log_status = GLO['LOG_EVENTS']  # Current event logging status
+        GLO['LOG_EVENTS'] = False  # Turn off logging during Sony checks
 
         ''' Is there a TV to be monitored for power off to suspend system? '''
-        if self.sonySaveInst and life_span > 20:  # Give 20 seconds to settle down
-            if self.sonySaveInst.checkPowerOffSuspend():
-                self.Suspend()
+        if self.sonySaveInst and life_span > 20 and self.suspend_time < now - 60:
+            self.sonySaveInst.powerStatus = "?"  # Default if network down
+            if self.sonySaveInst.checkPowerOffSuspend(forgive=True):  # check "OFF"
+                self.Suspend()  # Will not reset Sony TV to "OFF" when "OFF"
+                # After .Suspend() called, program still executes a few loops.
+                self.suspend_time = now  # Don't come back here again!
+                self.sonySaveInst.powerStatus = "?"  # Status for next resume
+                GLO['LOG_EVENTS'] = True if log_status else False  # Restore logging
                 return True  # Restart wakeup from sleep processes
 
         ''' Is there an audio channel to be monitored for volume up/down display? '''
         if self.sonySaveInst and life_span > 20:  # Give 20 seconds to settle down
-            if self.sonySaveInst.checkVolumeChange():
+            if self.sonySaveInst.checkVolumeChange(forgive=True):
                 self.last_rediscover_time = time.time()
+
+        GLO['LOG_EVENTS'] = True if log_status else False  # Restore logging
 
         ''' Always give time slice to tooltips - requires sql.py color config '''
         self.tt.poll_tips()  # Tooltips fade in and out
         self.update()  # process pending tk events in queue
 
-        if not self.winfo_exists():  # Second check needed June 2023
-            self.isActive = False
+        if not self.winfo_exists():  # Application window destroyed?
             return False  # self.close() has set to None
 
         ''' Displaying statistics for Bluetooth LED Light Strip breathing colors? '''
@@ -5066,9 +5739,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             called by waiting messages within first rediscovery process when
             a second rediscovery will break things. '''
         if not tk_after:
-            if not self.winfo_exists():  # Second check needed June 2023
-                self.isActive = False
-            return self.isActive
+            return self.winfo_exists()  # Application window destroyed?
 
         ''' Rediscover devices every GLO['REDISCOVER_SECONDS'] '''
         if int(now - self.last_rediscover_time) > GLO['REDISCOVER_SECONDS']:
@@ -5113,6 +5784,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             return
 
         v0_print(_who, "Suspending system...")
+        self.suspending = True
+        self.resuming = False
         ''' Move mouse away from suspend button to close tooltip window 
             because <Enter> event generated for tooltip during system resume '''
         command_line_list = ["xdotool", "mousemove_relative", "--", "-200", "-200"]
@@ -5134,14 +5807,14 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             rediscovery for any new devices added.
 
             Called when: now - self.last_refresh_time > GLO['RESUME_TEST_SECONDS']
-            Consequently long running processes must reseed self.last_refresh_time
-            when they finish.
+            Long running processes must reseed self.last_refresh_time
+            when they finish or a fake resume will occur.
 
             2025-03-19 Force Sensors log so temperatures and fan speeds are logged.
 
             2025-01-17 ERROR: Resume did not work for Sony TV, Sony Light, TCL TV,
                 and TCL TV light. It did work for BLE LED Lights. Reason is resume
-                wait is 3 seconds. Increase it to 6 seconds.
+                wait is 3 seconds. Increase it to 6, then 7, then 10 seconds.
 
         """
         global rd
@@ -5149,11 +5822,13 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.rediscover_done = True
         _who = self.who + "resumeAfterSuspend():"
         self.isActive = True  # Application GUI is active again
+        self.resuming = True
+        self.suspending = False
 
         start_time = time.time()
         self.resumeWait()  # Display countdown waiting for devices to come online
         delta = int(time.time() - start_time)
-        v0_print(_who, "Forced", delta, "second wait for network to come up.")
+        v0_print(_who, "Waited", delta, "seconds for network to come up.")
         v1_print("\n" + _who, "ni.view_order:", ni.view_order)
 
         # Turn all devices on
@@ -5165,6 +5840,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.last_rediscover_time = now - GLO['REDISCOVER_SECONDS'] * 10.0
         self.last_refresh_time = now + 1.0  # If abort, don't come back here
         sm.last_sensor_log = now - GLO['SENSOR_LOG'] * 2  # Force log
+        self.resuming = False
+        self.suspending = False
 
     def resumeWait(self, timer=None, alarm=True, title=None, abort=True):
         """ Wait x seconds for devices to come online. If 'timer' passed do a
@@ -5220,6 +5897,14 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.after(100)
             # During countdown timer, don't trigger resumeAfterSuspend()
             self.last_refresh_time = time.time() + 1.0
+            if timer or not self.CheckInstalled("nmcli"):
+                continue
+
+            # Leave as soon as network is connected
+            command_line_list = ["nmcli", "-f", "STATE", "-t", "g"]
+            self.runCommand(command_line_list, _who)
+            if self.cmdOutput.lower() == "connected":
+                break  # 2025-04-21 - Took 12 seconds
 
         if timer and alarm is True:  # Play sound when timer ends
             if self.CheckInstalled("aplay"):
@@ -5288,9 +5973,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 TclGoogleAndroidTV().turnOff(): 192.168.0.17 timeout after: 5.0
                 NetworkInfo().os_curl(): logEvent(): cmdReturncode: None
 
-                If inst.Power is "OFF" do not try to turn off again and waste time.                
+                If inst.Power is "OFF" or "?" not try to turn off and waste time.                
                 '''
-                if inst.powerStatus != "OFF":
+                if inst.powerStatus == "ON":
                     v0_print(_who, "Conditionally turning power 'OFF':", inst.name)
                     resp = inst.turnOff()
                     inst.powerStatus = str(resp)
@@ -5390,6 +6075,32 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             v2_print("cr.inst:", cr.inst)
 
         v2_print()  # Blank line to separate debugging output
+
+    def setColorScheme(self, scheme):
+        """ Set color scheme for devices treeview and sensors treeview 
+
+                               background="WhiteSmoke",
+                               background="LemonChiffon",
+                               background="NavajoWhite",
+                               background="LightSalmon",
+
+                {"name": 'playlists.Treeview', "foreground": "Black",
+                 "background": "LemonChiffon", "fieldbackground": "LemonChiffon",
+                 "edge_color": "NavajoWhite", "edge_px": 5},
+        """
+        _who = self.who + "setColorScheme(" + scheme + "):"
+        if scheme == "WhiteSmoke":
+            edge_color = "White"
+        elif scheme == "LemonChiffon":
+            edge_color = "NavajoWhite"
+        elif scheme == "NavajoWhite":
+            edge_color = "LightSalmon"
+        elif scheme == "LightSalmon":
+            edge_color = "DarkOrange"
+        style = ttk.Style()
+        style.configure("Treeview", background=scheme, fieldbackground=scheme,
+                        edge_color=edge_color, edge_px=5)
+
 
     def RefreshAllPowerStatuses(self, auto=False):
         """ Read ni.instances and update the power statuses.
@@ -5708,7 +6419,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.last_rediscover_time = self.last_refresh_time
         self.refreshApp(tk_after=False)
         self.after(10)
-        self.update()  # Suspend button stays blue after mouseover ends>?
+        self.update()  # Suspend button stays blue after mouseover ends?
 
     def ShowInfo(self, title, text, icon="information", align="center"):
         """ Show message with thread safe refresh that doesn't invoke rediscovery.
@@ -5804,7 +6515,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.edit_pref_active = True
         self.enableDropdown()
 
-    def OpenCalculator(self):
+    def openCalculator(self):
         """ Big Number Calculator allows K, M, G, T, etc. UoM """
         if self.calculator and self.calc_top:
             self.calc_top.focus_force()
@@ -6072,13 +6783,14 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         if self.bleSaveInst is None:
             print(_who, "self.bleSaveInst is None")
             return  # Should not happen
-        if self.bleSaveInst.already_breathing_colors is False:
-            print(_who, "self.bleSaveInst.already_breathing_colors is False")
-            return  # 2025-02-09 calling "Nighttime" when DisplayBreathing() is running
 
         def close():
             """ Close callback """
             self.bleScrollbox = None
+        if self.bleSaveInst.already_breathing_colors is False:
+            print(_who, "self.bleSaveInst.already_breathing_colors is False")
+            close()
+            return  # 2025-02-09 calling "Nighttime" when DisplayBreathing() is running
             
         if self.bleScrollbox is None:
             self.bleScrollbox = self.DisplayCommon(_who, title, close_cb=close,
@@ -6125,6 +6837,10 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.bleScrollbox.delete(6.0, "end")
 
         all_lines = self.bleSaveInst.monitorBreatheColors()
+        if all_lines is None:
+            close()
+            return
+        
         self.bleScrollbox.insert("end", all_lines)
 
         self.bleScrollbox.highlight_pattern("Blue:", "blue")
@@ -6462,594 +7178,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
             # NOTE: After killing CPU percentage declines over time for <defunct>.
             # After 15 or 20 minutes the <defunct> start to disappear on their own.
-
-
-class TreeviewRow(DeviceCommonSelf):
-    """ Device treeview row variables and methods.
-
-        Sensors treeview uses dummy call to TreeviewRow() class in order to call
-        fadeIn() and fadeOut() methods.
-
-    """
-
-    def __init__(self, top):
-        """ DeviceCommonSelf(): Variables used by all classes
-        :param top: Toplevel created by Application() class instance.
-        """
-        DeviceCommonSelf.__init__(self, "TreeviewRow().")  # Define self.who
-
-        self.top = top  # 2025-01-13 top is not passed as argument???
-        self.tree = self.top.tree  # Shortcut
-        self.photos = self.top.photos  # Shortcut
-        self.item = None  # Treeview Row iid
-        self.photo = None  # Photo image
-        self.text = None  # Row text, E.G. "ON", "OFF"
-
-        self.values = None  # Row values - Name lines, Attribute lines, MAC
-        self.name_column = None  # Device Name & IP address - values[0]
-        self.attribute_column = None  # 3 line device Attributes - values[1]
-        self.mac = None  # MAC address - hidden column values[-1] / values[2]
-        # self.mac - arp_dict['mac'] - is non-displayed treeview column 
-        # used to reread arp_dict
-        
-        self.arp_dict = None  # device dictionary
-        self.inst = None  # device instance
-        self.inst_dict = None  # instance dictionary
-
-    def Get(self, item):
-        """ Get treeview row """
-
-        _who = self.who + "Get():"
-
-        self.item = str(item)  # iid - Corrupted after swapping rows!
-        # CANNOT USE: self.photo = self.top.tree.item(item)['image']
-        self.photo = self.photos[int(item)]
-        self.text = self.top.tree.item(self.item)['text']
-
-        self.values = self.top.tree.item(self.item)['values']
-        self.name_column = self.values[0]  # Host name / IP address
-        self.attribute_column = self.values[1]  # Host alias / MAC / Type Code
-        self.mac = self.values[2]  # arp_dict['mac'] is non-displayed value
-
-        try:
-            self.arp_dict = ni.arp_for_mac(self.mac)
-            self.inst_dict = ni.inst_for_mac(self.mac)
-            self.inst = self.inst_dict['instance']
-        except IndexError:
-            v0_print(_who, "Catastrophic Error. MAC not found:", self.mac)
-            v0_print("  Name:", self.name_column)
-            # Occurred 2025-04-09 for first time.
-
-    def getIidForInst(self, inst):
-        """ Using passed instance, get the treeview row. """
-        for iid in self.tree.get_children():
-            self.Get(iid)
-            if self.inst.mac == inst.mac and self.inst.type == inst.type:
-                return iid
-
-        return None  # Passed instance is not in treeview
-
-    def Update(self, item):
-        """ Set treeview row - Must call .Get() beforehand.
-            Handles item being a str() or an int()
-            :param item: Target row can be different than original self.item
-            :returns: nothing
-        """
-        _who = self.who + "Update():"
-
-        self.top.photos[int(item)] = self.photo  # changes if swapping rows
-        self.top.tree.item(
-            str(item), image=self.photo, text=self.text, values=self.values)
-
-        if self.item != str(item):  # Swapping rows
-            v1_print(_who, "NOT resetting iid from self.item:", self.item,
-                     "to:", str(item))
-
-    def New(self, mac):
-        """ Create default treeview row
-            During startup / resume, BLE LED Light Strips require extra connect
-        """
-
-        _who = self.who + "New():"
-        self.arp_dict = ni.arp_for_mac(mac)
-
-        # self.mac is non-displayed treeview column used to reread arp_dict
-        self.mac = mac  # MAC address
-        self.inst_dict = ni.inst_for_mac(mac)  # instance dictionary
-        try:
-            self.inst = self.inst_dict['instance']
-        except KeyError:
-            v0_print("self.inst_dict has no 'instance' key:", self.inst_dict)
-            v0_print("self.arp_dict has no instance:", self.arp_dict)
-            # return  # 2025-01-12 need self.values defined
-
-        try:
-            type_code = self.arp_dict['type_code']
-        except KeyError:
-            v0_print(_who, "Key 'type_code' not in 'arp_dict':", self.arp_dict)
-            type_code = None
-
-        # TV's are 16/9 = 1.8. Treeview uses 300/180 image = 1.7.
-        if type_code == GLO['HS1_SP']:  # TP-Line Kasa Smart Plug HS100 image
-            photo = img.tk_image("bias.jpg", 300, 180)
-        elif type_code == GLO['KDL_TV']:  # Sony Bravia KDL TV image
-            photo = img.tk_image("sony.jpg", 300, 180)
-        elif type_code == GLO['TCL_TV']:  # TCL / Google Android TV image
-            photo = img.tk_image("tcl.jpg", 300, 180)
-        elif type_code == GLO['BLE_LS']:  # Bluetooth Low Energy LED Light Strip
-            photo = img.tk_image("led_lights.jpg", 300, 180)
-        elif type_code == GLO['DESKTOP']:  # Desktop computer image
-            photo = img.tk_image("computer.jpg", 300, 180)
-        elif type_code == GLO['LAPTOP_B']:  # Laptop Base image
-            photo = img.tk_image("laptop_b.jpg", 300, 180)
-        elif type_code == GLO['LAPTOP_D']:  # Laptop Display image
-            photo = img.tk_image("laptop_d.jpg", 300, 180)
-        elif type_code == GLO['ROUTER_M']:  # Laptop Display image
-            photo = img.tk_image("router2.jpg", 300, 180)
-        else:
-            v0_print(_who, "Unknown 'type_code':", type_code)
-            photo = None
-
-        self.photo = photo
-
-        # 2025-01-12 no instance
-        if self.inst is None:
-            status = "?"
-            type_code = "?"
-            name = "?"
-        else:
-            status = self.inst.powerStatus
-            type_code = self.inst.type
-            name = self.inst.name
-
-        # Did program just start, or is power status already known?
-        #if self.inst.powerStatus == "?":  # Initial boot  # 2025-01-12
-        if status == "?":  # Initial boot
-            self.text = "Wait..."  # Power status checked when updating treeview
-        else:
-            self.text = "  " + self.inst.powerStatus  # Power state already known
-        self.name_column = name  # inst.name or "?" if not found
-        self.name_column += "\nIP: " + self.arp_dict['ip']
-        self.attribute_column = self.arp_dict['alias']
-        self.attribute_column += "\nMAC: " + self.arp_dict['mac']
-        self.attribute_column += "\n" + type_code  # inst.type or "?" if not found
-        self.values = (self.name_column, self.attribute_column, self.mac)
-
-    def Add(self, item):
-        """ Set treeview row - Must call .New() beforehand.
-            Handles item being a str() or an int()
-            :param item: Target row can be different than original self.item
-            :returns: nothing
-        """
-        _who = self.who + "Add():"
-        trg_iid = str(item)  # Target row can be different than original self.item
-        # Inserting into treeview must save from garbage collection
-        # using self.top.photos in Toplevel instance. Note self.photo is in this
-        # TreeviewRow instance and not in Toplevel instance.
-        self.top.photos.append(self.photo)
-
-        ''' 2024-11-29 - Use faster method for repainting devices treeview '''
-        if p_args.fast:
-            text = "Wait..."  # Wait for idle loop
-        elif self.inst is not None:  # 2025-01-12 new error self.inst is None
-            self.inst.getPower()
-            text = "  " + self.inst.powerStatus
-        else:
-            text = " Error!"
-
-        self.text = text
-
-        self.top.tree.insert(
-            '', 'end', iid=trg_iid, text=self.text,
-            image=self.top.photos[-1], value=self.values)
-
-    def fadeIn(self, item):
-        """ Fade In over 10 steps of 30 ms """
-        toolkit.tv_tag_remove(self.tree, item, 'normal')  # Same as step 10
-        for i in range(10):
-            try:
-                if i != 0:
-                    toolkit.tv_tag_remove(self.tree, item, 'fade' + str(i - 1))
-                if i != 9:
-                    toolkit.tv_tag_add(self.tree, item, 'fade' + str(i))
-                else:
-                    toolkit.tv_tag_add(self.tree, item, 'curr_sel')  # Same as step 10
-                self.tree.update()  # Change from .top to .tree for SystemMonitor to use
-                self.tree.after(10)  # 20 milliseconds
-            except tk.TclError:
-                return  # Changed treeview during fade in
-
-    def fadeOut(self, item):
-        """ Fade Out over 10 steps of 30 ms """
-        toolkit.tv_tag_remove(self.tree, item, 'curr_sel')  # Same as step 10
-        for i in range(9, -1, -1):
-            try:
-                if i != 9:
-                    toolkit.tv_tag_remove(self.tree, item, 'fade' + str(i))
-                if i > 0:
-                    toolkit.tv_tag_add(self.tree, item, 'fade' + str(i))
-                else:
-                    toolkit.tv_tag_add(self.tree, item, 'normal')  # Same as step 10
-                self.tree.update()
-                self.tree.after(10)  # 10 milliseconds
-            except tk.TclError:
-                return  # Changed tree during fade out
-
-
-class SystemMonitor(DeviceCommonSelf):
-    """ System Monitor - sensors CPU/GPU Temp and Fan Speeds.
-
-        Print results to console unless `homa.py -s` (silent) was used.
-    """
-
-    def __init__(self, top):
-        """ DeviceCommonSelf(): Variables used by all classes
-        :param top: Toplevel created by Application() class instance.
-        """
-        DeviceCommonSelf.__init__(self, "SystemMonitor().")  # Define self.who
-
-        import socket
-        # https://docs.python.org/3/library/socket.html#socket.getaddrinfo
-        hostname = socket.gethostname()
-        #print("Your Computer hostname is:", hostname)  # alien
-
-        _IPAddr = socket.gethostbyname(hostname)
-        #print("Your Computer IP Address is:", _IPAddr)  # 127.0.1.1
-
-        _IPAddr_ex = socket.gethostbyname_ex(hostname)
-        #print("Your Computer IP Address_ex is:")
-        #for tup in IPAddr_ex:
-        #    print(tup)
-        # ('Alien',
-        # ['AW', '17R3', 'WiFi', '9c:b6:d0:10:37:f7',
-        #  'AW', '17R3', 'Ethernet', '28:f1:0e:2a:1a:ed'],
-        # ['127.0.1.1', '192.168.0.10', '192.168.0.12'])
-
-        _who = self.who + "__init__():"
-
-        self.top = top  # Copy of toplevel for creating treeview
-        self.tree = self.top.tree  # Pre-existing Applications() devices tree
-        self.photos = self.top.photos  # Applications() device photos
-        self.item = None  # Applications() Treeview Row iid
-        self.photo = None  # Applications() Photo image
-        self.text = None  # Applications() Row text, E.G. "ON", "OFF"
-
-        self.values = None  # Applications() Row values - Name lines, Attribute lines, MAC
-        self.name_column = None  # Applications() Device Name & IP address - values[0]
-        self.attribute_column = None  # Applications() 3 line device Attributes - values[1]
-        self.mac = None  # Applications() MAC address - hidden row values[-1] / values[2]
-
-        self.arp_dict = None  # Applications() device dictionary
-        self.inst = None  # Applications() device instance
-        self.inst_dict = None  # Applications() instance dictionary
-
-        self.type = "System Monitor"
-        self.type_code = 900  # 2025-03-01 Fake type_code, need code setup
-        self.requires = ['ifconfig', 'iwconfig', 'sensors', 'top']
-        self.installed = []
-        self.CheckDependencies(self.requires, self.installed)
-
-        v3_print(_who, "Dependencies:", self.requires)
-        v3_print(_who, "Installed?  :", self.installed)
-        if not self.dependencies_installed:
-            v1_print(_who, "System Monitor dependencies are not installed.")
-
-        self.last_sensor_check = 0.0  # check every x seconds
-        self.last_sensor_log = 0.0  # log every x seconds
-        self.skipped_checks = 0  # Skipped check when last check < x seconds
-        self.number_checks = 0  # Number of checks
-        self.skipped_fan_same = 0  # Don't log when fan speed the same
-        self.skipped_fan_200d = 0  # Don't log when fan speed different by 200 RPM
-        self.skipped_logs = 0  # Skipped logs due to time or fan speed ~ the same
-        self.number_logs = 0  # Number of logs
-        self.sensors_log = []  # List of self.curr_sensor dictionaries
-        self.curr_sensor = None  # Dict {"Processor Fan": "4500 RPM", ... }
-        self.last_sensor = None  # Last version of curr_sensor
-
-        ''' Sensor treeview - redeclare self.tree - Applications().tree '''
-        self.treeview_created = False  # If false create treeview first time
-        self.treeview_active = False  # If false then Application devices tree active
-        # Note devices tree must be reset to height 1 before self.treeview displayed
-        self.fade_in_row = None  # 300ms flash new row in treeview
-        self.fade_in_time = None
-        self.fade_in_step = None
-
-    def Sensors(self):
-        """ Wait for appropriate sleep time to expire.
-            Call `sensors` (if installed), else return.
-            If not dell machine with `sensors` output, then return.
-            Record CPU & GPU temperatures and fan speeds to self.sensors_log.
-        """
-
-        _who = self.who + "Sensors():"
-        if not self.CheckInstalled('sensors'):
-            return
-
-        ''' Sample output from `sensors` (first 7 lines):
-            $ sensors
-            dell_smm-virtual-0
-            Adapter: Virtual device
-            Processor Fan: 5200 RPM
-            Video Fan:     5000 RPM
-            CPU:            +59.0°C  
-            GPU:            +64.0°C  
-            SODIMM:         +61.0°C  
-
-        '''
-        now = time.time()
-        if now - self.last_sensor_check < GLO['SENSOR_CHECK']:
-            self.skipped_checks += 1
-            return
-        self.last_sensor_check = now
-
-        # Run `sensors` command every GLO['SENSOR_CHECK'] seconds
-        self.number_checks += 1
-        log = True if len(self.sensors_log) == 0 else False
-        event = self.runCommand(['sensors'], _who, log=log)
-        result = event['output']
-
-        # Parse `sensors` output to dictionary key/value pairs
-        dell_found = False
-        self.curr_sensor = {}
-
-        # Check one fan's RPM speed change
-        def CheckFanChange(key):
-            """ If fan speed changed by more than GLO['FAN_GRANULAR'] RPM, force logging.
-                Called for "Processor Fan" and "Video Fan" A.K.A. "fan3".
-            :param key: 'Processor Fan' or 'Video Fan', etc.
-            :return: True of curr_sensor == last_sensor
-            """
-            try:
-                if self.curr_sensor[key] == self.last_sensor[key]:
-                    self.skipped_fan_same += 1
-                    return False
-            except (TypeError, IndexError):
-                # First time last log doesn't exist. Treat as fan speed change.
-                self.last_sensor_log = time.time() - GLO['SENSOR_LOG'] * 2
-                return True
-
-            # Speed can fluctuate 2400 RPM, 2600 RPM, 2400 RPM...  18 times
-            # over 200 seconds. To reduce excessive fan speed change logging,
-            # skip fluctuations <= GLO['FAN_GRANULAR'] RPM.
-            curr = float(self.curr_sensor[key].split(" ")[0])
-            last = float(self.last_sensor[key].split(" ")[0])
-            diff = abs(curr - last)
-            # Only report fan speed differences > 200 RPM
-            if diff <= GLO['FAN_GRANULAR']:
-                #print("skipping diff:", diff)
-                self.skipped_fan_200d += 1
-                return False  # Don't override last with current
-
-            # Fan speed changed. Force logging by resetting last log time.
-            self.last_sensor_log = time.time() - GLO['SENSOR_LOG'] * 2
-            return True
-
-        # Process `sensors` output lines
-        for res in result.split("\n"):
-            parts = res.split(":")
-            # Keys not logged: SODIMM:, temp1:, id 0: Core 0:, Core 1:...
-            if len(parts) != 2:
-                if "dell_smm-virtual-0" in res:
-                    dell_found = True
-                continue  # Line doesn't have Key/Value pair
-            if "fan" in parts[0].lower():
-                if "fan3" in parts[0]:
-                    # 2024-11-12 - Glitch "Video Fan" was replaced with "fan3" today.
-                    # 2025-01-26 noticed that "Video Fan" has returned and "fan3" gone.
-                    parts[0] = "Video Fan"
-                self.curr_sensor[parts[0]] = parts[1].strip()
-                CheckFanChange(parts[0])  # Over 200 RPM change will be logged.
-            if "PU" in parts[0]:
-                # 2025-02-09 For python 3 degree in bytes use str(+66.0°C)
-                self.curr_sensor[parts[0]] = \
-                    str(parts[1].strip()).replace("+", "").replace(".0", "")
-
-        if not dell_found:
-            return  # Not an Alienware 17R3 or similar DELL machine
-
-        # Is it time to log data?
-        if now - self.last_sensor_log < GLO['SENSOR_LOG']:
-            self.skipped_logs += 1
-            return
-
-        # Add dictionary to list
-        self.last_sensor_log = now
-        log_delta = round(now - GLO['APP_RESTART_TIME'], 2)
-        self.curr_sensor['delta'] = log_delta
-        self.curr_sensor['time'] = time.time()
-        self.sensors_log.append(self.curr_sensor)
-        self.number_logs += 1
-        self.last_sensor = self.curr_sensor
-
-        self.Print()  # print the last log and/or insert tree row
-
-    def Print(self, start=-1, end=-1, tree_only=False):
-        """ Print self.sensors_log[start:end] to console
-            2024-11-03 - Rudimentary format with hard-coded keys.
-            2024-11-22 - Now homa.py called from homa-indicator.py with no console.
-            2024-11-24 - Enhance with treeview to show sensors.
-        """
-
-        if start == -1:
-            start = len(self.sensors_log) - 1
-        if end == -1:
-            end = len(self.sensors_log)
-
-        def headings():
-            """ Print headings when log count = 1 """
-
-            # TODO: first check if Dell fans can be discovered.
-            v0_print()
-            v0_print("= = = = = System Monitor Processor Temps & Fans = = = = =")
-            v0_print(" Seconds | CPU Temp/Fan RPM | GPU Temp/Fan RPM |   Time  ")
-            v0_print("-------- | ---------------- | ---------------- | --------")
-
-        def opt(key):
-            """ Return optional key or N/A if not found. """
-            try:
-                return sensor[key]
-            except KeyError:
-                return "N/A"
-
-        if len(self.sensors_log) == 1 and not tree_only:
-            headings()  # If first sensors log, print headings
-
-        for i in range(start, end):
-            sensor = self.sensors_log[i]
-            # When tree_only is True, printing has already been done to console
-            if not tree_only:
-                v0_print("{0:>8.2f}".format(sensor['delta']),  # "999.99" format
-                         '|', opt('CPU').rjust(6) + " /", opt('Processor Fan').rjust(8),
-                         '|', opt('GPU').rjust(6) + " /", opt('Video Fan').rjust(8),
-                         '|', dt.datetime.now().strftime('%I:%M %p').strip('0').rjust(8))
-
-            if self.treeview_active:
-                self.InsertTreeRow(sensor)
-                if i == len(self.sensors_log) - 1:
-                    # 2025-01-20 getting error flashing when last row not inserted yet
-                    self.FlashLastRow()  # fade in color, pause, fade out color
-
-    def populateDevicesTree(self):
-        """ Populate treeview using self.sensor_log [{}, {}... {}]
-            Treeview IID is string seconds: "0.1", "1.1", "2.2" ... "9999.9"
-        """
-        _who = self.who + "populateDevicesTree():"
-
-        ''' Treeview style is large images in cell 0 '''
-        style = ttk.Style()
-        style.configure("Treeview.Heading", font=(None, g.MED_FONT),
-                        rowheight=int(g.LARGE_FONT * 2.2))  # FONT14 alias
-        row_height = int(g.LARGE_FONT * 2.2)
-        style.configure("Treeview", font=g.FONT14, rowheight=row_height,
-                        background="WhiteSmoke", fieldbackground="WhiteSmoke")
-
-        ''' Create treeview frame with scrollbars '''
-        # Also once image placed into treeview row, it can't be read from the row.
-        self.tree = ttk.Treeview(self.top, column=('Seconds', 'CPU', 'GPU', 'Time'),
-                                 selectmode='none', style="Treeview", show="headings")
-
-        self.tree.grid(row=0, column=0, sticky='nsew')
-        v_scroll = tk.Scrollbar(self.top, orient=tk.VERTICAL,
-                                width=14, command=self.tree.yview)
-        v_scroll.grid(row=0, column=1, sticky=tk.NS)
-        self.tree.configure(yscrollcommand=v_scroll.set)
-
-        # Oct 1, 2023 - MouseWheel event does NOT capture any events
-        self.tree.bind("<MouseWheel>", lambda event: self.MouseWheel(event))
-        # Button-4 is mousewheel scroll up event
-        self.tree.bind("<Button-4>", lambda event: self.MouseWheel(event))
-        # Button-5 is mousewheel scroll down event
-        self.tree.bind("<Button-5>", lambda event: self.MouseWheel(event))
-
-        # Setup column heading - #0, #1, #2 denotes the 1st, 2nd & 3rd, etc. columns
-        self.tree.heading('#1', text='Seconds', anchor=tk.E)
-        self.tree.heading('#2', text='CPU Temp / Fan Speed')  # anchor defaults to center
-        self.tree.heading('#3', text='GPU Temp / Fan Speed')
-        self.tree.heading('#4', text='Time')
-        # anchor defaults to left
-        self.tree.column('Seconds', anchor=tk.E, width=100, stretch=True)
-        self.tree.column('CPU', anchor='center', width=250, stretch=True)
-        self.tree.column('GPU', anchor='center', width=250, stretch=True)
-        self.tree.column('Time', anchor='center', width=100, stretch=True)
-
-        # Give some padding between image and left border, between tree & scroll bars
-        self.tree["padding"] = (10, 10, 10, 10)  # left, top, right, bottom
-
-        # Treeview Row Colors
-        self.tree.tag_configure('curr_sel', background='#004900',
-                                foreground="White")  # Right click on row
-        self.tree.tag_configure('highlight', background='LightSkyBlue',
-                                foreground="Black")  # Mouse over row
-        self.tree.tag_configure('normal', background='WhiteSmoke',
-                                foreground="Black")  # Nothing special
-
-        # Fade in/out Row: Black fg faded green bg to White fg dark green bg
-        green_back = ["#93fd93", "#7fe97f", "#6bd56b", "#57c157", "#43ad43",
-                      "#39a339", "#258f25", "#117b11", "#006700", "#004900"]
-        green_fore = ["#000000", "#202020", "#404040", "#606060", "#808080",
-                      "#aaaaaa", "#cccccc", "#dddddd", "#eeeeee", "#ffffff"]
-        for i in range(10):
-            self.tree.tag_configure('fade' + str(i), background=green_back[i],
-                                    foreground=green_fore[i])  # Nothing special
-
-        # Build Sensors treeview
-        self.Print(start=0, end=-1, tree_only=True)
-
-    def FlashLastRow(self):
-        """ Flash the last row in Sensors Treeview """
-        _who = self.who + "FlashLastRow():"
-        cr = TreeviewRow(self)  # also used by Applications() devices treeview
-        sec = self.sensors_log[-1]['delta']  # delta is seconds since app started
-
-        # iid is Number right justified 8 = 5 whole + decimal + 2 fraction
-        sec_str = "{0:>8.2f}".format(sec)  # E.G. sec = "2150.40" seconds
-        sec_str = str(sec_str)  # 2025-01-19 strangely type is float today.
-
-        try:
-            #_item = self.tree.item(sec_str)  # 2025-03-26
-            _item = self.tree.item(self.getLastRowIid())  # 2025-03-26
-        except tk.TclError:
-            v0_print("\n" + _who, "sec_str not found: '" + sec_str + "'",
-                     " |", type(sec_str))
-            v0_print("self.sensors_log[-1]:", self.sensors_log[-1])
-            return
-
-        #cr.fadeIn(sec_str)  # 2025-03-26
-        cr.fadeIn(self.getLastRowIid())  # 2025-03-26
-        time.sleep(3.0)
-        #cr.fadeOut(sec_str)  # 2025-03-26
-        cr.fadeOut(self.getLastRowIid())  # 2025-03-26
-
-    def getLastRowIid(self):
-        """ Return IID for last row of Sensors Treeview """
-        return self.tree.get_children()[-1]
-
-    def InsertTreeRow(self, sensor):
-        """ Insert sensors row into sensors treeview
-            :param sensor: = {delta: seconds, CPU: temp, Processor Fan: rpm,
-                              GPU: temp, Video Fan: rpm}
-
-        """
-        _who = self.who + "InsertTreeRow():"
-
-        def opt(key):
-            """ Return optional key or N/A if not found. """
-            try:
-                return sensor[key]  # in Python 3, value is bytes
-            except KeyError:
-                return "N/A"
-
-        # Possible image showing temperature of CPU?
-        sec_str = "{0:>8.2f}".format(sensor['delta'])
-        try:
-            self.tree.insert(
-                '', 'end', iid=None,  # iid=sec_str,  2025-03-26 auto assign
-                value=(sec_str,
-                       opt('CPU').rjust(7) + " / " + opt('Processor Fan').rjust(8),
-                       opt('GPU').rjust(7) + " / " + opt('Video Fan').rjust(8),
-                       dt.datetime.fromtimestamp(sensor['time']).
-                       strftime('%I:%M %p').strip('0').rjust(8)))
-        except tk.TclError:
-            v0_print(_who, "sec_str already exists in Sensors Treeview:", sec_str)
-            # 2025-03-26 TODO: Make key unique by auto-assigning iid
-
-        #self.tree.see(sec_str)  # 2025-03-26  #
-        self.tree.see(self.getLastRowIid())  # 2025-03-26  #
-        # 2024-12-28: Occasionally iid not found in FlashLastRow() so update_idletasks
-        self.tree.update_idletasks()
-
-    @staticmethod
-    def MouseWheel(event):
-        """ Mousewheel scroll defaults to 5 units """
-        if True is True:  # 2024-11-24 - initial creation
-            return  # Leave at default 5 rows scrolling
-
-        if event.num == 4:  # Override mousewheel scroll up
-            event.widget.yview_scroll(-1, "units")  # tree = event.widget
-            return "break"  # Don't let regular event handler do scroll of 5
-        if event.num == 5:  # Override mousewheel scroll down
-            event.widget.yview_scroll(1, "units")  # tree = event.widget
-            return "break"  # Don't let regular event handler do scroll of 5
 
 
 # ==============================================================================
