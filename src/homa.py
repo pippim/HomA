@@ -704,6 +704,9 @@ class Globals(DeviceCommonSelf):
             "POWER_OFF_CMD_LIST": ["systemctl", "suspend"],  # Run "Turn Off" for Computer()
             "POWER_ALL_EXCL_LIST": [100, 110, 120, 200],  # Exclude when powering "All"
             # to "ON" / "OFF" 100=DESKTOP, 110=LAPTOP_B, 120=LAPTOP_D, 200=ROUTER_M
+
+            "TREEVIEW_COLOR": "WhiteSmoke",  # Treeview main color
+            "TREE_EDGE_COLOR": "White"  # Treeview edge color 5 pixels wide
         }
 
     def openFile(self):
@@ -731,11 +734,13 @@ class Globals(DeviceCommonSelf):
 
         ''' TEMPLATE TO ADD A NEW FIELD TO DICTIONARY '''
         #try:
-        #    _s = self.dictGlobals['SUNLIGHT_PERCENT']
-        #    print("Found GLO['SUNLIGHT_PERCENT']:", GLO['SUNLIGHT_PERCENT'])
+        #    _s = self.dictGlobals['TREEVIEW_COLOR']
+        #    print("Found GLO['TREEVIEW_COLOR']:", _s)
+        #    print("Found GLO['TREE_EDGE_COLOR']", self.dictGlobals['TREE_EDGE_COLOR'])
         #except KeyError:
-        #    self.dictGlobals['SUNLIGHT_PERCENT'] = "/usr/local/bin/.eyesome-percent"
-        #    print("Create GLO['SUNLIGHT_PERCENT']:", GLO['SUNLIGHT_PERCENT'])
+        #    self.dictGlobals['TREEVIEW_COLOR'] = "WhiteSmoke"
+        #    self.dictGlobals['TREE_EDGE_COLOR'] = "White"
+        #    print("Create GLO['TREEVIEW_COLOR']:", GLO['TREEVIEW_COLOR'])
 
 
         ''' Decrypt SUDO PASSWORD '''
@@ -2321,7 +2326,9 @@ class SystemMonitor(DeviceCommonSelf):
                         rowheight=int(g.LARGE_FONT * 2.2))  # FONT14 alias
         row_height = int(g.LARGE_FONT * 2.2)
         style.configure("Treeview", font=g.FONT14, rowheight=row_height,
-                        background="WhiteSmoke", fieldbackground="WhiteSmoke")
+                        background=GLO['TREEVIEW_COLOR'],
+                        fieldbackground=GLO['TREEVIEW_COLOR'],
+                        edge_color=GLO['TREE_EDGE_COLOR'], edge_px=5)
 
         ''' Create treeview frame with scrollbars '''
         # Also once image placed into treeview row, it can't be read from the row.
@@ -2360,7 +2367,7 @@ class SystemMonitor(DeviceCommonSelf):
                                 foreground="White")  # Right click on row
         self.tree.tag_configure('highlight', background='LightSkyBlue',
                                 foreground="Black")  # Mouse over row
-        self.tree.tag_configure('normal', background='WhiteSmoke',
+        self.tree.tag_configure('normal', background=GLO['TREEVIEW_COLOR'],
                                 foreground="Black")  # Nothing special
 
         # Fade in/out Row: Black fg faded green bg to White fg dark green bg
@@ -4622,7 +4629,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         self.isActive = True  # Set False when exiting or suspending
         self.requires = ['arp', 'getent', 'timeout', 'curl', 'adb', 'hs100.sh', 'aplay',
-                         'ps', 'grep', 'xdotool', 'wmctrl', 'nmcli']
+                         'ps', 'grep', 'xdotool', 'wmctrl', 'nmcli', 'sensors']
         self.installed = []
         self.CheckDependencies(self.requires, self.installed)
 
@@ -5086,7 +5093,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                         rowheight=int(g.LARGE_FONT * 2.2))  # FONT14 alias
         row_height = 200
         style.configure("Treeview", font=g.FONT14, rowheight=row_height,
-                        background="WhiteSmoke", fieldbackground="WhiteSmoke")
+                        background=GLO['TREEVIEW_COLOR'],
+                        fieldbackground=GLO['TREEVIEW_COLOR'],
+                        edge_color=GLO['TREE_EDGE_COLOR'], edge_px=5)
 
         ''' Create treeview frame with scrollbars '''
         self.photos = []  # list of device images to stop garbage collection
@@ -5127,7 +5136,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                                 foreground="White")  # Right click on row
         self.tree.tag_configure('highlight', background='LightSkyBlue',
                                 foreground="Black")  # Mouse over row
-        self.tree.tag_configure('normal', background='WhiteSmoke',
+        self.tree.tag_configure('normal', background=GLO['TREEVIEW_COLOR'],
                                 foreground="Black")  # Nothing special
 
         # Fade in/out Row: Black fg faded green bg to White fg dark green bg
@@ -6077,16 +6086,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         v2_print()  # Blank line to separate debugging output
 
     def setColorScheme(self, scheme):
-        """ Set color scheme for devices treeview and sensors treeview 
-
-                               background="WhiteSmoke",
-                               background="LemonChiffon",
-                               background="NavajoWhite",
-                               background="LightSalmon",
-
-                {"name": 'playlists.Treeview', "foreground": "Black",
-                 "background": "LemonChiffon", "fieldbackground": "LemonChiffon",
-                 "edge_color": "NavajoWhite", "edge_px": 5},
+        """ Set color scheme for devices treeview and sensors treeview
+            After setting color toggle treeview for new color to appear.
         """
         _who = self.who + "setColorScheme(" + scheme + "):"
         if scheme == "WhiteSmoke":
@@ -6097,9 +6098,13 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             edge_color = "LightSalmon"
         elif scheme == "LightSalmon":
             edge_color = "DarkOrange"
+        GLO['TREEVIEW_COLOR'] = scheme
+        GLO['TREE_EDGE_COLOR'] = edge_color
+        self.toggleSensorsDevices()
+
+        # Edge color isn't appearing??
         style = ttk.Style()
-        style.configure("Treeview", background=scheme, fieldbackground=scheme,
-                        edge_color=edge_color, edge_px=5)
+        style.configure("Treeview", edge_color=edge_color, edge_px=5)
 
 
     def RefreshAllPowerStatuses(self, auto=False):
