@@ -4896,9 +4896,11 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.tools_menu = tk.Menu(mb, tearoff=0)
         lights_menu = tk.Menu(self.tools_menu, tearoff=0)
         lights_menu.add_command(label='ON', font=g.FONT, underline=1, background="green",
-                                command=lambda: self.turnAllLightsPower('ON'))
+                                command=lambda: self.turnAllPower('ON', fade=True, type_code="HS1_SP"))
+                                #self.turnAllLightsPower('ON'))
         lights_menu.add_command(label='OFF', font=g.FONT, underline=1, background="red",
-                                command=lambda: self.turnAllLightsPower('OFF'))
+                                command=lambda: self.turnAllPower('OFF', fade=True, type_code="HS1_SP"))
+                                #self.turnAllLightsPower('OFF'))
         self.tools_menu.add_cascade(label="Turn all lights power", font=g.FONT,
                                     underline=0, menu=lights_menu)
         self.tools_menu.add_command(label="Forget sudo password", underline=0,
@@ -6064,16 +6066,20 @@ __292.17 |  61°C / 3100 RPM |  57°C /    0 RPM |  9:03 AM
         self.dtb.close()
         self.dtb = None
 
-    def turnAllPower(self, state, show=False, type_code=None):
+    def turnAllPower(self, state, fade=False, type_code=None):
         """ Loop through instances and set power state to "ON" or "OFF".
             Called by Suspend ("OFF") and Resume ("ON")
             If devices treeview is mounted, update power status in each row
+
+            :param state: Power state to set; "ON" or "OFF"
+            :param fade: Fade in and out, false = No fading
+            :param type_code: Process specific type_code outside of suspend/resume
         """
         _who = self.who + "turnAllPower(" + state + "):"
-        night = cp.getNightLightStatus()
-        v1_print(_who, "Nightlight status: '" + night + "'")
+        isNight = cp.getNightLightStatus()
+        v1_print(_who, "Nightlight status: '" + isNight + "'")
         cr = item = None  # Network devices treeview row instance and current iid
-        if show and self.usingDevicesTreeview:
+        if fade and self.usingDevicesTreeview:
             cr = TreeviewRow(self)
 
         # Loop through ni.instances
@@ -6087,14 +6093,13 @@ __292.17 |  61°C / 3100 RPM |  57°C /    0 RPM |  9:03 AM
             if type_code and type_code != inst.type_code:
                 continue  # Not the type code searching for
 
-            # Don't turn on bias light during daytime
-            night_powered_on = False
-            if inst.type_code == GLO['HS1_SP']:
+            night_powered_on = False  # Don't turn on bias light during daytime
+            if type_code is None and inst.type_code == GLO['HS1_SP']:
                 # 2024-11-26 - 'type_code' s/b 'BIAS_LIGHT' and
                 #   'sub_type_code' s/b 'GLO['HS1_SP']`
                 v1_print("\n" + _who, "Bias light device: '" + inst.type + "'",
                          " | IP: '" + inst.ip + "'")
-                if state == "ON" and night == "OFF":
+                if state == "ON" and isNight == "OFF":
                     inst.dayPowerOff += 1
                     inst.nightPowerOn = 0
                     inst.menuPowerOff = 0
@@ -6103,43 +6108,45 @@ __292.17 |  61°C / 3100 RPM |  57°C /    0 RPM |  9:03 AM
                     inst.powerStatus = "OFF"
                     v1_print(_who, "Do not turn on Bias light in daytime.")
                     continue  # Do not turn on light during daytime
-                else:
+                elif state == "ON":
                     v1_print(_who, "Turn on Bias light at night.")
                     night_powered_on = True
 
-            if inst.type_code == GLO['BLE_LS']:
+            if type_code is None and inst.type_code == GLO['BLE_LS']:
                 # Special debugging for LED Light Strips
                 v1_print(_who, "BEFORE:", inst.type_code, inst.mac, inst.name)
                 v1_print("inst.device:", inst.device)
                 v1_print("BluetoothStatus:", inst.BluetoothStatus,
                          "powerStatus:", inst.powerStatus)
 
-            if cr:
-                item = cr.getIidForInst(inst)
-                cr.fadeIn(item)
+            if fade and cr:  # Is there a current row instance?
+                item = cr.getIidForInst(inst)  # Get treeview row IID
+                cr.fadeIn(item)  # Fading in was requested
 
             if state == "ON":
                 v0_print(_who, "Switching power from '" + inst.powerStatus +
                          "' to 'ON':", inst.name)
-                inst.turnOn()
-                # Assume powered on even if "?" due to timeout it can be "ON" later
-                inst.resumePowerOn += 1  # Resume powered on the device
-                inst.menuPowerOn = 0  # User didn't power on the device via menu
-                inst.nightPowerOn += 1 if night_powered_on else 0
+                inst.turnOn()  # inst.menuPowerOn += 1
+                if type_code is None:
+                    # Assume powered on even if "?" due to timeout it can be "ON" later
+                    inst.resumePowerOn += 1  # Resume powered on the device
+                    inst.menuPowerOn = 0  # User didn't power on the device via menu
+                    inst.nightPowerOn += 1 if night_powered_on else 0
             elif state == "OFF":
                 if inst.powerStatus == "ON":
                     # To avoid errors must be "ON" in order to turn "OFF".
                     v0_print(_who, "Switching power from 'ON' to 'OFF':", inst.name)
-                    inst.turnOff()
-                    inst.suspendPowerOff += 1  # Suspend powered off the device
-                    inst.menuPowerOff = 0  # User didn't power on the device via menu
-                    # 2025-04-30 Track if Sony TV remote initiated system suspend
-                    inst.remote_suspends_system = self.remote_suspends_system
+                    inst.turnOff()  # inst.menuPowerOff += 1
+                    if type_code is None:
+                        inst.suspendPowerOff += 1  # Suspend powered off the device
+                        inst.menuPowerOff = 0  # User didn't power on the device via menu
+                        # 2025-04-30 Track if Sony TV remote initiated system suspend
+                        inst.remote_suspends_system = self.remote_suspends_system
             else:
                 v0_print(_who, "state is not 'ON' or 'OFF':", state)
                 return
 
-            if inst.type_code == GLO['BLE_LS']:
+            if type_code is None and inst.type_code == GLO['BLE_LS']:
                 # Special debugging for LED Light Strips
                 v1_print(_who, "AFTER:", inst.type_code, inst.mac, inst.name)
                 v1_print("inst.device:", inst.device)
@@ -6171,19 +6178,18 @@ __292.17 |  61°C / 3100 RPM |  57°C /    0 RPM |  9:03 AM
             v2_print("\n" + _who, "i:", i, "cr.mac:", cr.mac)
             v2_print("cr.inst:", cr.inst)
 
-            if show:
+            if fade:  # Was fading out requested?
                 cr.fadeOut(item)
 
         v2_print()  # Blank line to separate debugging output
 
     def turnAllLightsPower(self, state):
-        """ Set power state to "ON" or "OFF" for Smart Plug instances.
+        """ DEPRECATED 2025-05-07, replaced with turnAllPower()
+            Set power state to "ON" or "OFF" for Smart Plug instances.
             Called by Tools dropdown menu.
             If devices treeview is mounted, update power status text
         """
         _who = self.who + "turnAllLightsPower(" + state + "):"
-        night = cp.getNightLightStatus()
-        v1_print(_who, "Nightlight status: '" + night + "'")
 
         # Loop through ni.instances
         for i, instance in enumerate(ni.instances):
