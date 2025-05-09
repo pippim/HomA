@@ -1755,7 +1755,7 @@ class NetworkInfo(DeviceCommonSelf):
                 v2_print(_who, "Found existing ni.arp_dict:", arp_dict['name'])
                 return arp_dict
 
-        v2_print(_who, "mac address unknown: '" + mac + "'")
+        v0_print(_who, "mac address unknown: '" + str(mac) + "'")
 
         return {}  # TODO: Format dictionary with 'mac': and error
 
@@ -4602,6 +4602,22 @@ $ ps aux | grep gatttool | grep -v grep | wc -l
 
         self.device = None  # Force connect on next attempt
         self.powerStatus = "?"
+        ''' 2025-05-07 ERRORS when simply turning off LED w/o suspending
+Exception in Tkinter callback
+Traceback (most recent call last):
+  File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 1540, in __call__
+    return self.func(*args)
+  File "./homa.py", line 5485, in <lambda>
+    image=self.img_turn_off, compound=tk.LEFT,
+  File "./homa.py", line 5598, in turnOn
+    # NetworkInfo().getPower().curl(): event['returncode']: 124
+  File "/usr/lib/python2.7/lib-tk/ttk.py", line 1353, in item
+    return _val_or_dict(self.tk, kw, self._w, "item", item)
+  File "/usr/lib/python2.7/lib-tk/ttk.py", line 299, in _val_or_dict
+    res = tk.call(*(args + options))
+TclError: invalid command name ".139620849750168.139620849192760"
+        
+        '''
         return self.powerStatus
 
     def isDevice(self, forgive=False):
@@ -4664,11 +4680,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         ''' TkFixedFont, TkMenuFont, TkHeadingFont, TkCaptionFont, TkSmallCaptionFont,
             TkIconFont and TkTooltipFont - It is not advised to change these fonts.
             https://www.tcl-lang.org/man/tcl8.6/TkCmd/font.htm '''
-
-        self.suspend_time = 0.0  # last time system suspended
-        self.suspending = False  # When True suppress error messages
-        self.resume_time = 0.0  # last time system resumed from suspend
-        self.resuming = False  # When True suppress error messages
 
         self.last_refresh_time = time.time()  # Refresh idle loop last entered time
         # Normal rediscover period is shortened at boot time if fast start
@@ -4793,6 +4804,11 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             elif inst.type_code == GLO['KDL_TV']:
                 self.sonySaveInst = inst  # For volume change
 
+        ''' If bluetooth LED Light Strips used, resetBluetooth() always required '''
+        if self.bleSaveInst:
+            self.bleSaveInst.resetBluetooth()
+            self.bleSaveInst.turnOn()
+
         ''' Polling and processing with refresh tkinter loop forever '''
         while self.refreshApp():  # Run forever until quit
             pass
@@ -4896,11 +4912,11 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.tools_menu = tk.Menu(mb, tearoff=0)
         lights_menu = tk.Menu(self.tools_menu, tearoff=0)
         lights_menu.add_command(label='ON', font=g.FONT, underline=1, background="green",
-                                command=lambda: self.turnAllPower('ON', fade=True, type_code="HS1_SP"))
-                                #self.turnAllLightsPower('ON'))
+                                command=lambda: self.turnAllPower(
+                                    'ON', fade=True, type_code=GLO['HS1_SP']))
         lights_menu.add_command(label='OFF', font=g.FONT, underline=1, background="red",
-                                command=lambda: self.turnAllPower('OFF', fade=True, type_code="HS1_SP"))
-                                #self.turnAllLightsPower('OFF'))
+                                command=lambda: self.turnAllPower(
+                                    'OFF', fade=True, type_code=GLO['HS1_SP']))
         self.tools_menu.add_cascade(label="Turn all lights power", font=g.FONT,
                                     underline=0, menu=lights_menu)
         self.tools_menu.add_command(label="Forget sudo password", underline=0,
@@ -5084,9 +5100,9 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
 
             '''
 
-        ''' If bluetooth LED Light Strips used, disconnect just in case '''
+        ''' If bluetooth LED Light Strips used, turnOff() for next HomA startup '''
         if self.bleSaveInst:
-            self.bleSaveInst.Disconnect()
+            self.bleSaveInst.turnOff()
 
         if self.winfo_exists():
             self.destroy()  # Destroy toplevel
@@ -5771,81 +5787,13 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
         GLO['LOG_EVENTS'] = False  # Turn off logging during Sony checks
 
         ''' Is there a TV to be monitored for power off to suspend system? '''
-        if self.sonySaveInst and life_span > 20 and self.suspend_time < now - 60:
-            # 2025-05-03 Is system resuming while suspend by remote flag still on?
-            if self.resuming:
-                self.after(GLO['REFRESH_MS'])  # Actually resuming not suspending
-                v0_print(_who, ext.h(time.time()), "Still Resuming after TV power off",
-                         "last refresh:", ext.h(self.last_refresh_time))
-                return True
+        if self.sonySaveInst and life_span > 20:
 
             # 2025-04-30 Track if Sony TV remote initiated system suspend
             if self.remote_suspends_system:
                 self.after(GLO['REFRESH_MS'])  # Already suspending, can't do again
                 v0_print(_who, ext.h(time.time()), "Already suspending",
                          "last refresh:", ext.h(self.last_refresh_time))
-                ''' 
-================================== 2025-05-03.14:00 ==================================
-Computer().turnOff(): 14:55:04.187698 Suspend command: ['systemctl', 'suspend']
-Application().refreshApp() 15:41:45.255949 Already suspending
-Application().refreshApp() 15:41:45.296158 Already suspending
-Application().refreshApp() 15:41:45.347188 Already suspending
-Application().refreshApp() 15:41:45.499261 Already suspending
-
-... 100's of lines over 30 seconds at 30 lines per second ....                
-                
-Application().refreshApp() 15:42:15.073869 Already suspending
-Application().refreshApp() 15:42:15.107285 Already suspending
-
-= = = =  Application().refreshApp() Resuming from suspend after: 0 min  = = = =
-
-Application().resumeAfterSuspend(): Waited 0 seconds for network to come up.
-Application().turnAllPower(ON): Unconditionally turning power 'ON': SONY.LAN
-Application().turnAllPower(ON): Unconditionally turning power 'ON': TCL.LAN
-TclGoogleAndroidTV().turnOn(): 192.168.0.17 timeout after: 5.0
-Application().turnAllPower(ON): Unconditionally turning power 'ON': Bluetooth LED
-    0.19 |  42°C /    0 RPM |  47°C /    0 RPM |  3:42 PM
-    
-... Upon resume didn't wait for network on-line so Sony TV didn't turn on.
-
-================================ 2025-05-04.9:00 =====================================
-
-24024.58 |  67°C / 5400 RPM |  71°C / 5000 RPM | 10:22 PM
-27624.74 |  68°C / 5200 RPM |  71°C / 5000 RPM | 11:22 PM
-Application().turnAllLightsPower(ON): state is not 'ON' or 'OFF': ON
-31225.63 |  65°C / 5200 RPM |  69°C / 5000 RPM | 12:22 AM
-SonyBraviaKdlTV().checkPowerOffSuspend(): Suspending due to Sony TV powerStatus: OFF
-Application().Suspend(): Suspending system...
-Application().turnAllPower(OFF): Conditionally turning power 'OFF': TCL.Light
-Application().turnAllPower(OFF): Conditionally turning power 'OFF': SONY.Light
-Application().turnAllPower(OFF): Conditionally turning power 'OFF': TCL.LAN
-Application().turnAllPower(OFF): Conditionally turning power 'OFF': Alien-Light
-Computer().turnOff(): 00:48:28.952623 Suspend command: ['systemctl', 'suspend']
-
-... 62131 seconds (below) - 31225 seconds (above) = 8.6 hours sleeping ...
-
-62131.97 |   0°C / 2500 RPM |  30°C / 2600 RPM |  8:57 AM
-Application().refreshApp() 08:57:56.669295 Already suspending
-Application().refreshApp() 08:57:56.703659 Already suspending
-... (Cut) ...
-Application().refreshApp() 08:58:26.562975 Already suspending
-Application().refreshApp() 08:58:26.596663 Already suspending
-Application().refreshApp() 08:58:26.630411 Already suspending
-Application().refreshApp() 08:58:26.664294 Already suspending
-
-... 08:58:26 - 08:57:56 = 30 seconds of 900 lines printing the message:
-    "Already suspending" when system is actually resuming for 30 seconds. ...
-
-= = = =  Application().refreshApp() Resuming from suspend after: 0 min  = = = =
-
-Application().resumeAfterSuspend(): Waited 0 seconds for network to come up.
-Application().turnAllPower(ON): Unconditionally turning power 'ON': SONY.LAN
-Application().turnAllPower(ON): Unconditionally turning power 'ON': TCL.LAN
-Application().turnAllPower(ON): Unconditionally turning power 'ON': Bluetooth LED
-    0.01 |  32°C /    0 RPM |  37°C /    0 RPM |  8:58 AM
-__292.17 |  61°C / 3100 RPM |  57°C /    0 RPM |  9:03 AM
-
-                '''
                 return True
 
             self.sonySaveInst.powerStatus = "?"  # Default if network down on resume
@@ -5853,7 +5801,6 @@ __292.17 |  61°C / 3100 RPM |  57°C /    0 RPM |  9:03 AM
                 self.remote_suspends_system = True  # Sony TV initiated suspend
                 self.Suspend()  # Will not set Sony TV to "OFF" because it's "?"
                 # After .Suspend() called, program still executes a few loops.
-                self.suspend_time = now  # Don't come back here again!
                 self.sonySaveInst.powerStatus = "?"  # Status for next resume
                 GLO['LOG_EVENTS'] = True if log_status else False  # Restore logging
                 return True  # Restart wakeup from sleep processes
@@ -5936,8 +5883,6 @@ __292.17 |  61°C / 3100 RPM |  57°C /    0 RPM |  9:03 AM
             return
 
         v0_print(_who, "Suspending system...")
-        self.suspending = True
-        self.resuming = False
         ''' Move mouse away from suspend button to close tooltip window 
             because <Enter> event generated for tooltip during system resume '''
         command_line_list = ["xdotool", "mousemove_relative", "--", "-200", "-200"]
@@ -5953,12 +5898,36 @@ __292.17 |  61°C / 3100 RPM |  57°C /    0 RPM |  9:03 AM
         self.turnAllPower("OFF")  # Turn off all devices except computer
         cp.turnOff()  # suspend computer
 
+        start_suspend = time.time()
+        last_now = time.time()
+        while True:
+            now = time.time()
+            self.update()
+            self.after(100)
+            if now - last_now > 2.0:
+                break  # Lost more than 2 seconds so suspend finished and we've resumed
+            else:
+                last_now = now
+
+        resume_now = time.time()
+        delta = resume_now - last_now
+        v0_print("\n" + "= "*4, _who, "Resuming from suspend after:",
+                 tmf.days(delta), " ="*4 + "\n")
+
+        time_to_suspend = now - start_suspend
+        v0_print(_who, "time_to_suspend:", time_to_suspend)
+
+        ''' Automatically call resume to power on devices. '''
+        self.resumeAfterSuspend()
+
     def resumeAfterSuspend(self):
         """ Resume from suspend. Display status of devices that were
             known at time of suspend. Then set variables to trigger
             rediscovery for any new devices added.
 
-            Called when: now - self.last_refresh_time > GLO['RESUME_TEST_SECONDS']
+            Directly called by Suspend(). Called after manual suspend if time lost.
+
+            Time lost when: now - self.last_refresh_time > GLO['RESUME_TEST_SECONDS']
             Long running processes must reseed self.last_refresh_time
             when they finish or a fake resume will occur.
 
@@ -5974,8 +5943,6 @@ __292.17 |  61°C / 3100 RPM |  57°C /    0 RPM |  9:03 AM
         self.rediscover_done = True
         _who = self.who + "resumeAfterSuspend():"
         self.isActive = True  # Application GUI is active again
-        self.resuming = True
-        self.suspending = False
         self.remote_suspends_system = False
 
         start_time = time.time()
@@ -5993,8 +5960,6 @@ __292.17 |  61°C / 3100 RPM |  57°C /    0 RPM |  9:03 AM
         self.last_rediscover_time = now - GLO['REDISCOVER_SECONDS'] * 10.0
         self.last_refresh_time = now + 1.0  # If abort, don't come back here
         sm.last_sensor_log = now - GLO['SENSOR_LOG'] * 2  # Force log
-        self.resuming = False
-        self.suspending = False
 
     def resumeWait(self, timer=None, alarm=True, title=None, abort=True):
         """ Wait x seconds for devices to come online. If 'timer' passed do a
@@ -6091,6 +6056,8 @@ __292.17 |  61°C / 3100 RPM |  57°C /    0 RPM |  9:03 AM
                 continue  # Device suspended with `systemctl`
 
             if type_code and type_code != inst.type_code:
+                v1_print(_who, "type_code requested:", type_code,
+                         "inst.type_code:", inst.type_code)
                 continue  # Not the type code searching for
 
             night_powered_on = False  # Don't turn on bias light during daytime
@@ -6121,11 +6088,16 @@ __292.17 |  61°C / 3100 RPM |  57°C /    0 RPM |  9:03 AM
 
             if fade and cr:  # Is there a current row instance?
                 item = cr.getIidForInst(inst)  # Get treeview row IID
+                self.tree.see(item)
                 cr.fadeIn(item)  # Fading in was requested
 
             if state == "ON":
-                v0_print(_who, "Switching power from '" + inst.powerStatus +
-                         "' to 'ON':", inst.name)
+                if type_code is None:  # Called by Resume()
+                    v0_print(_who, "Switching power from '" + inst.powerStatus +
+                             "' to 'ON':", inst.name)
+                else:  # Called by "Turn ALL Lights Power" menu option or similar
+                    v1_print(_who, "Switching power from '" + inst.powerStatus +
+                             "' to 'ON':", inst.name)
                 inst.turnOn()  # inst.menuPowerOn += 1
                 if type_code is None:
                     # Assume powered on even if "?" due to timeout it can be "ON" later
@@ -6135,7 +6107,10 @@ __292.17 |  61°C / 3100 RPM |  57°C /    0 RPM |  9:03 AM
             elif state == "OFF":
                 if inst.powerStatus == "ON":
                     # To avoid errors must be "ON" in order to turn "OFF".
-                    v0_print(_who, "Switching power from 'ON' to 'OFF':", inst.name)
+                    if type_code is None:  # Called by Suspend()
+                        v0_print(_who, "Switching power from 'ON' to 'OFF':", inst.name)
+                    else:  # Called by "Turn ALL Lights Power" menu option or similar
+                        v1_print(_who, "Switching power from 'ON' to 'OFF':", inst.name)
                     inst.turnOff()  # inst.menuPowerOff += 1
                     if type_code is None:
                         inst.suspendPowerOff += 1  # Suspend powered off the device
@@ -6180,59 +6155,6 @@ __292.17 |  61°C / 3100 RPM |  57°C /    0 RPM |  9:03 AM
 
             if fade:  # Was fading out requested?
                 cr.fadeOut(item)
-
-        v2_print()  # Blank line to separate debugging output
-
-    def turnAllLightsPower(self, state):
-        """ DEPRECATED 2025-05-07, replaced with turnAllPower()
-            Set power state to "ON" or "OFF" for Smart Plug instances.
-            Called by Tools dropdown menu.
-            If devices treeview is mounted, update power status text
-        """
-        _who = self.who + "turnAllLightsPower(" + state + "):"
-
-        # Loop through ni.instances
-        for i, instance in enumerate(ni.instances):
-            inst = instance['instance']
-
-            # Only select TP-Link / Kasa Smart Plug Bias Lights
-            if inst.type_code != GLO['HS1_SP']:
-                continue
-
-            if state == "ON" and inst.powerStatus == "OFF":
-                v1_print(_who, "Turning power 'ON' from 'OFF':", inst.name)
-                inst.turnOn()
-            elif state == "OFF" and inst.powerStatus == "ON":
-                v1_print(_who, "Turning power 'OFF' from 'ON':", inst.name)
-                inst.turnOff()
-            else:
-                v0_print(_who, "state is not 'ON' or 'OFF':", state)
-                return
-
-            # Update Devices Treeview with power status
-            if not self.usingDevicesTreeview:
-                continue  # No Devices Treeview to update
-
-            # Get treeview row based on matching MAC address + type
-            # Note that Laptop MAC address can have two types (Base and Display)
-            cr = TreeviewRow(self)  # Setup treeview row processing instance
-            iid = cr.getIidForInst(inst)  # Get iid number and set instance
-            if iid is None:
-                continue  # Instance not in Devices Treeview, perhaps a smartphone?
-
-            old_text = cr.text  # Treeview row old power state "  ON", etc.
-            cr.text = "  " + str(inst.powerStatus)  # Display treeview row new power state
-            if cr.text != old_text:
-                v1_print(_who, cr.mac, "Power status changed from: '"
-                         + old_text.strip() + "' to: '" + cr.text.strip() + "'.")
-            cr.Update(iid)  # Update iid with new ['text']
-
-            # Display row by row when there is processing lag
-            self.tree.update_idletasks()  # Slow mode display each row.
-
-            # MAC address stored in treeview row hidden values[-1]
-            v2_print("\n" + _who, "i:", i, "cr.mac:", cr.mac)
-            v2_print("cr.inst:", cr.inst)
 
         v2_print()  # Blank line to separate debugging output
 
