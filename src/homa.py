@@ -4496,13 +4496,15 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
             msg += "Error occurred " + str(count) + " times.\n\n"
         msg += "At command line, does 'bluetoothctl show' display your devices?\n"
         msg += "NOTE: Type 'exit' to exit the 'bluetoothctl' application.\n\n"
-        msg += "Always try: 'Turn on " + self.name + "' a few times for quick fix."
+        msg += "Try 'Reset Bluetooth' and 'Turn on " + self.name + "' for quick fix."
         v1_print(_who, msg + "\n")
         if self.app is not None:
-            if not self.app.suspending and not self.app.resuming:
+            if not self.app.suspending and not self.app.resuming and \
+                    GLO['APP_RESTART_TIME'] < time.time() - 60:
                 self.app.ShowInfo("Not connected", msg, "error", align="left")
             else:
-                v0_print(_who, "Cannot display message when suspending or resuming.")
+                v0_print(_who, "\nCannot display message when starting,",
+                         "suspending or resuming.")
                 v0_print(msg)
 
     def getPower(self):
@@ -4680,6 +4682,11 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         ''' TkFixedFont, TkMenuFont, TkHeadingFont, TkCaptionFont, TkSmallCaptionFont,
             TkIconFont and TkTooltipFont - It is not advised to change these fonts.
             https://www.tcl-lang.org/man/tcl8.6/TkCmd/font.htm '''
+
+        self.suspend_time = 0.0  # last time system suspended
+        self.suspending = False  # When True suppress error messages that delay suspend
+        self.resume_time = 0.0  # last time system resumed from suspend
+        self.resuming = False  # When True suppress error messages that delay resume
 
         self.last_refresh_time = time.time()  # Refresh idle loop last entered time
         # Normal rediscover period is shortened at boot time if fast start
@@ -5397,6 +5404,9 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
         cr.Get(item)  # Get current row
         name = cr.arp_dict['name']  # name is used in menu option text
         cr.inst.powerStatus = "?" if cr.inst.powerStatus is None else cr.inst.powerStatus
+        cr.text = "  " + str(cr.inst.powerStatus)  # Display treeview row new power state
+        cr.Update(item)  # Update iid with new ['text']
+        self.tree.update_idletasks()  # Slow mode display each row.
         cr.fadeIn(item)  # Trigger 320 ms row highlighting fade in def fadeIn
 
         ''' If View Breathing Statistics is running, color options are disabled.
@@ -5767,50 +5777,33 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
             self.exitApp(kill_now=True)
             return False  # Not required because this point never reached.
 
-        ''' Resuming from suspend? '''
+        ''' Resuming from suspend initiated outside of HomA? '''
         now = time.time()
         delta = now - self.last_refresh_time
         if delta > GLO['RESUME_TEST_SECONDS']:  # Assume > is resume from suspend
             v0_print("\n" + "= "*4, _who, "Resuming from suspend after:",
                      tmf.days(delta), " ="*4 + "\n")
             self.resumeAfterSuspend()  # Resume Wait + Conditionally Power on devices
-            now = time.time()  # can be 15 seconds or more later
-            GLO['APP_RESTART_TIME'] = now  # Reset app started time to resume time
-            self.last_rediscover_time = 0.0  # Force rediscovery
 
         if not self.winfo_exists():  # Application window destroyed?
             return False  # self.close() has set to None
 
-        ''' Special Sony TV features '''
-        life_span = time.time() - GLO['APP_RESTART_TIME']
-        log_status = GLO['LOG_EVENTS']  # Current event logging status
-        GLO['LOG_EVENTS'] = False  # Turn off logging during Sony checks
+        ''' Special Sony TV features after Sony TV on for 2 seconds '''
+        life_span = time.time() - GLO['APP_RESTART_TIME'] \
+            if self.sonySaveInst and self.sonySaveInst.powerStatus == "ON" else 0.0
 
-        ''' Is there a TV to be monitored for power off to suspend system? '''
-        if self.sonySaveInst and life_span > 20:
-
-            # 2025-04-30 Track if Sony TV remote initiated system suspend
-            if self.remote_suspends_system:
-                self.after(GLO['REFRESH_MS'])  # Already suspending, can't do again
-                v0_print(_who, ext.h(time.time()), "Already suspending",
-                         "last refresh:", ext.h(self.last_refresh_time))
-                return True
-
+        ''' Is there a Sony TV to be monitored for remote power off to suspend system? '''
+        if self.sonySaveInst and life_span > 2.0:
             self.sonySaveInst.powerStatus = "?"  # Default if network down on resume
             if self.sonySaveInst.checkPowerOffSuspend(forgive=True):  # check "OFF"
                 self.remote_suspends_system = True  # Sony TV initiated suspend
-                self.Suspend()  # Will not set Sony TV to "OFF" because it's "?"
-                # After .Suspend() called, program still executes a few loops.
-                self.sonySaveInst.powerStatus = "?"  # Status for next resume
-                GLO['LOG_EVENTS'] = True if log_status else False  # Restore logging
-                return True  # Restart wakeup from sleep processes
+                self.Suspend(sony_remote_powered_off=True)
+                # Will not return until Suspend finishes and resume finishes
 
         ''' Is there an audio channel to be monitored for volume up/down display? '''
-        if self.sonySaveInst and life_span > 20:  # Give 20 seconds to settle down
+        if self.sonySaveInst and life_span > 2.0:  # Give 20 seconds to settle down
             if self.sonySaveInst.checkVolumeChange(forgive=True):
                 self.last_rediscover_time = time.time()
-
-        GLO['LOG_EVENTS'] = True if log_status else False  # Restore logging
 
         ''' Always give time slice to tooltips - requires sql.py color config '''
         self.tt.poll_tips()  # Tooltips fade in and out
@@ -5847,7 +5840,7 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
         if self.last_refresh_time > now:
             v3_print(_who, "self.last_refresh_time: ",
                      ext.h(self.last_refresh_time), " >  now: ", ext.h(now))
-            now = self.last_refresh_time
+            now = self.last_refresh_time  # Reset for proper sleep time
 
         ''' Sleep remaining time until GLO['REFRESH_MS'] expires '''
         self.update()  # Process everything in tkinter queue before sleeping
@@ -5861,7 +5854,7 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
         ''' Wrapup '''
         return self.winfo_exists()  # Go back to caller as success or failure
 
-    def Suspend(self, *_args):
+    def Suspend(self, sony_remote_powered_off=False, *_args):
         """ Power off devices and suspend system.
             2025-04-30 Track if Sony TV remote initiated system suspend
             self.remote_suspends_system = False
@@ -5883,13 +5876,21 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
             return
 
         v0_print(_who, "Suspending system...")
+        self.suspending = True  # Prevent error dialog from interrupting suspend
+        self.resuming = False
+        GLO['LOG_EVENTS'] = True  # Log all suspend events
+
         ''' Move mouse away from suspend button to close tooltip window 
             because <Enter> event generated for tooltip during system resume '''
-        command_line_list = ["xdotool", "mousemove_relative", "--", "-200", "-200"]
-        _event = self.runCommand(command_line_list, _who)  # def runCommand
+        if not sony_remote_powered_off:
+            command_line_list = ["xdotool", "mousemove_relative", "--", "-200", "-200"]
+            _event = self.runCommand(command_line_list, _who)  # def runCommand
+            self.tt.zap_tip_window(self.suspend_btn)  # Remove any tooltip window.
 
-        self.tt.zap_tip_window(self.suspend_btn)  # Remove any tooltip window.
         self.isActive = False  # Signal closing so methods shut down elegantly.
+        self.suspending = True  # Don't display error messages
+        self.resuming = False
+
         if self.bleSaveInst:  # Is breathing colors active?
             self.bleSaveInst.already_breathing_colors = False  # Force shutdown
         self.update_idletasks()
@@ -5900,7 +5901,7 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
 
         start_suspend = time.time()
         last_now = time.time()
-        while True:
+        while True:  # Loop forever until suspend completed by OS
             now = time.time()
             self.update()
             self.after(100)
@@ -5914,13 +5915,18 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
         v0_print("\n" + "= "*4, _who, "Resuming from suspend after:",
                  tmf.days(delta), " ="*4 + "\n")
 
-        time_to_suspend = now - start_suspend
+        time_to_suspend = last_now - start_suspend
         v0_print(_who, "time_to_suspend:", time_to_suspend)
+        GLO['LOG_EVENTS'] = False  # Turn off event logging
+        self.last_refresh_time = start_suspend
+        self.isActive = True  # Signal closing so methods shut down elegantly.
+        self.suspending = False
+        self.resuming = True  # Don't display error messages
 
         ''' Automatically call resume to power on devices. '''
-        self.resumeAfterSuspend()
+        self.resumeAfterSuspend(called_by_homa=True)
 
-    def resumeAfterSuspend(self):
+    def resumeAfterSuspend(self, called_by_homa=False):
         """ Resume from suspend. Display status of devices that were
             known at time of suspend. Then set variables to trigger
             rediscovery for any new devices added.
@@ -5937,16 +5943,21 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
                 and TCL TV light. It did work for BLE LED Lights. Reason is resume
                 wait is 3 seconds. Increase it to 6, then 7, then 10 seconds.
 
+            :param called_by_homa: Resume called after HomA suspended system
+
         """
         global rd
         rd = None  # In case rediscovery was in progress during suspend
         self.rediscover_done = True
         _who = self.who + "resumeAfterSuspend():"
         self.isActive = True  # Application GUI is active again
-        self.remote_suspends_system = False
+        self.resuming = True  # Prevent error dialogs from interrupting resume
+        self.suspending = False  # No longer suspending
+        self.remote_suspends_system = False  # Flag recorded on all instances earlier
+        GLO['LOG_EVENTS'] = True  # Log all resume events
 
         start_time = time.time()
-        self.resumeWait()  # Display countdown waiting for devices to come online
+        self.resumeWait()  # Wait for network to come online
         delta = int(time.time() - start_time)
         v0_print(_who, "Waited", delta, "seconds for network to come up.")
         v1_print("\n" + _who, "ni.view_order:", ni.view_order)
@@ -5960,6 +5971,9 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
         self.last_rediscover_time = now - GLO['REDISCOVER_SECONDS'] * 10.0
         self.last_refresh_time = now + 1.0  # If abort, don't come back here
         sm.last_sensor_log = now - GLO['SENSOR_LOG'] * 2  # Force log
+        self.resuming = False  # Allow error dialogs to appear on screen
+        GLO['APP_RESTART_TIME'] = now
+        GLO['LOG_EVENTS'] = False  # Turn off event logging
 
     def resumeWait(self, timer=None, alarm=True, title=None, abort=True):
         """ Wait x seconds for devices to come online. If 'timer' passed do a
