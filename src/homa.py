@@ -175,7 +175,7 @@ class DeviceCommonSelf:
         self.passed_installed = []
 
         self.system_ctl = False  # Turning off TV shuts down / suspends system
-        self.remote_suspends_system = False  # If TV powered off suspend system
+        self.sony_suspended_system = False  # If TV powered off suspend system
 
         self.powerStatus = "?"  # "ON" or "OFF" after discovery
         self.suspendPowerOff = 0  # Did suspend power off the device?
@@ -2273,6 +2273,41 @@ class SystemMonitor(DeviceCommonSelf):
             2024-11-03 - Rudimentary format with hard-coded keys.
             2024-11-22 - Now homa.py called from homa-indicator.py with no console.
             2024-11-24 - Enhance with treeview to show sensors.
+
+            2025-05-11 - Need summary because too many changes per minute:
+
+ 5526.53 |  64°C / 5100 RPM |  68°C / 5000 RPM | 11:56 AM (1)
+ 8573.30 |  77°C / 5400 RPM |  73°C / 5300 RPM | 12:46 PM (5)
+ 8623.90 |  90°C / 6400 RPM |  74°C / 5900 RPM | 12:47 PM (12)
+ 8692.97 |  76°C / 6200 RPM |  74°C / 6100 RPM | 12:48 PM (9)
+ 8747.53 |  90°C / 6400 RPM |  75°C / 6400 RPM | 12:49 PM (12)
+ 8813.26 |  76°C / 6100 RPM |  74°C / 5600 RPM | 12:50 PM (5)
+ 8874.08 |  92°C / 6000 RPM |  75°C / 5900 RPM | 12:51 PM (6)
+ 8929.96 |  93°C / 6400 RPM |  75°C / 6200 RPM | 12:52 PM (10)
+ 8994.82 |  76°C / 5800 RPM |  75°C / 5000 RPM | 12:53 PM (16)
+ 9054.34 |  82°C / 5900 RPM |  76°C / 5800 RPM | 12:54 PM (6)
+ 9067.13 |  81°C / 5200 RPM |  76°C / 4900 RPM | 12:55 PM (3)
+ 9277.85 |  85°C / 5200 RPM |  77°C / 4900 RPM | 12:58 PM (2)
+ 9352.93 |  81°C / 6200 RPM |  77°C / 6200 RPM | 12:59 PM (4)
+ 9379.23 |  77°C / 6500 RPM |  76°C / 6400 RPM |  1:00 PM (1)
+
+Later:
+
+   11.07 |  77°C / 6400 RPM |  73°C / 6300 RPM |  1:23 PM
+ 1241.40 |  69°C / 6100 RPM |  68°C / 5900 RPM |  1:43 PM
+ 1244.89 |  65°C / 6000 RPM |  68°C / 5500 RPM |  1:44 PM
+ 1249.60 |  65°C / 5700 RPM |  68°C / 5000 RPM |  1:44 PM
+ 1256.67 |  67°C / 5300 RPM |  68°C / 5000 RPM |  1:44 PM
+ 1314.03 |  90°C / 5500 RPM |  71°C / 5400 RPM |  1:45 PM
+ 1321.96 |  90°C / 5900 RPM |  72°C / 5500 RPM |  1:45 PM
+ 1325.51 |  86°C / 6200 RPM |  72°C / 5900 RPM |  1:45 PM
+ 1330.13 |  69°C / 6100 RPM |  72°C / 5500 RPM |  1:45 PM
+ 1334.82 |  72°C / 5900 RPM |  71°C / 5000 RPM |  1:45 PM
+ 1341.56 |  77°C / 5400 RPM |  71°C / 5000 RPM |  1:45 PM
+ 1358.20 |  91°C / 5600 RPM |  72°C / 5400 RPM |  1:45 PM
+ 1367.34 |  71°C / 5600 RPM |  72°C / 5000 RPM |  1:46 PM
+ 1374.23 |  69°C / 5200 RPM |  72°C / 5000 RPM |  1:46 PM
+
         """
 
         if start == -1:
@@ -2833,6 +2868,7 @@ https://stackoverflow.com/questions/2829613/how-do-you-tell-if-a-string-contains
         self.type = "SonyBraviaKdlTV"
         self.type_code = GLO['KDL_TV']
 
+        self.allowRemoteToSuspend = False  # 2025-05-11 TODO: Global variable to override
         self.powerSavingMode = "?"  # set with getPowerSavingMode()
         self.volume = "?"  # Set with getVolume()  # 28
         self.volumeLast = "?"  # Last recorded volume for spamming notify-send
@@ -2877,7 +2913,7 @@ https://stackoverflow.com/questions/2829613/how-do-you-tell-if-a-string-contains
                 v0_print(_who, "embedId: ", embedId, "!= RESTid:", RESTid)
         except (TypeError, KeyError):
             embedId = ""
-            v0_print(_who, "TypeError / KeyError:", reply)
+            v0_print(_who, "TypeError / KeyError:\n ", reply)
 
         v2_print(_who, "curl reply_dict:", reply)  # E.G. {'result': [], 'id': 55}
         return embedId == RESTid
@@ -4884,6 +4920,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                                    command=self.exitApp, state=tk.DISABLED)
 
         mb.add_cascade(label="File", font=g.FONT, underline=0, menu=self.file_menu)
+        self.file_menu.config(activebackground="SkyBlue3", activeforeground="black")
 
         # Edit Dropdown Menu
         self.edit_menu = tk.Menu(mb, tearoff=0)
@@ -4895,6 +4932,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                                    command=self.exitApp)
 
         mb.add_cascade(label="Edit", font=g.FONT, underline=0, menu=self.edit_menu)
+        self.edit_menu.config(activebackground="SkyBlue3", activeforeground="black")
 
         # View Dropdown Menu
         self.view_menu = tk.Menu(mb, tearoff=0)
@@ -4914,6 +4952,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                                    command=self.DisplayBreathing, state=tk.DISABLED)
 
         mb.add_cascade(label="View", font=g.FONT, underline=0, menu=self.view_menu)
+        self.view_menu.config(activebackground="SkyBlue3", activeforeground="black")
 
         # Tools Dropdown Menu
         self.tools_menu = tk.Menu(mb, tearoff=0)
@@ -4926,6 +4965,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                                     'OFF', fade=True, type_code=GLO['HS1_SP']))
         self.tools_menu.add_cascade(label="Turn all lights power", font=g.FONT,
                                     underline=0, menu=lights_menu)
+        lights_menu.config(activebackground="SkyBlue3", activeforeground="black")
         self.tools_menu.add_command(label="Forget sudo password", underline=0,
                                     font=g.FONT, command=ForgetPassword, state=tk.DISABLED)
 
@@ -4955,8 +4995,10 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                                command=lambda: self.setColorScheme('LightSalmon'))
         self.tools_menu.add_cascade(label="Color scheme", font=g.FONT,
                                     underline=0, menu=theme_menu)
+        theme_menu.config(activebackground="SkyBlue3", activeforeground="black")
         mb.add_cascade(label="Tools", font=g.FONT, underline=0,
                        menu=self.tools_menu)
+        self.tools_menu.config(activebackground="SkyBlue3", activeforeground="black")
 
     def enableDropdown(self):
         """ Called from build_lib_menu() and passed to self.playlists to call.
@@ -5410,7 +5452,7 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
         cr.fadeIn(item)  # Trigger 320 ms row highlighting fade in def fadeIn
 
         ''' If View Breathing Statistics is running, color options are disabled.
-            Message cannot be displayed when menu painted because it causes focus out. '''
+            Message cannot be displayed when menu painted because it causes focus out. 
         if self.bleScrollbox and cr.arp_dict['type_code'] == GLO['BLE_LS']:
             title = "View stats disables colors"  # 2025-02-09 - Doesn't work properly.
         else:
@@ -5421,6 +5463,8 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
             # Once blank bar is clicked the title appears with window close decoration.
         else:
             menu = tk.Menu(self)
+        '''
+        menu = tk.Menu(self)
 
         menu.bind("<FocusIn>", self.focusIn)
         menu.bind("<Motion>", self.Motion)
@@ -5437,18 +5481,15 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
         if cr.arp_dict['type_code'] == GLO['KDL_TV']:
             # Sony TV has power save mode to turn picture off and listen to music
             help_id = "HelpRightClickSonyTV"
-            menu.add_command(label=name + " Picture On ",
-                             font=g.FONT, state=tk.DISABLED,
-                             image=self.img_picture_on, compound=tk.LEFT,
-                             command=lambda: self.turnPictureOn(cr))
-            menu.add_command(label=name + " Picture Off ",
-                             font=g.FONT, state=tk.DISABLED,
-                             image=self.img_picture_off, compound=tk.LEFT,
-                             command=lambda: self.turnPictureOff(cr))
-            menu.add_command(label=name + " Settings ",
-                             font=g.FONT, state=tk.NORMAL,
-                             image=self.img_mag_glass, compound=tk.LEFT,
-                             command=lambda: self.DisplaySony(cr))
+            menu.add_command(
+                label=name + " Picture On ", font=g.FONT, state=tk.DISABLED, compound=tk.LEFT,
+                image=self.img_picture_on, command=lambda: self.turnPictureOn(cr))
+            menu.add_command(
+                label=name + " Picture Off ", font=g.FONT, state=tk.DISABLED, compound=tk.LEFT,
+                image=self.img_picture_off, command=lambda: self.turnPictureOff(cr))
+            menu.add_command(
+                label=name + " Settings ", font=g.FONT, state=tk.NORMAL, compound=tk.LEFT,
+                image=self.img_mag_glass, command=lambda: self.DisplaySony(cr))
 
             menu.add_separator()
 
@@ -5456,30 +5497,27 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
             # Bluetooth Low Energy LED Light Strip
             help_id = "HelpRightClickBluetooth"
             name_string = "Set " + name + " Color"
-            menu.add_command(label=name_string,
-                             font=g.FONT, state=tk.DISABLED,
-                             image=self.img_set_color, compound=tk.LEFT,
-                             command=lambda: self.setLEDColor(cr))
-            menu.add_command(label="Nighttime brightness",
-                             font=g.FONT, state=tk.DISABLED,
-                             image=self.img_nighttime, compound=tk.LEFT,
-                             command=lambda: self.setLEDNight(cr))
-            menu.add_command(label="Breathing colors",
-                             font=g.FONT, state=tk.DISABLED,
-                             image=self.img_breathing, compound=tk.LEFT,
-                             command=lambda: self.breatheLEDColors(cr))
+            menu.add_command(
+                label=name_string, state=tk.DISABLED, image=self.img_set_color,
+                compound=tk.LEFT, font=g.FONT, command=lambda: self.setLEDColor(cr))
+            menu.add_command(
+                label="Nighttime brightness", font=g.FONT, state=tk.DISABLED, compound=tk.LEFT,
+                image=self.img_nighttime, command=lambda: self.setLEDNight(cr))
+            menu.add_command(
+                label="Breathing colors", font=g.FONT, state=tk.DISABLED, compound=tk.LEFT,
+                image=self.img_breathing, command=lambda: self.breatheLEDColors(cr))
 
             menu.add_separator()
 
-            menu.add_command(label="View Breathing Statistics", font=g.FONT,
-                             image=self.img_mag_glass, compound=tk.LEFT,
-                             command=self.DisplayBreathing, state=tk.DISABLED)
-            menu.add_command(label="Reset Bluetooth", font=g.FONT,
-                             image=self.img_reset, compound=tk.LEFT,
-                             command=cr.inst.resetBluetooth, state=tk.DISABLED)
-            menu.add_command(label="View Bluetooth Devices", font=g.FONT,
-                             image=self.img_mag_glass, compound=tk.LEFT,
-                             command=self.DisplayBluetooth, state=tk.NORMAL)
+            menu.add_command(
+                label="View Breathing Statistics", font=g.FONT, image=self.img_mag_glass,
+                compound=tk.LEFT, command=self.DisplayBreathing, state=tk.DISABLED)
+            menu.add_command(
+                label="Reset Bluetooth", font=g.FONT, image=self.img_reset, compound=tk.LEFT,
+                command=cr.inst.resetBluetooth, state=tk.DISABLED)
+            menu.add_command(
+                label="View Bluetooth Devices", font=g.FONT, image=self.img_mag_glass,
+                compound=tk.LEFT, command=self.DisplayBluetooth, state=tk.NORMAL)
 
             # Device must be on for Set Color, Nighttime and Breathing Colors
             state = tk.NORMAL if cr.inst.powerStatus == "ON" else tk.DISABLED
@@ -5558,6 +5596,8 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
             menu.entryconfig("Move " + name + " Up", state=tk.NORMAL)
         if item != all_iid[-1]:  # Enable moving row down if not at bottom?
             menu.entryconfig("Move " + name + " Down", state=tk.NORMAL)
+
+        menu.config(activebackground="SkyBlue3", activeforeground="black")
 
         # Reset last rediscovery time. Some methods can take 10 seconds to timeout
         self.last_refresh_time = time.time()
@@ -5796,7 +5836,7 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
         if self.sonySaveInst and life_span > 2.0:
             self.sonySaveInst.powerStatus = "?"  # Default if network down on resume
             if self.sonySaveInst.checkPowerOffSuspend(forgive=True):  # check "OFF"
-                self.remote_suspends_system = True  # Sony TV initiated suspend
+                self.sony_suspended_system = True  # Sony TV initiated suspend
                 self.Suspend(sony_remote_powered_off=True)
                 # Will not return until Suspend finishes and resume finishes
 
@@ -5857,7 +5897,7 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
     def Suspend(self, sony_remote_powered_off=False, *_args):
         """ Power off devices and suspend system.
             2025-04-30 Track if Sony TV remote initiated system suspend
-            self.remote_suspends_system = False
+            self.sony_suspended_system = False
         """
 
         _who = self.who + "Suspend():"
@@ -5953,7 +5993,7 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
         self.isActive = True  # Application GUI is active again
         self.resuming = True  # Prevent error dialogs from interrupting resume
         self.suspending = False  # No longer suspending
-        self.remote_suspends_system = False  # Flag recorded on all instances earlier
+        self.sony_suspended_system = False  # Flag recorded on all instances earlier
         GLO['LOG_EVENTS'] = True  # Log all resume events
 
         start_time = time.time()
@@ -6130,7 +6170,7 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
                         inst.suspendPowerOff += 1  # Suspend powered off the device
                         inst.menuPowerOff = 0  # User didn't power on the device via menu
                         # 2025-04-30 Track if Sony TV remote initiated system suspend
-                        inst.remote_suspends_system = self.remote_suspends_system
+                        inst.remote_suspends_system = self.sony_suspended_system
             else:
                 v0_print(_who, "state is not 'ON' or 'OFF':", state)
                 return
