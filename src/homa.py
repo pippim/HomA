@@ -5831,19 +5831,23 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
         ''' Special Sony TV features after Sony TV on for 2 seconds '''
         life_span = time.time() - GLO['APP_RESTART_TIME'] \
             if self.sonySaveInst and self.sonySaveInst.powerStatus == "ON" else 0.0
+        log_status = GLO['LOG_EVENTS']  # Current event logging status
+        GLO['LOG_EVENTS'] = False  # Turn off logging during Sony checks
 
         ''' Is there a Sony TV to be monitored for remote power off to suspend system? '''
         if self.sonySaveInst and life_span > 2.0:
             self.sonySaveInst.powerStatus = "?"  # Default if network down on resume
             if self.sonySaveInst.checkPowerOffSuspend(forgive=True):  # check "OFF"
                 self.sony_suspended_system = True  # Sony TV initiated suspend
-                self.Suspend(sony_remote_powered_off=True)
+                self.Suspend(sony_remote_powered_off=True)  # Turns on event logging
                 # Will not return until Suspend finishes and resume finishes
 
         ''' Is there an audio channel to be monitored for volume up/down display? '''
         if self.sonySaveInst and life_span > 2.0:  # Give 20 seconds to settle down
             if self.sonySaveInst.checkVolumeChange(forgive=True):
                 self.last_rediscover_time = time.time()
+
+        GLO['LOG_EVENTS'] = True if log_status else False  # Restore logging
 
         ''' Always give time slice to tooltips - requires sql.py color config '''
         self.tt.poll_tips()  # Tooltips fade in and out
@@ -5964,9 +5968,9 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
         self.resuming = True  # Don't display error messages
 
         ''' Automatically call resume to power on devices. '''
-        self.resumeAfterSuspend(called_by_homa=True)
+        self.resumeAfterSuspend(suspended_by_homa=True)
 
-    def resumeAfterSuspend(self, called_by_homa=False):
+    def resumeAfterSuspend(self, suspended_by_homa=False):
         """ Resume from suspend. Display status of devices that were
             known at time of suspend. Then set variables to trigger
             rediscovery for any new devices added.
@@ -5983,7 +5987,7 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
                 and TCL TV light. It did work for BLE LED Lights. Reason is resume
                 wait is 3 seconds. Increase it to 6, then 7, then 10 seconds.
 
-            :param called_by_homa: Resume called after HomA suspended system
+            :param suspended_by_homa: Resume called after HomA suspended system
 
         """
         global rd
@@ -6000,6 +6004,9 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
         self.resumeWait()  # Wait for network to come online
         delta = int(time.time() - start_time)
         v0_print(_who, "Waited", delta, "seconds for network to come up.")
+        if not suspended_by_homa:
+            v0_print(_who, "Suspend was called outside of HomA.")
+
         v1_print("\n" + _who, "ni.view_order:", ni.view_order)
 
         # Turn all devices on
@@ -6090,6 +6097,8 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
             Called by Suspend ("OFF") and Resume ("ON")
             If devices treeview is mounted, update power status in each row
 
+            2025-05-13 TODO: Power lights last to allow time to read eyesome updates.
+
             :param state: Power state to set; "ON" or "OFF"
             :param fade: Fade in and out, false = No fading
             :param type_code: Process specific type_code outside of suspend/resume
@@ -6097,7 +6106,7 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
         _who = self.who + "turnAllPower(" + state + "):"
         isNight = cp.getNightLightStatus()
         v1_print(_who, "Nightlight status: '" + isNight + "'")
-        cr = item = None  # Network devices treeview row instance and current iid
+        cr = None  # Network devices treeview row instance and current iid
         if fade and self.usingDevicesTreeview:
             cr = TreeviewRow(self)
 
@@ -6141,9 +6150,10 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
                          "powerStatus:", inst.powerStatus)
 
             if fade and cr:  # Is there a current row instance?
-                item = cr.getIidForInst(inst)  # Get treeview row IID
-                self.tree.see(item)
-                cr.fadeIn(item)  # Fading in was requested
+                iid = cr.getIidForInst(inst)  # Get treeview row IID
+                if iid is not None:
+                    self.tree.see(iid)
+                    cr.fadeIn(iid)  # Fading in was requested
 
             if state == "ON":
                 if type_code is None:  # Called by Resume()
