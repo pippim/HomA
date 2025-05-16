@@ -521,7 +521,7 @@ SHAW-8298B0-5G      bfce8167-18fc-4646-bec3-868c097a3f4a  802-11-wireless  -- ''
         # Sudo password required for powering laptop backlight on/off
         if GLO['SUDO_PASSWORD'] is None:
             GLO['SUDO_PASSWORD'] = self.app.GetPassword()
-            self.app.enableDropdown()
+            self.app.updateDropdown()
             if GLO['SUDO_PASSWORD'] is None:
                 return "?"  # Cancel button (256) or escape or 'X' on window decoration (64512)
 
@@ -552,57 +552,6 @@ SHAW-8298B0-5G      bfce8167-18fc-4646-bec3-868c097a3f4a  802-11-wireless  -- ''
         self.cmdDuration = time.time() - self.cmdStart
         self.logEvent(who, forgive=forgive, log=True)
         self.powerStatus = status
-
-        ''' Running `nmcli networking off` turns smart plugs off. Try rediscover now:
-        
-Traceback (most recent call last):
-  File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 1540, in __call__
-    return self.func(*args)
-  File "./homa.py", line 4049, in <lambda>
-    command=lambda: self.Rediscover(auto=False))
-  File "./homa.py", line 5242, in Rediscover
-    rd = NetworkInfo()  # rd. class is newer instance ni. class
-  File "./homa.py", line 1492, in __init__
-    name = parts[0]  # Can be "unknown" when etc/self.hosts has no details
-IndexError: list index out of range
-Exception in Tkinter callback
-Traceback (most recent call last):
-  File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 1540, in __call__
-    return self.func(*args)
-  File "./homa.py", line 4579, in <lambda>
-    command=lambda: self.breatheColors(cr))
-  File "./homa.py", line 4716, in breatheColors
-    resp = cr.inst.breatheColors()
-  File "./homa.py", line 3482, in breatheColors
-    if not processStep():
-  File "./homa.py", line 3475, in processStep
-    refresh(sleep_ms)  # Normal / Fast Refresh in loop
-  File "./homa.py", line 3399, in refresh
-    self.app.refreshApp(tk_after=tk_after)
-  File "./homa.py", line 4856, in refreshApp
-    self.Rediscover(auto=True)  # Check for new network devices
-  File "./homa.py", line 5242, in Rediscover
-    rd = NetworkInfo()  # rd. class is newer instance ni. class
-  File "./homa.py", line 1492, in __init__
-    name = parts[0]  # Can be "unknown" when etc/self.hosts has no details
-IndexError: list index out of range
-Traceback (most recent call last):
-  File "./homa.py", line 7005, in <module>
-    main()
-  File "./homa.py", line 6999, in main
-    app = Application(root)  # Treeview of ni.discovered[{}, {}...{}]
-  File "./homa.py", line 3995, in __init__
-    while self.refreshApp():  # Run forever until quit
-  File "./homa.py", line 4856, in refreshApp
-    self.Rediscover(auto=True)  # Check for new network devices
-  File "./homa.py", line 5242, in Rediscover
-    rd = NetworkInfo()  # rd. class is newer instance ni. class
-  File "./homa.py", line 1492, in __init__
-    name = parts[0]  # Can be "unknown" when etc/self.hosts has no details
-IndexError: list index out of range
-
-       
-        '''
 
 
 class Globals(DeviceCommonSelf):
@@ -2657,7 +2606,7 @@ class LaptopDisplay(DeviceCommonSelf):
         # Sudo password required for powering laptop backlight on/off
         if GLO['SUDO_PASSWORD'] is None:
             GLO['SUDO_PASSWORD'] = self.app.GetPassword()
-            self.app.enableDropdown()
+            self.app.updateDropdown()
             if GLO['SUDO_PASSWORD'] is None:
                 return "?"  # Cancel button (256) or escape or 'X' on window decoration (64512)
 
@@ -2922,6 +2871,8 @@ https://stackoverflow.com/questions/2829613/how-do-you-tell-if-a-string-contains
         """ If TV powered off with remote control. If so suspend system.
             Called from app.refreshApp() every 16 to 33 milliseconds
             Copied from /mnt/e/bin/tvpowered
+
+            Normally event logging would be turned off to prevent large dictionary.
         """
         _who = self.who + "checkPowerOffSuspend():"
         if self.menuPowerOff:
@@ -2939,6 +2890,8 @@ https://stackoverflow.com/questions/2829613/how-do-you-tell-if-a-string-contains
         """ If current volume is different than last volume spam notify-send
             Called from app.refreshApp() every 16 milliseconds
             Copied from /mnt/e/bin/tvpowered
+
+            Normally event logging would be turned off to prevent large dictionary.
         """
         _who = self.who + "checkVolumeChange():"
         if self.powerStatus != "ON":
@@ -2955,14 +2908,9 @@ https://stackoverflow.com/questions/2829613/how-do-you-tell-if-a-string-contains
             "-h", "string:x-canonical-private-synchronous:volume",
             "--icon=/usr/share/icons/gnome/48x48/devices/audio-speakers.png",
             "Volume: {} {}".format(self.volume, percentBar)]
-
-        curr_logging = GLO['LOG_EVENTS']  # Are events being logged?
-        GLO['LOG_EVENTS'] = False  # Could already be off but oh well
-        # Average command time is 0.025 seconds but never logged
         event = self.runCommand(command_line_list, _who, forgive=forgive)
 
-        if curr_logging:  # If logging was on turn it back on
-            GLO['LOG_EVENTS'] = True
+        # Average command time is 0.025 seconds but never logged
         if event['returncode'] != 0:  # Was there an error?
             if forgive is False:
                 v0_print(_who, "Error:", event['returncode'])
@@ -3833,7 +3781,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
 
         if GLO['SUDO_PASSWORD'] is None:
             GLO['SUDO_PASSWORD'] = self.app.GetPassword(msg=msg)
-            self.app.enableDropdown()
+            self.app.updateDropdown()
 
         return GLO['SUDO_PASSWORD']
 
@@ -4026,7 +3974,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
 
         self.device = None  # Force connect on next attempt
         self.powerStatus = "?"
-        # self.app.enableDropdown()  # 'NoneType' object has no attribute 'enableDropdown'
+        # self.app.updateDropdown()  # 'NoneType' object has no attribute 'updateDropdown'
         return self.powerStatus
 
     def breatheColors(self, low=4, high=30, span=6.0, step=0.275, bots=1.5, tops=0.5):
@@ -4075,7 +4023,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         fast_sleep = float(self.FAST_MS) / 1000.0  # When not enough time for refresh
 
         self.already_breathing_colors = True
-        self.app.enableDropdown()  # Allow View dropdown menu option "Breathing stats".
+        self.app.updateDropdown()  # Allow View dropdown menu option "Breathing stats".
         v1_print("\n" + ext.ch(), _who, "Breathing colors - Starting up.")
 
         def sendCommand():
@@ -4362,7 +4310,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         v2_print(self.monitorBreatheColors(test=True))
 
         self.already_breathing_colors = False
-        self.app.enableDropdown()  # Disable "View" dropdown menu option "Breathing stats".
+        self.app.updateDropdown()  # Disable "View" dropdown menu option "Breathing stats".
 
     def monitorBreatheColors(self, test=False):
         """ Format statistics generated inside self.breatheColors() method.
@@ -4727,13 +4675,14 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.last_refresh_time = time.time()  # Refresh idle loop last entered time
         # Normal rediscover period is shortened at boot time if fast start
         self.last_rediscover_time = time.time()  # Last analysis of `arp -a`
+        self.rediscovering = False  # Is self.Rediscover() function in progress?
         self.last_minute = "0"  # Check sunlight percentage every minute
 
         if p_args.fast:
             # Allow 3 seconds to move mouse else start rediscover
             self.last_rediscover_time = time.time() - GLO['REDISCOVER_SECONDS'] + 3
-        self.rediscover_done = True  # 16ms time slices until done.
-        self.rediscover_row = 0  # Current row processed in Treeview
+        #self.rediscover_done = True  # 16ms time slices until done.
+        #self.rediscover_row = 0  # Current row processed in Treeview
         self.tree = None  # Painted in populateDevicesTree()
         # Images used in populateDevicesTree() and/or other methods
         self.photos = None
@@ -4820,7 +4769,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.buildButtonBar(self.sensors_btn_text)
 
         # Dropdown Menu Bars Set options DISABLED or NORMAL based on context
-        self.enableDropdown()
+        self.updateDropdown()
 
         # Experiments to delay rediscover when there is GUI activity
         self.minimizing = False  # When minimizing, override focusIn()
@@ -4893,7 +4842,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             GLO['SUDO_PASSWORD'] = None  # clear global password in HomA
             command_line_list = ["sudo", "-K"]  # clear password in Linux
             self.runCommand(command_line_list)
-            self.enableDropdown()
+            self.updateDropdown()
 
         mb = tk.Menu(self)
         self.config(menu=mb)
@@ -5000,29 +4949,26 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                        menu=self.tools_menu)
         self.tools_menu.config(activebackground="SkyBlue3", activeforeground="black")
 
-    def enableDropdown(self):
-        """ Called from build_lib_menu() and passed to self.playlists to call.
-            Also passed with lcs.register_menu(self.enableDropdown)
-
-            Full option name is referenced to enable and disable the option. """
+    def updateDropdown(self):
+        """ Enable/Disable options on Dropdown Menu """
 
         if not self.isActive:
             return
 
         ''' File Menu '''
         # During rediscovery, the "Rediscover now" dropdown menubar option disabled
-        if self.rediscover_done is True:
-            self.file_menu.entryconfig("Rediscover now", state=tk.NORMAL)
-            self.file_menu.entryconfig("Suspend", state=tk.NORMAL)
-            self.file_menu.entryconfig("Exit", state=tk.NORMAL)
-            self.suspend_btn['state'] = tk.NORMAL
-            self.close_btn['state'] = tk.NORMAL
-        else:
+        if self.rediscovering is True:
             self.file_menu.entryconfig("Rediscover now", state=tk.DISABLED)
             self.file_menu.entryconfig("Suspend", state=tk.DISABLED)
             self.file_menu.entryconfig("Exit", state=tk.DISABLED)
             self.suspend_btn['state'] = tk.DISABLED
             self.close_btn['state'] = tk.DISABLED
+        else:
+            self.file_menu.entryconfig("Rediscover now", state=tk.NORMAL)
+            self.file_menu.entryconfig("Suspend", state=tk.NORMAL)
+            self.file_menu.entryconfig("Exit", state=tk.NORMAL)
+            self.suspend_btn['state'] = tk.NORMAL
+            self.close_btn['state'] = tk.NORMAL
 
         ''' Edit Menu '''
         # 2024-12-01 - Edit menu options not written yet
@@ -5076,7 +5022,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         msg = None
         if self.dtb:  # Cannot Close when resume countdown timer is running.
             msg = "Countdown timer is running."
-        if not self.rediscover_done:  # Cannot suspend during rediscovery.
+        if self.rediscovering:  # Cannot suspend during rediscovery.
             msg = "Device rediscovery is in progress for a few seconds."
 
         if msg and not kill_now:  # Cannot suspend when other jobs are active
@@ -5415,7 +5361,7 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
                   self.sensors_devices_btn['text'])
             return
 
-        self.enableDropdown()  # NORMAL/DISABLED options for view Sensors/Devices
+        self.updateDropdown()  # NORMAL/DISABLED options for view Sensors/Devices
 
     def RightClick(self, event):
         """ Mouse right button click. Popup menu on selected treeview row.
@@ -5834,20 +5780,20 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
         log_status = GLO['LOG_EVENTS']  # Current event logging status
         GLO['LOG_EVENTS'] = False  # Turn off logging during Sony checks
 
-        ''' Is there a Sony TV to be monitored for remote power off to suspend system? '''
+        ''' Sony TV monitored for TV Remote power off suspends system? '''
         if self.sonySaveInst and life_span > 2.0:
-            self.sonySaveInst.powerStatus = "?"  # Default if network down on resume
+            self.sonySaveInst.powerStatus = "?"  # Default if network down
             if self.sonySaveInst.checkPowerOffSuspend(forgive=True):  # check "OFF"
                 self.sony_suspended_system = True  # Sony TV initiated suspend
                 self.Suspend(sony_remote_powered_off=True)  # Turns on event logging
                 # Will not return until Suspend finishes and resume finishes
 
-        ''' Is there an audio channel to be monitored for volume up/down display? '''
+        ''' Sony TV audio channel monitored for volume up/down display? '''
         if self.sonySaveInst and life_span > 2.0:  # Give 20 seconds to settle down
             if self.sonySaveInst.checkVolumeChange(forgive=True):
                 self.last_rediscover_time = time.time()
 
-        GLO['LOG_EVENTS'] = True if log_status else False  # Restore logging
+        GLO['LOG_EVENTS'] = True if log_status else False  # Sony done, restore logging
 
         ''' Always give time slice to tooltips - requires sql.py color config '''
         self.tt.poll_tips()  # Tooltips fade in and out
@@ -5886,14 +5832,14 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
                      ext.h(self.last_refresh_time), " >  now: ", ext.h(now))
             now = self.last_refresh_time  # Reset for proper sleep time
 
-        ''' Sleep remaining time until GLO['REFRESH_MS'] expires '''
+        ''' Sleep remaining time to match GLO['REFRESH_MS'] '''
         self.update()  # Process everything in tkinter queue before sleeping
         sleep = GLO['REFRESH_MS'] - int(now - self.last_refresh_time)
         sleep = sleep if sleep > 0 else 1  # Sleep minimum 1 millisecond
         if sleep == 1:
             v0_print(_who, "Only sleeping 1 millisecond")
-        self.after(sleep)  # Sleep until next 60 fps time
-        self.last_refresh_time = time.time()  # 2024-12-05 was 'now' too stale?
+        self.after(sleep)  # Sleep until next GLO['REFRESH_MS'] (30 to 60 fps)
+        self.last_refresh_time = time.time()
 
         ''' Wrapup '''
         return self.winfo_exists()  # Go back to caller as success or failure
@@ -5912,8 +5858,9 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
         msg = None
         if self.dtb:  # Cannot suspend when resume countdown timer is running.
             msg = "Countdown timer is running."
-        if not self.rediscover_done:  # Cannot suspend during rediscovery.
+        if self.rediscovering:  # Cannot suspend during rediscovery.
             msg = "Device rediscovery is in progress for a few seconds."
+
         if msg:  # Cannot suspend when other jobs are active
             self.ShowInfo("Cannot Suspend now.", msg, icon="error")
             v0_print(_who, "Aborting suspend.", msg)
@@ -5985,14 +5932,15 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
 
             2025-01-17 ERROR: Resume did not work for Sony TV, Sony Light, TCL TV,
                 and TCL TV light. It did work for BLE LED Lights. Reason is resume
-                wait is 3 seconds. Increase it to 6, then 7, then 10 seconds.
+                wait is 3 seconds. Increase it to 6, then 7, then 10 seconds. Final
+                solution is to wait for network which is 0 to 12 seconds.
 
             :param suspended_by_homa: Resume called after HomA suspended system
 
         """
-        global rd
-        rd = None  # In case rediscovery was in progress during suspend
-        self.rediscover_done = True
+        #global rd  # 2025-05-15 comment out
+        #rd = None  # In case rediscovery was in progress during suspend
+        #self.rediscover_done = True  # 2025-05-15 comment out
         _who = self.who + "resumeAfterSuspend():"
         self.isActive = True  # Application GUI is active again
         self.resuming = True  # Prevent error dialogs from interrupting resume
@@ -6049,7 +5997,7 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
             countdown_sec = timer + 1  # 2024-12-01 - Losing 1 second on startup???
             if title is None:  # E.G. title="Scanning Bluetooth devices"
                 title = "Countdown timer"
-            if self.rediscover_done is not True:  # 2025-01-08
+            if self.rediscovering:  # 2025-01-08
                 v0_print(_who, "Rediscovery in progress. Aborting Countdown")
                 return  # if rediscovery, machine locks up when timer finishes.
                 # 2025-01-10 TODO: Disable timer menu option when rediscovery is
@@ -6218,7 +6166,7 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
             v2_print("cr.inst:", cr.inst)
 
             if fade:  # Was fading out requested?
-                cr.fadeOut(item)
+                cr.fadeOut(iid)
 
         v2_print()  # Blank line to separate debugging output
 
@@ -6246,10 +6194,13 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
 
     def RefreshAllPowerStatuses(self, auto=False):
         """ Read ni.instances and update the power statuses.
-            Called from one place: self.Rediscover(auto=False)
+            Called from one place: self.Rediscover(auto=auto)
             If Devices Treeview is visible (mounted) update power status.
             TreeviewRow.Get() creates a device instance.
             Use device instance to get Power Status.
+
+            :param auto: If 'False', called from menu "Rediscover Now". Can
+                also be forced on by auto-rediscovery on first time.
         """
         _who = self.who + "RefreshAllPowerStatuses():"
 
@@ -6268,6 +6219,7 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
                 # Get treeview row based on matching MAC address + device_type
                 iid = cr.getIidForInst(inst)  # Get iid number and set instance
                 if iid is not None:
+                    # When cr.text is "Wait..." fast startup so highlight each row
                     if auto is False or cr.text == "Wait...":
                         self.tree.see(iid)
                         cr.fadeIn(iid)
@@ -6304,24 +6256,16 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
 
     def Rediscover(self, auto=False):
         """ Automatically call 'arp -a' to check on network changes.
-            Job split into many slices of 16ms until done.
-            Caller sleeps between calls using GLO['REDISCOVER_SECONDS'].
+            self.refreshApp() calls every GLO['REDISCOVER_SECONDS'].
+
+            NOTE: Used to be two step process called twice. Changed 2025-05-15.
+
+            :param auto: If 'False', called from menu "Rediscover Now".
         """
 
         _who = self.who + "Rediscover():"
-        global rd  # global instance that allows rentry to split job into slices
-
-        ''' Calling a second time when first time is still running?
-            Happens during message wait calling self.refreshApp() calling us.
-        '''
-        if rd is not None and self.rediscover_done is False:
-            v2_print("\n" + _who, "Phase II starting.")
-        if rd is not None and self.rediscover_done is True:
-            v0_print(_who, "Phase II finished but rd is not None!!!")
-        if rd is None and self.rediscover_done is True:
-            v2_print("\n" + _who, "Phase I starting.")
-        if rd is None and self.rediscover_done is False:
-            v0_print(_who, "'rd' instance disappeared after Phase I.")
+        self.rediscovering = True
+        self.updateDropdown()  # Disable menu options
 
         # If GLO['APP_RESTART_TIME'] is within 1 minute (GLO['REDISCOVER_SECONDS']) turn off
         # auto rediscovery flags so startup commands are logged to cmdEvents
@@ -6329,117 +6273,88 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
                 GLO['RESUME_TEST_SECONDS'] - 10:
             auto = False  # Override auto rediscovery during startup / resuming
 
-        # If called from menu, reseed last rediscovery time:
-        if auto is False:
-            self.last_rediscover_time = time.time() - GLO['REDISCOVER_SECONDS'] * 1.5
-
         ''' Some `arp -a` lines are DISCARDED: 
                 ? (20.20.20.1) at a8:4e:3f:82:98:b2 [ether] on enp59s0
                 TCL.LAN (192.168.0.17) at <incomplete> on enp59s0  '''
         # Override event logging and v3_print(...) during auto rediscovery
         GLO['LOG_EVENTS'] = True if auto is False else False
 
-        # Start looping create rd
-        if rd is None:
-            ext.t_init("Creating instance rd = NetworkInfo()")
-            rd = NetworkInfo()  # rd. class is newer instance ni. class
-            self.rediscover_done = False  # Signal job in progress
-            self.enableDropdown()
-            ext.t_end('no_print')
-            if auto:  # If called from File dropdown menubar DON'T return
-                self.last_refresh_time = time.time()  # Override resume from suspend
-                return  # Reenter refresh loop. Return here in 16 ms
+        # First step is to create rd[] list and return to self.refreshApp()
+        ext.t_init("Creating instance rd = NetworkInfo()")
+        global rd
+        rd = NetworkInfo()  # rd. class is newer instance ni. class
+        ext.t_end('no_print')
 
-        def resetRediscovery():
-            """ Reset variables for exit. """
-            global rd
-            rd = None
-            self.rediscover_done = True
+        # tr instance only created if Network Devices treeview is mounted
+        tr = TreeviewRow(self) if self.usingDevicesTreeview else None
+
+        def addTreeviewRow(new_mac):
+            """ Add network devices treeview row if mounted. """
+
+            if not tr:
+                return  # No Treeview row instance
+
+            tr.New(new_mac)
+            new_row = len(self.tree.get_children())
+            tr.Add(new_row)
+            self.tree.see(str(new_row))
+
+        def dodge():
+            """ Get out of dodge """
+            self.rediscovering = False
+            self.updateDropdown()  # Enable menu options
             self.last_rediscover_time = time.time()
-            # 2024-12-02 - Couple hours watching TV, suddenly resumeAfterSuspend() ran
-            #   a few times with 3 second countdown. Reset self.last_refresh_time.
-            self.last_refresh_time = time.time()  # Prevent resume from suspend
-            self.file_menu.entryconfig("Rediscover now", state=tk.NORMAL)
-            self.enableDropdown()
 
         v2_print(_who, "Rediscovery count:", len(rd.arp_dicts))
 
         # Refresh power status for all device instances in ni.arp_dicts
         self.RefreshAllPowerStatuses(auto=auto)  # When auto false, rows highlighted
-        GLO['LOG_EVENTS'] = True  # Reset to log events as required
 
-        # If error on BLE, arp_dicts is 'NoneType'
-        # 2025-01-31 Resuming from suspend sometimes rd is None
-        #   File "./homa.py", line 4299, in Refresh
-        #     self.Rediscover(auto=True)  # Check for changes in IP addresses, etc
-        #   File "./homa.py", line 4668, in Rediscover
-        #     for i, rediscover in enumerate(rd.arp_dicts):
-        # AttributeError: 'NoneType' object has no attribute 'arp_dicts'
-        if rd is None:
-            resetRediscovery()
-            return
-
-        # TODO: Check rd.arp_dict entries for ip changes or new entries
         for i, rediscover in enumerate(rd.arp_dicts):
             if not self.isActive:
-                resetRediscovery()
+                dodge()
                 return
 
             mac = rediscover['mac']
             # TCL.LAN (192.168.0.17) at <incomplete> on enp59s0
             if mac == '<incomplete>':
-                v1_print(_who, "Invalid MAC:", mac)
+                v1_print(_who, "Skipping invalid MAC:", mac)
                 continue
 
             ip = rediscover['ip']
             # ? (20.20.20.1) at a8:4e:3f:82:98:b2 [ether] on enp59s0
             if ip == '?':
-                v1_print(_who, "Invalid IP:", ip)
+                v1_print(_who, "Skipping invalid IP:", ip)
                 continue
 
             v2_print("Checking MAC:", mac, "IP:", ip)
             arp_mac = ni.arp_for_mac(mac)  # NOTE different than rediscover !
             if not arp_mac:
-                v1_print(_who, "new MAC discovered:", mac)
-                #print("\n new arp_mac in rd.arp_dicts:", mac)
-                # new arp_mac: 28:f1:0e:2a:1a:ed
-                # new arp_mac: 9c:b6:d0:10:37:f7
-                # add ni.arp_dicts, ni.instances, ni.devices, ni.view_order
-                # add treeview row
-                start = len(ni.arp_dicts)
-                ni.arp_dicts.append(rediscover)
+                # Add ni.arp_dicts, ni.instances, ni.devices, ni.view_order
+                v0_print(_who, "new MAC discovered:", mac)
+                start = len(ni.arp_dicts)  # start = offset to next added arp_dict
+                ni.arp_dicts.append(rediscover)  # arp_dict for 1 found device
                 discovered, instances, view_order = \
-                    discover(update=False, start=start, end=start+1)
-
-                if not self.isActive or rd is None:
-                    resetRediscovery()
-                    return
+                    discover(update=False, start=start, end=start+1)  # last arp_dict
 
                 if len(discovered) != 1:
-                    print(_who, "Catastrophic error! len(discovered):",
-                          len(discovered))
+                    v0_print(_who, "Catastrophic error! Invalid len(discovered):",
+                             len(discovered))
+                    dodge()
                     return
 
-                if instances:
+                if bool(instances):
                     ni.instances.append(instances[0])
                     v1_print(_who, "Adding MAC to ni.instances:", mac)
                 else:
-                    v1_print(_who, "No new instance for MAC:", mac)
+                    v1_print(_who, "Unrecognized instance type for MAC:", mac)
                     continue
 
-                ni.view_order.append(mac)
+                ni.view_order.append(mac)  # New instance appears at treeview bottom.
+                ni.devices = copy.deepcopy(rd.devices)  # Log ALL new discovered device.
+                # 2025-05-15 TODO: Limit deep copy to ONE device at a time.
+                addTreeviewRow(mac)  # Only update Devices Treeview when mounted.
 
-                ni.devices = copy.deepcopy(rd.devices)  # Prevent rediscovery
-
-                # Only update Devices Treeview when mounted.
-                if not self.usingDevicesTreeview:
-                    continue
-
-                tr = TreeviewRow(self)
-                tr.New(mac)
-                new_row = len(self.tree.get_children())
-                tr.Add(new_row)
-                self.tree.see(str(new_row))
             elif mac not in ni.view_order:
                 v2_print(_who, "ni.arp_dicts MAC not in view order:", mac)
                 # ni.arp_dicts MAC not in view order: a8:4e:3f:82:98:b2   <-- ROUTER
@@ -6448,18 +6363,12 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
             arp_inst = ni.inst_for_mac(mac)
             if bool(arp_inst):
                 v2_print(_who, "found instance:", arp_inst['mac'])
+                # 2025-05-14 If in tree, check changes to host name, IP, alias, etc.
                 if mac not in ni.view_order:
                     v0_print(_who, "arp exists, instance exists, but no view order")
                     v0_print("Inserting", rediscover['mac'], rediscover['name'])
                     ni.view_order.append(mac)
-                    if not self.usingDevicesTreeview:
-                        continue
-
-                    tr = TreeviewRow(self)
-                    tr.New(mac)
-                    new_row = len(self.tree.get_children())
-                    tr.Add(new_row)
-                    self.tree.see(str(new_row))
+                    addTreeviewRow(mac)  # Only update Devices Treeview when mounted.
                 continue
 
             # Instance doesn't exist for existing arp mac
@@ -6482,18 +6391,12 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
             #ni.arp_dicts[i] = arp_mac  # Update arp list
             # 2025-01-16 arp_mac s/b updated in place. Check all usage above
             v0_print("="*80)
-
-            if not self.usingDevicesTreeview:
-                continue
-            tr = TreeviewRow(self)
-            tr.New(mac)
-            new_row = len(self.tree.get_children())
-            tr.Add(new_row)
-            self.tree.see(str(new_row))
+            addTreeviewRow(mac)  # Only update Devices Treeview when mounted.
 
         # All steps done: Wait for next rediscovery period
-        ni.cmdEvents.extend(rd.cmdEvents)  # For auto-rediscover, rd.cmdEvents[] empty
-        resetRediscovery()
+        if bool(rd.cmdEvents):
+            ni.cmdEvents.extend(rd.cmdEvents)  # For auto-rediscover, rd.cmdEvents[] empty
+        dodge()
 
     def refreshDeviceStatusForInst(self, inst):
         """ Called by BluetoothLED """
@@ -6628,7 +6531,7 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
 
             self.notebook.destroy()
             self.notebook = None
-            self.enableDropdown()
+            self.updateDropdown()
             # Restore Application() bottom button bar as pre buildButtonBar() options
             self.btn_frm.grid(row=99, column=0, columnspan=2, sticky=tk.E)
 
@@ -6655,7 +6558,7 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
             "Notebook.TFrame", "C.TButton", close, tt=self.tt,
             help_btn_image=self.img_mag_glass, close_btn_image=self.img_checkmark)
         self.edit_pref_active = True
-        self.enableDropdown()
+        self.updateDropdown()
 
     def openCalculator(self):
         """ Big Number Calculator allows K, M, G, T, etc. UoM """
@@ -7125,7 +7028,7 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
             self.event_top = None
             if close_cb:
                 close_cb()
-            self.enableDropdown()
+            self.updateDropdown()
 
         self.event_top = tk.Toplevel()
         if x is None or y is None:
@@ -7202,7 +7105,7 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
         scrollbox.tag_config('yellow', background='yellow')
         scrollbox.tag_config('cyan', background='cyan')
         scrollbox.tag_config('magenta', background='magenta')
-        self.enableDropdown()
+        self.updateDropdown()
         return scrollbox
 
     def GATTToolJobs(self, found_inst=None):
