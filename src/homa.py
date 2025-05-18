@@ -533,13 +533,13 @@ SHAW-8298B0-5G      bfce8167-18fc-4646-bec3-868c097a3f4a  802-11-wireless  -- ''
             V0_print(_who, "Invalid status (not 'ON' or 'OFF'):", status)
             return
 
-        #command_line_str = "echo PASSWORD | sudo -S systemctl start NetworkManager"
-
+        # command "echo PASSWORD | sudo -S systemctl start NetworkManager.service"
         self.cmdStart = time.time()
         cmd1 = sp.Popen(['echo', GLO['SUDO_PASSWORD']], stdout=sp.PIPE)
         pipe = sp.Popen(['sudo', '-S', 'systemctl', mode, 'NetworkManager.service'],
                         stdin=cmd1.stdout, stdout=sp.PIPE, stderr=sp.PIPE)
 
+        # Setup command event logger manually
         self.cmdCaller = _who
         who = self.cmdCaller + " logEvent():"
         self.cmdCommand = ["echo", "GLO['SUDO_PASSWORD']", "|", "sudo", "-S",
@@ -1245,13 +1245,20 @@ class Computer(DeviceCommonSelf):
         return base64.urlsafe_b64encode(key[:32].encode('utf-8'))  # Python 3
 
     def getNightLightStatus(self, forgive=False):
-        """ Return True if "On" or "Off"
-            gsettings get org.gnome.settings-daemon.plugins.color
-                night-light-enabled
+        """ Return "ON" if night or "OFF" if daytime
 
-            percent = cat /usr/local/bin/.eyesome-percent | cut -F1
-            if percent < 100 then enabled = True for Bias lighting
-            Percentage used for sunlight boost in LED breathe colors
+            Run `gsettings get org.gnome.settings-daemon.plugins.color`
+            Returns: 'night-light-enabled=True' - nighttime
+                     'night-light-enabled=False' - daytime
+                     error code - GNOME Nightlight not installed
+
+            Percent found in GLO['SUNLIGHT_PERCENT'] containing '0 %' to '100 %'.
+            if percent < 100 then Nightlight is "ON". As of 2025-05-18,
+            GLO['SUNLIGHT_PERCENT'] = '/usr/local/bin/.eyesome-percent'
+
+            Percentage is also used for sunlight boost in LED breathe colors
+
+            If Nightlight is "ON" then, resume and startup will turn on bias lights
 
         """
 
@@ -1260,6 +1267,9 @@ class Computer(DeviceCommonSelf):
 
         if forgive:
             pass
+
+        self.nightlight_active = True  # Default is nighttime to turn on lights.
+        self.sunlight_percent = 0  # Percentage of sunlight, 0 = nighttime.
 
         if self.CheckInstalled('gsettings'):
             command_line_list = ["gsettings", "get",
@@ -1276,52 +1286,51 @@ class Computer(DeviceCommonSelf):
                      pipe.returncode)
 
             if pipe.returncode == 0:
+                # GNOME Nightlight is installed and gsettings was found
                 night_light = text.strip()
                 if night_light == "True":
-                    self.nightlight_active = True
                     return "ON"
                 elif night_light == "False":
                     self.nightlight_active = False
+                    self.sunlight_percent = 100  # LED light sunlight percentage boost
                     return "OFF"
                 else:
                     v1_print(_who, "night_light is NOT 'True' or 'False':", night_light)
-                    self.nightlight_active = True
                     return "ON"
         else:
             pass  # if no `gsettings` then no GNOME Nightlight
 
-
+        # GNOME Nightlight is not running. Check if eyesome is running.
         fname = GLO['SUNLIGHT_PERCENT']
         if not os.path.isfile(fname):
+            v0_print(_who, GLO['SUNLIGHT_PERCENT'], "file not found.")
             return "ON"  # Default to always turn bias lights on
-
-        # 2024-12-16 TODO: Read file directly. Use EYESOME_PERCENT_FNAME
 
         text = ext.read_into_string(fname)
         v3_print("\n" + _who, "SUNLIGHT_PERCENT string:", text, "\n")
-        #percent_str = None
+
         try:
             percent_str = text.split("%")[0]
         except IndexError:
+            v0_print(_who, GLO['SUNLIGHT_PERCENT'], "line 1 missing '%' character:",
+                     "'" + text + "'.")
             return "ON"  # Default to always turn bias lights on
 
-        if percent_str is not None:
-            self.eyesome_active = True
-            try:
-                percent = int(percent_str)
-                v3_print(_who, "eyesome percent:", percent)
-                self.sunlight_percent = percent
-                if percent == 100:
-                    self.nightlight_active = False
-                    return "OFF"  # 100 % sunlight
-                else:
-                    self.nightlight_active = True
-                    return "ON"
-            except ValueError:
-                v3_print(_who, "eyesome percent VALUE ERROR:", text[0])
-                self.eyesome_active = False
-        else:
-            self.eyesome_active = False
+        if percent_str is None:
+            v0_print(_who, GLO['SUNLIGHT_PERCENT'], "Invalid text file:",
+                     "'" + text + "'.")
+            return "ON"
+
+        try:
+            percent = int(percent_str)
+            v3_print(_who, "eyesome percent:", percent)
+            self.sunlight_percent = percent  # LED light sunlight percentage boost
+            if percent == 100:
+                self.nightlight_active = False
+                return "OFF"  # = '100 %' sunlight
+        except ValueError:
+            v0_print(_who, "eyesome percent VALUE ERROR",
+                     "'percent_str': '" + percent_str + "'.")
 
         self.nightlight_active = True
         return "ON"  # Default to always turn bias lights on
@@ -1879,8 +1888,8 @@ class TreeviewRow(DeviceCommonSelf):
             :returns: nothing
         """
         _who = self.who + "Update():"
-        if not self.isActive:
-            return  # Shutting down
+        if not self.isActive or not self.top.winfo_exists():
+            return  # Shutting down. 2025-05-16 add winfo_exists test.
 
         self.top.photos[int(item)] = self.photo  # changes if swapping rows
         self.top.tree.item(
@@ -2888,8 +2897,8 @@ https://stackoverflow.com/questions/2829613/how-do-you-tell-if-a-string-contains
 
     def checkVolumeChange(self, forgive=False):
         """ If current volume is different than last volume spam notify-send
-            Called from app.refreshApp() every 16 milliseconds
-            Copied from /mnt/e/bin/tvpowered
+            Called from app.refreshApp() every 16 to 33 milliseconds (60 to 30 fps)
+            DO NOT use event logging because each volume display is separate entry
 
             Normally event logging would be turned off to prevent large dictionary.
         """
@@ -2901,10 +2910,13 @@ https://stackoverflow.com/questions/2829613/how-do-you-tell-if-a-string-contains
         if self.volume == self.volumeLast:
             return False
         self.volumeLast = self.volume
+        title = self.ip  # 192.168.0.19
+        title = self.name if self.name is not None else title  # SONY.LAN
+        title = self.alias if self.alias is not None else title  # Sony Bravia KDL TV
 
         percentBar = self.makePercentBar(int(self.volume))
         command_line_list = [
-            "notify-send", "--urgency=critical", "HomA",
+            "notify-send", "--urgency=critical", title,
             "-h", "string:x-canonical-private-synchronous:volume",
             "--icon=/usr/share/icons/gnome/48x48/devices/audio-speakers.png",
             "Volume: {} {}".format(self.volume, percentBar)]
@@ -3722,7 +3734,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
             # 2025-01-10 TODO: Message `hcitool` required
             msg = "The program `hciconfig` is required to reset Bluetooth.\n\n"
             msg += "sudo apt-get install hciconfig bluez bluez-tools rfkill\n\n"
-            self.app.ShowInfo("Missing program.", msg, icon="error")
+            self.app.showInfoMsg("Missing program.", msg, icon="error")
             return "OFF"  # Prevents other methods running until turned "ON"
 
         msg = "Sudo password required to reset bluetooth."
@@ -4405,7 +4417,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
             self.device = None
             self.powerStatus = "?"
 
-            # Count sequential errors and after x times ShowInfo()
+            # Count sequential errors and after x times showInfoMsg()
             self.connect_errors += 1
             if self.connect_errors > retry:
                 # if self.app.suspending or self.app.resuming no message
@@ -4440,7 +4452,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         self.powerStatus = "?"
 
         if self.app and self.app.usingDevicesTreeview:
-            self.app.refreshDeviceStatusForInst(self)
+            self.app.refreshPowerStatusForInst(self)
 
         # 2025-01-24 message appears multiple times in code
         if err is not None:
@@ -4485,7 +4497,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         if self.app is not None:
             if not self.app.suspending and not self.app.resuming and \
                     GLO['APP_RESTART_TIME'] < time.time() - 60:
-                self.app.ShowInfo("Not connected", msg, "error", align="left")
+                self.app.showInfoMsg("Not connected", msg, "error", align="left")
             else:
                 v0_print(_who, "\nCannot display message when starting,",
                          "suspending or resuming.")
@@ -4677,6 +4689,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.last_rediscover_time = time.time()  # Last analysis of `arp -a`
         self.rediscovering = False  # Is self.Rediscover() function in progress?
         self.last_minute = "0"  # Check sunlight percentage every minute
+        self.force_refresh_power_time = time.time() + 60.0  # 1 minute after startup
 
         if p_args.fast:
             # Allow 3 seconds to move mouse else start rediscover
@@ -4784,13 +4797,13 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         ''' Assign this Application() instance to network devices (inst.app) variable:
                 - Laptop Display() and Router() needs to call .GetPassword() method.
                 - Sony TV assigned to self.sonySaveInst (Only the last Sony TV!)
-                - BLE LED Light Strip() needs to call .ShowInfo() method.  '''
+                - BLE LED Light Strip() needs to call .showInfoMsg() method.  '''
         for instance in ni.instances:
             inst = instance['instance']
             if inst.type_code == GLO['LAPTOP_D'] or inst.type_code == GLO['ROUTER_M']:
                 inst.app = self  # calls sudo
             elif inst.type_code == GLO['BLE_LS']:
-                inst.app = self  # BluetoothLedLightStrip calls app.ShowInfo()
+                inst.app = self  # BluetoothLedLightStrip calls app.showInfoMsg()
                 ble.app = self  # For functions called from Dropdown menu
                 self.bleSaveInst = inst  # For breathing colors monitoring
             elif inst.type_code == GLO['KDL_TV']:
@@ -4837,7 +4850,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
     def buildDropdown(self):
         """ Build dropdown Menu bars: File, Edit, View & Tools """
 
-        def ForgetPassword():
+        def forgetPassword():
             """ 'Tools' dropdown, 'Forget sudo password' option """
             GLO['SUDO_PASSWORD'] = None  # clear global password in HomA
             command_line_list = ["sudo", "-K"]  # clear password in Linux
@@ -4916,7 +4929,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                                     underline=0, menu=lights_menu)
         lights_menu.config(activebackground="SkyBlue3", activeforeground="black")
         self.tools_menu.add_command(label="Forget sudo password", underline=0,
-                                    font=g.FONT, command=ForgetPassword, state=tk.DISABLED)
+                                    font=g.FONT, command=forgetPassword, state=tk.DISABLED)
 
         self.tools_menu.add_separator()
 
@@ -5026,7 +5039,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             msg = "Device rediscovery is in progress for a few seconds."
 
         if msg and not kill_now:  # Cannot suspend when other jobs are active
-            self.ShowInfo("Cannot Close now.", msg, icon="error")
+            self.showInfoMsg("Cannot Close now.", msg, icon="error")
             v0_print(_who, "Aborting Close.", msg)
             return
 
@@ -5064,36 +5077,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             v0_print("sm.skipped_fan_200d:", "{:,d}".format(sm.skipped_fan_200d).rjust(9))
             v0_print("sm.skipped_logs    :", "{:,d}".format(sm.skipped_logs).rjust(9))
             v0_print("sm.number_logs     :", "{:,d}".format(sm.number_logs).rjust(9))
-
-            ''' 2025-05-07 Rediscover still running after suspend/resume? 
-sm.skipped_checks  :   211,697
-sm.number_checks   :    33,226
-sm.skipped_fan_same:    48,512
-sm.skipped_fan_200d:    17,698
-sm.skipped_logs    :    33,007
-sm.number_logs     :       219
-Traceback (most recent call last):
-  File "./homa.py", line 7962, in <module>
-
-  File "./homa.py", line 7956, in main
-
-  File "./homa.py", line 4797, in __init__
-    while self.refreshApp():  # Run forever until quit
-  File "./homa.py", line 5797, in refreshApp
-    ... (Cut) ...
-  File "./homa.py", line 6277, in Rediscover
-
-  File "./homa.py", line 6199, in RefreshAllPowerStatuses
-    v2_print("\n" + _who, "i:", i, "cr.mac:", cr.mac)
-  File "./homa.py", line 1938, in Update
-    str(item), image=self.photo, text=self.text, values=self.values)
-  File "/usr/lib/python2.7/lib-tk/ttk.py", line 1353, in item
-    return _val_or_dict(self.tk, kw, self._w, "item", item)
-  File "/usr/lib/python2.7/lib-tk/ttk.py", line 299, in _val_or_dict
-    res = tk.call(*(args + options))
-_tkinter.TclError: invalid command name ".140002299280200.140002298813040"
-
-            '''
 
         ''' If bluetooth LED Light Strips used, turnOff() for next HomA startup '''
         if self.bleSaveInst:
@@ -5143,7 +5126,7 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
 
     def Motion(self, *_args):
         """ Window or menu had motion, reset last rediscovery time.
-            This will break resumeAfterSuspend() action to force rediscovery
+            This will break resumeFromSuspend() action to force rediscovery
 
             See: https://www.tcl.tk/man/tcl8.4/TkCmd/bind.htm#M15
         """
@@ -5769,7 +5752,7 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
         if delta > GLO['RESUME_TEST_SECONDS']:  # Assume > is resume from suspend
             v0_print("\n" + "= "*4, _who, "Resuming from suspend after:",
                      tmf.days(delta), " ="*4 + "\n")
-            self.resumeAfterSuspend()  # Resume Wait + Conditionally Power on devices
+            self.resumeFromSuspend()  # Resume Wait + Conditionally Power on devices
 
         if not self.winfo_exists():  # Application window destroyed?
             return False  # self.close() has set to None
@@ -5798,6 +5781,11 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
         ''' Always give time slice to tooltips - requires sql.py color config '''
         self.tt.poll_tips()  # Tooltips fade in and out
         self.update()  # process pending tk events in queue
+
+        ''' 1 minute after start or resume refresh lagging power statuses '''
+        if self.force_refresh_power_time:
+            self.refreshAllPowerStatuses()  # Display "ON", "OFF" or "?"
+            self.force_refresh_power_time = 0.0  # Don't do it again
 
         if not self.winfo_exists():  # Application window destroyed?
             return False  # self.close() has set to None
@@ -5862,7 +5850,7 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
             msg = "Device rediscovery is in progress for a few seconds."
 
         if msg:  # Cannot suspend when other jobs are active
-            self.ShowInfo("Cannot Suspend now.", msg, icon="error")
+            self.showInfoMsg("Cannot Suspend now.", msg, icon="error")
             v0_print(_who, "Aborting suspend.", msg)
             return
 
@@ -5894,20 +5882,21 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
         last_now = time.time()
         while True:  # Loop forever until suspend completed by OS
             now = time.time()
-            self.update()
-            self.after(100)
+            self.update()  # update tkinter screen
+            self.after(100)  # idle loop 100ms
             if now - last_now > 2.0:
-                break  # Lost more than 2 seconds so suspend finished and we've resumed
+                break  # s/b 100 ms but Lost more than 2 seconds so now suspended
             else:
                 last_now = now
 
+        time_to_suspend = last_now - start_suspend - 0.05  # assume half way of 100ms
+        v0_print(_who, "Time required to suspend the system:", time_to_suspend)
+
         resume_now = time.time()
         delta = resume_now - last_now
-        v0_print("\n" + "= "*4, _who, "Resuming from suspend after:",
+        v0_print("\n" + "= "*4, _who, "Time spent sleeping / suspended:",
                  tmf.days(delta), " ="*4 + "\n")
 
-        time_to_suspend = last_now - start_suspend
-        v0_print(_who, "time_to_suspend:", time_to_suspend)
         GLO['LOG_EVENTS'] = False  # Turn off event logging
         self.last_refresh_time = start_suspend
         self.isActive = True  # Signal closing so methods shut down elegantly.
@@ -5915,9 +5904,9 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
         self.resuming = True  # Don't display error messages
 
         ''' Automatically call resume to power on devices. '''
-        self.resumeAfterSuspend(suspended_by_homa=True)
+        self.resumeFromSuspend(suspended_by_homa=True)
 
-    def resumeAfterSuspend(self, suspended_by_homa=False):
+    def resumeFromSuspend(self, suspended_by_homa=False):
         """ Resume from suspend. Display status of devices that were
             known at time of suspend. Then set variables to trigger
             rediscovery for any new devices added.
@@ -5941,7 +5930,10 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
         #global rd  # 2025-05-15 comment out
         #rd = None  # In case rediscovery was in progress during suspend
         #self.rediscover_done = True  # 2025-05-15 comment out
-        _who = self.who + "resumeAfterSuspend():"
+        _who = self.who + "resumeFromSuspend():"
+        if not suspended_by_homa:
+            v0_print(_who, "Suspend was called outside of HomA.")
+
         self.isActive = True  # Application GUI is active again
         self.resuming = True  # Prevent error dialogs from interrupting resume
         self.suspending = False  # No longer suspending
@@ -5952,23 +5944,20 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
         self.resumeWait()  # Wait for network to come online
         delta = int(time.time() - start_time)
         v0_print(_who, "Waited", delta, "seconds for network to come up.")
-        if not suspended_by_homa:
-            v0_print(_who, "Suspend was called outside of HomA.")
-
+        isNight = cp.getNightLightStatus()
+        v0_print(_who, "Nightlight status: '" + isNight + "'")
         v1_print("\n" + _who, "ni.view_order:", ni.view_order)
 
-        # Turn all devices on
-        self.turnAllPower("ON")  # This also shows new status in devices treeview
+        self.turnAllPower("ON")  # Turn all devices on and show new status in treeview
 
-        # Set variables to force rediscovery
         now = time.time()
-        # Force rediscovery immediately after resume from suspend
-        self.last_rediscover_time = now - GLO['REDISCOVER_SECONDS'] * 10.0
-        self.last_refresh_time = now + 1.0  # If abort, don't come back here
-        sm.last_sensor_log = now - GLO['SENSOR_LOG'] * 2  # Force log
+        self.last_rediscover_time = now - GLO['REDISCOVER_SECONDS'] * 2  # Force discovery
+        self.last_refresh_time = now + 1.0  # Prevent running resumeFromSuspend() again
+        sm.last_sensor_log = now - GLO['SENSOR_LOG'] * 2  # Force sensors log immediately
         self.resuming = False  # Allow error dialogs to appear on screen
-        GLO['APP_RESTART_TIME'] = now
-        GLO['LOG_EVENTS'] = False  # Turn off event logging
+        GLO['APP_RESTART_TIME'] = now  # Sensors log restart at 0.0 seconds
+        GLO['LOG_EVENTS'] = False  # Turn off command event logging
+        self.force_refresh_power_time = now + 60.0
 
     def resumeWait(self, timer=None, alarm=True, title=None, abort=True):
         """ Wait x seconds for devices to come online. If 'timer' passed do a
@@ -6022,7 +6011,7 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
             self.dtb.update(str(int(start + countdown_sec - time.time())))
             # Suspend uses: 'self.after(150)'
             self.after(100)
-            # During countdown timer, don't trigger resumeAfterSuspend()
+            # During countdown timer, don't trigger resumeFromSuspend()
             self.last_refresh_time = time.time() + 1.0
             if timer or not self.CheckInstalled("nmcli"):
                 continue
@@ -6052,13 +6041,13 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
             :param type_code: Process specific type_code outside of suspend/resume
         """
         _who = self.who + "turnAllPower(" + state + "):"
-        isNight = cp.getNightLightStatus()
-        v1_print(_who, "Nightlight status: '" + isNight + "'")
+        isNight = cp.getNightLightStatus()  # Already v0 printed in resumeFromSuspend()
+        v2_print(_who, "Nightlight status: '" + isNight + "'")  # Lights turn on at night
         cr = None  # Network devices treeview row instance and current iid
         if fade and self.usingDevicesTreeview:
-            cr = TreeviewRow(self)
+            cr = TreeviewRow(self)  # Used to fade in row over 300ms
 
-        # Loop through ni.instances
+        # Loop through discovered devices stored in  ni.instances[]
         for i, instance in enumerate(ni.instances):
             inst = instance['instance']
 
@@ -6192,7 +6181,7 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
         style = ttk.Style()
         style.configure("Treeview", edge_color=edge_color, edge_px=5)
 
-    def RefreshAllPowerStatuses(self, auto=False):
+    def refreshAllPowerStatuses(self, auto=False):
         """ Read ni.instances and update the power statuses.
             Called from one place: self.Rediscover(auto=auto)
             If Devices Treeview is visible (mounted) update power status.
@@ -6202,7 +6191,7 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
             :param auto: If 'False', called from menu "Rediscover Now". Can
                 also be forced on by auto-rediscovery on first time.
         """
-        _who = self.who + "RefreshAllPowerStatuses():"
+        _who = self.who + "refreshAllPowerStatuses():"
 
         # If auto, called automatically at GLO['REDISCOVER_SECONDS']
         cr = iid = None  # Assume Sensors Treeview is displayed
@@ -6308,7 +6297,7 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
         v2_print(_who, "Rediscovery count:", len(rd.arp_dicts))
 
         # Refresh power status for all device instances in ni.arp_dicts
-        self.RefreshAllPowerStatuses(auto=auto)  # When auto false, rows highlighted
+        self.refreshAllPowerStatuses(auto=auto)  # When auto false, rows highlighted
 
         for i, rediscover in enumerate(rd.arp_dicts):
             if not self.isActive:
@@ -6398,9 +6387,9 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
             ni.cmdEvents.extend(rd.cmdEvents)  # For auto-rediscover, rd.cmdEvents[] empty
         dodge()
 
-    def refreshDeviceStatusForInst(self, inst):
+    def refreshPowerStatusForInst(self, inst):
         """ Called by BluetoothLED """
-        _who = self.who + "refreshDeviceStatusForInst():"
+        _who = self.who + "refreshPowerStatusForInst():"
         if not self.usingDevicesTreeview:
             return
         # Find instance in treeview
@@ -6451,7 +6440,7 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
         password = hc.ValidateSudoPassword(answer.string)
         if password is None:
             msg = "Invalid sudo password!\n\n"
-            self.ShowInfo("Invalid sudo password", msg, icon="error")
+            self.showInfoMsg("Invalid sudo password", msg, icon="error")
 
         self.last_refresh_time = time.time()  # Refresh idle loop last entered time
         return password  # Will be <None> if invalid password entered
@@ -6466,12 +6455,12 @@ _tkinter.TclError: invalid command name ".140002299280200.140002298813040"
         self.after(10)
         self.update()  # Suspend button stays blue after mouseover ends?
 
-    def ShowInfo(self, title, text, icon="information", align="center"):
+    def showInfoMsg(self, title, text, icon="information", align="center"):
         """ Show message with thread safe refresh that doesn't invoke rediscovery.
 
             Can be called from instance which has no tk reference of it's own
                 From Application initialize with:   inst.app = self
-                From Instance call method with:     self.app.ShowInfo()
+                From Instance call method with:     self.app.showInfoMsg()
         """
         #def thread_safe():
         #    """ Prevent self.refreshApp rerunning a second rediscovery during
@@ -7858,7 +7847,7 @@ def save_files():
 
 
 def dummy_thread():
-    """ Needed for ShowInfo from root window. """
+    """ Needed for showInfoMsg from root window. """
     root.update()
     root.after(30)
 
