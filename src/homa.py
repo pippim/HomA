@@ -599,7 +599,7 @@ class Globals(DeviceCommonSelf):
         self.dictGlobals = {
             "SONY_PWD": "123",  # Sony TV REST API password
             "CONFIG_FNAME": "config.json",  # Future configuration file.
-            "DEVICES_FNAME": "devices.json",  # mirrors ni.arp_dicts[{}, {}, ... {}]
+            "DEVICES_FNAME": "devices.json",  # mirrors ni.mac_dicts[{}, {}, ... {}]
             "VIEW_ORDER_FNAME": "view_order.json",  # Read into ni.view_order[mac1, mac2, ... mac9]
 
             # Timeouts improve device interface performance
@@ -951,17 +951,13 @@ class Computer(DeviceCommonSelf):
         features. If a computer (not a laptop) then use one image.
 
         All desktops and laptops have Ethernet. The ethernet MAC address
-        is used to identify the computer in arp_dicts dictionaries.
+        is used to identify the computer in mac_dicts dictionaries.
 
         All laptops have WiFi. The WiFi MAC address is used to identify
-        the laptop display in arp_dicts dictionaries.
+        the laptop display in mac_dicts dictionaries.
 
         A desktop with ethernet and WiFi will only have it's ethernet
-        MAC address stored in arp_dicts dictionaries.
-
-        2025-03-03 TODO: Computer, Laptop (Base) and Laptop (Display) should
-            NOT require a MAC address to appear. They should be hard-coded
-            into ni.arp_dicts[] list.
+        MAC address stored in mac_dicts dictionaries.
 
     """
 
@@ -1344,14 +1340,14 @@ class NetworkInfo(DeviceCommonSelf):
         rd = NetworkInfo() rediscovery called every minute
 
         LISTS
-        self.devices     Devices from `arp -a`
+        self.arp_results Devices from `arp -a`
         self.hosts       Devices from `getent hosts`
         self.host_macs   Optional MAC addresses at end of /etc/hosts
         self.view_order  Treeview list of MAC addresses
 
         LISTS of DICTIONARIES
-        self.arp_dicts   First time discovered, thereafter read from disk
-        self.instances   TclGoogleAndroidTV, SonyBraviaKdlTV, etc. instances
+        self.device_dicts First time discovered, thereafter read from disk
+        self.instances    TclGoogleAndroidTV, SonyBraviaKdlTV, etc. instances
 
         # Miscellaneous - nmap takes 10 seconds so call on demand with wait cursor
         # nmap 192.168.0.0/24
@@ -1379,10 +1375,13 @@ class NetworkInfo(DeviceCommonSelf):
 
         self.last_row = ""  # used by rediscovery processing one row at a time
 
-        # Create self.devices from arp
+        # Create self.arp_results from arp
         v3_print("\n===========================  arp -a  ===========================")
         # Format: 'SONY.LAN (192.168.0.19) at ac:9b:0a:df:3f:d9 [ether] on enp59s0'
-        self.devices = []
+        self.arp_results = []
+        # Unfortunately, ni.mac_dicts saved to filename "devices.json"
+        # TODO: Rename mac_dicts to device_dicts because it includes non-arp devices
+        #           like bluetooth, ethernet adapter, wifi adapter, and router.
         command_line_list = ["arp", "-a"]
         event = self.runCommand(command_line_list, _who)
 
@@ -1392,7 +1391,7 @@ class NetworkInfo(DeviceCommonSelf):
             devices = event['output'].split("\n")
 
         for device in devices:
-            self.devices.append(device)
+            self.arp_results.append(device)
             v3_print(device, end="")
 
         # Create self.hosts from /etc/hosts
@@ -1416,7 +1415,6 @@ class NetworkInfo(DeviceCommonSelf):
         # get mac addresses: https://stackoverflow.com/a/26892371/6929343
         import re
         p = re.compile(r'(?:[0-9a-fA-F]:?){12}')  # regex MAC Address
-        _host_data = {}  # keyed by host_mac, value = list [IP, name, alias, host_mac, last_IP]
         self.host_macs = []
         for host in self.hosts:
             # 192.168.0.16    SONY.WiFi android-47cdabb50f83a5ee 18:4F:32:8D:AA:97
@@ -1459,7 +1457,7 @@ class NetworkInfo(DeviceCommonSelf):
             # 2024-10-14 - Future conversion from host_mac to host_dict
             self.host_macs.append(host_mac)
 
-        # Append self.devices with Computer() attributes
+        # Append self.arp_results with Computer() attributes
         v3_print("\n==================== cp = Computer.__init()  ===================")
         # Format inside /etc/hosts
         # 192.168.0.10    Alien  AW 17R3 WiFi        9c:b6:d0:10:37:f7
@@ -1475,7 +1473,7 @@ class NetworkInfo(DeviceCommonSelf):
         device = cp.name + " (" + ip + ") at "
         device += cp.ether_mac + " [ether] on " + cp.ether_name
         # TODO change device when connected to WiFi
-        self.devices.append(device)
+        self.arp_results.append(device)
         v3_print(device, end="")
         #print(device)
 
@@ -1487,19 +1485,16 @@ class NetworkInfo(DeviceCommonSelf):
             device = cp.name + " (" + ip + ") at "
             device += cp.wifi_mac + " [ether] on " + cp.wifi_name
             # TODO change device when connected to WiFi
-            self.devices.append(device)
+            self.arp_results.append(device)
             v3_print("\n" + device, end="")
             #print(device)
 
         v3_print("\n=========================  arp MACs  ===========================")
         v3_print("MAC address".ljust(18), "IP".ljust(14), "Name".ljust(15), "Alias\n")
-        # get mac addresses: https://stackoverflow.com/a/26892371/6929343
-        import re
-        _arp_data = {}  # keyed by arp_mac, value = list [IP, name, alias, arp_mac, last_IP]
-        self.arp_dicts = []  # First time discovered, thereafter read from disk
+        self.mac_dicts = []  # First time discovered, thereafter read from disk
         self.instances = []  # TclGoogleAndroidTV, SonyBraviaKdlTV, etc. instances
         self.view_order = []  # Sortable list of MAC addresses matching instances
-        for device in self.devices:
+        for device in self.arp_results:
             # e.g. "SONY.light (192.168.0.15) at 50:d4:f7:eb:41:35 [ether] on enp59s0"
             parts = None
             try:
@@ -1511,10 +1506,10 @@ class NetworkInfo(DeviceCommonSelf):
             except IndexError:  # name = parts[0] ERROR
                 v0_print(_who, "List index error: '" + str(parts) + "'.")
                 name = ip = mac = alias = "N/A"
-            arp_mac = mac + "  " + ip.ljust(15) + name.ljust(16) + alias
-            v3_print(arp_mac)
+
+            v3_print(_who, mac + "  " + ip.ljust(15) + name.ljust(16) + alias)
             mac_dict = {"mac": mac, "ip": ip, "name": name, "alias": alias}
-            self.arp_dicts.append(mac_dict)
+            self.mac_dicts.append(mac_dict)
 
         # Add fake arp dictionary for Bluetooth LED Light Strip
         v2_print("len(GLO['LED_LIGHTS_MAC']):", len(GLO['LED_LIGHTS_MAC']))  # 0 ???
@@ -1524,17 +1519,17 @@ class NetworkInfo(DeviceCommonSelf):
                          "ip": "irrelevant",
                          "name": "Bluetooth LED",
                          "alias": "Bluetooth LED Light Strip"}
-            self.arp_dicts.append(fake_dict)
+            self.mac_dicts.append(fake_dict)
             v3_print("fake_dict:", fake_dict)
 
-        v2_print(_who, "arp_dicts:", self.arp_dicts)  # 2024-11-09 now has Computer()
-        v2_print(_who, "instances:", self.instances)  # Empty list for now noy in
-        v2_print(_who, "view_order:", self.view_order)  # Empty list for now
-        #print("cp.ether_name:", cp.ether_name,  " | cp.ether_mac:",
-        #      cp.ether_mac,  " | cp.ether_ip:", cp.ether_ip)
+        v2_print(_who, "mac_dicts:", self.mac_dicts)  # 2024-11-09 now has Computer()
+        v2_print(_who, "instances:", self.instances)  # Empty list until discovery
+        v2_print(_who, "view_order:", self.view_order)  # Empty list until discovery
+        v2_print(_who, "cp.ether_name:", cp.ether_name,  " | cp.ether_mac:",
+                 cp.ether_mac,  " | cp.ether_ip:", cp.ether_ip)
         # name: enp59s0  | mac: 28:f1:0e:2a:1a:ed  | ip: 192.168.0.12
-        #print("cp.wifi_name :", cp.wifi_name, " | cp.wifi_mac :",
-        #      cp.wifi_mac, " | cp.wifi_ip :", cp.wifi_ip)
+        v2_print(_who, "cp.wifi_name :", cp.wifi_name, " | cp.wifi_mac :",
+                 cp.wifi_mac, " | cp.wifi_ip :", cp.wifi_ip)
         # name : wlp60s0  | mac : 9c:b6:d0:10:37:f7  | ip : 192.168.0.10
 
     def adb_reset(self, background=False):
@@ -1701,17 +1696,17 @@ class NetworkInfo(DeviceCommonSelf):
         v3_print(_who, "reply_dict:", reply_dict)
         return reply_dict
 
-    def arp_for_mac(self, mac):
-        """ Get arp_dict by mac address.
+    def get_mac_dict(self, mac):
+        """ Get mac_dict by mac address.
             :param mac: MAC address
-            :returns: arp_dict
+            :returns: mac_dict
         """
-        _who = self.who + "arp_for_mac():"
+        _who = self.who + "get_mac_dict():"
 
-        for arp_dict in self.arp_dicts:
-            if arp_dict['mac'] == mac:
-                v2_print(_who, "Found existing ni.arp_dict:", arp_dict['name'])
-                return arp_dict
+        for mac_dict in self.mac_dicts:
+            if mac_dict['mac'] == mac:
+                v2_print(_who, "Found existing ni.mac_dict:", mac_dict['name'])
+                return mac_dict
 
         v0_print(_who, "mac address unknown: '" + str(mac) + "'")
 
@@ -1719,7 +1714,7 @@ class NetworkInfo(DeviceCommonSelf):
 
     def inst_for_mac(self, mac, not_found_error=True):
         """ Get device instance for mac address. Instances are dynamically
-            created at run time and cannot be saved in arp_dict.
+            created at run time and cannot be saved in mac_dict.
             :param mac: MAC address
             :param not_found_error: When True print debug error message
             :returns: existing class instance for controlling device
@@ -1772,7 +1767,7 @@ class NetworkInfo(DeviceCommonSelf):
             instances.append({"mac": arp['mac'], "instance": inst})
             view_order.append(arp['mac'])
             if update:
-                ni.arp_dicts[i] = arp  # Update arp list
+                ni.mac_dicts[i] = arp  # Update arp list
             '''
             instance["mac"] = arp['mac']
             instance["instance"] = inst
@@ -1836,10 +1831,10 @@ class TreeviewRow(DeviceCommonSelf):
         self.name_column = None  # Device Name & IP address - values[0]
         self.attribute_column = None  # 3 line device Attributes - values[1]
         self.mac = None  # MAC address - hidden column values[-1] / values[2]
-        # self.mac - arp_dict['mac'] - is non-displayed treeview column
-        # used to reread arp_dict
+        # self.mac - mac_dict['mac'] - is non-displayed treeview column
+        # used to reread mac_dict
 
-        self.arp_dict = None  # device dictionary
+        self.mac_dict = None  # device dictionary
         self.inst = None  # device instance
         self.inst_dict = None  # instance dictionary
 
@@ -1858,10 +1853,10 @@ class TreeviewRow(DeviceCommonSelf):
         self.values = self.top.tree.item(self.item)['values']
         self.name_column = self.values[0]  # Host name / IP address
         self.attribute_column = self.values[1]  # Host alias / MAC / Type Code
-        self.mac = self.values[2]  # arp_dict['mac'] is non-displayed value
+        self.mac = self.values[2]  # mac_dict['mac'] is non-displayed value
 
         try:
-            self.arp_dict = ni.arp_for_mac(self.mac)
+            self.mac_dict = ni.get_mac_dict(self.mac)
             self.inst_dict = ni.inst_for_mac(self.mac)
             self.inst = self.inst_dict['instance']
         except IndexError:
@@ -1907,22 +1902,22 @@ class TreeviewRow(DeviceCommonSelf):
         _who = self.who + "New():"
         if not self.isActive:
             return  # Shutting down
-        self.arp_dict = ni.arp_for_mac(mac)
+        self.mac_dict = ni.get_mac_dict(mac)
 
-        # self.mac is non-displayed treeview column used to reread arp_dict
+        # self.mac is non-displayed treeview column used to reread mac_dict
         self.mac = mac  # MAC address
         self.inst_dict = ni.inst_for_mac(mac)  # instance dictionary
         try:
             self.inst = self.inst_dict['instance']
         except KeyError:
             v0_print("self.inst_dict has no 'instance' key:", self.inst_dict)
-            v0_print("self.arp_dict has no instance:", self.arp_dict)
+            v0_print("self.mac_dict has no instance:", self.mac_dict)
             # return  # 2025-01-12 need self.values defined
 
         try:
-            type_code = self.arp_dict['type_code']
+            type_code = self.mac_dict['type_code']
         except KeyError:
-            v0_print(_who, "Key 'type_code' not in 'arp_dict':", self.arp_dict)
+            v0_print(_who, "Key 'type_code' not in 'mac_dict':", self.mac_dict)
             type_code = None
 
         # TV's are 16/9 = 1.8. Treeview uses 300/180 image = 1.7.
@@ -1965,9 +1960,9 @@ class TreeviewRow(DeviceCommonSelf):
         else:
             self.text = "  " + self.inst.powerStatus  # Power state already known
         self.name_column = name  # inst.name or "?" if not found
-        self.name_column += "\nIP: " + self.arp_dict['ip']
-        self.attribute_column = self.arp_dict['alias']
-        self.attribute_column += "\nMAC: " + self.arp_dict['mac']
+        self.name_column += "\nIP: " + self.mac_dict['ip']
+        self.attribute_column = self.mac_dict['alias']
+        self.attribute_column += "\nMAC: " + self.mac_dict['mac']
         self.attribute_column += "\n" + type_code  # inst.type or "?" if not found
         self.values = (self.name_column, self.attribute_column, self.mac)
 
@@ -2082,7 +2077,7 @@ class SystemMonitor(DeviceCommonSelf):
         self.attribute_column = None  # Applications() 3 line device Attributes - values[1]
         self.mac = None  # Applications() MAC address - hidden row values[-1] / values[2]
 
-        self.arp_dict = None  # Applications() device dictionary
+        self.mac_dict = None  # Applications() device dictionary
         self.inst = None  # Applications() device instance
         self.inst_dict = None  # Applications() instance dictionary
 
@@ -4689,7 +4684,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.last_rediscover_time = time.time()  # Last analysis of `arp -a`
         self.rediscovering = False  # Is self.Rediscover() function in progress?
         self.last_minute = "0"  # Check sunlight percentage every minute
-        self.force_refresh_power_time = time.time() + 60.0  # 1 minute after startup
+        self.force_refresh_power_time = time.time() + 90.0  # 1 minute after treeview done
 
         if p_args.fast:
             # Allow 3 seconds to move mouse else start rediscover
@@ -5202,9 +5197,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         # Build treeview in last used MAC Address Order
         for i, mac in enumerate(ni.view_order):
-            arp_dict = ni.arp_for_mac(mac)
-            if len(arp_dict) < 2:
-                v1_print(_who, "len(arp_dict) < 2")
+            mac_dict = ni.get_mac_dict(mac)
+            if len(mac_dict) < 2:
+                v1_print(_who, "len(mac_dict) < 2")
                 continue  # TODO: Error message on screen
 
             nr = TreeviewRow(self)  # Setup treeview row processing instance
@@ -5373,7 +5368,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         ''' Highlight selected treeview row '''
         cr = TreeviewRow(self)  # Make current row instances
         cr.Get(item)  # Get current row
-        name = cr.arp_dict['name']  # name is used in menu option text
+        name = cr.mac_dict['name']  # name is used in menu option text
         cr.inst.powerStatus = "?" if cr.inst.powerStatus is None else cr.inst.powerStatus
         cr.text = "  " + str(cr.inst.powerStatus)  # Display treeview row new power state
         cr.Update(item)  # Update iid with new ['text']
@@ -5382,7 +5377,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         ''' If View Breathing Statistics is running, color options are disabled.
             Message cannot be displayed when menu painted because it causes focus out. 
-        if self.bleScrollbox and cr.arp_dict['type_code'] == GLO['BLE_LS']:
+        if self.bleScrollbox and cr.mac_dict['type_code'] == GLO['BLE_LS']:
             title = "View stats disables colors"  # 2025-02-09 - Doesn't work properly.
         else:
             title = None
@@ -5400,14 +5395,14 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         menu.post(event.x_root, event.y_root)
 
-        if cr.arp_dict['type_code'] == GLO['LAPTOP_D']:
+        if cr.mac_dict['type_code'] == GLO['LAPTOP_D']:
             help_id = "HelpRightClickLaptopDisplay"
             # Laptop display has very fast power status response time. The
             # Pippim movie.sh script powers on/off laptop display with x-idle,
             # so double check backlight power status.
             cr.inst.getPower()  # Set current laptop display cr.inst.powerStatus
 
-        if cr.arp_dict['type_code'] == GLO['KDL_TV']:
+        if cr.mac_dict['type_code'] == GLO['KDL_TV']:
             # Sony TV has power save mode to turn picture off and listen to music
             help_id = "HelpRightClickSonyTV"
             menu.add_command(
@@ -5422,7 +5417,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
             menu.add_separator()
 
-        if cr.arp_dict['type_code'] == GLO['BLE_LS']:
+        if cr.mac_dict['type_code'] == GLO['BLE_LS']:
             # Bluetooth Low Energy LED Light Strip
             help_id = "HelpRightClickBluetooth"
             name_string = "Set " + name + " Color"
@@ -5499,7 +5494,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         menu.bind("<FocusOut>", _closePopup)
 
         # Enable Turn On/Off menu options depending on current power status.
-        if cr.arp_dict['type_code'] == GLO['KDL_TV'] and cr.inst.powerStatus == "ON":
+        if cr.mac_dict['type_code'] == GLO['KDL_TV'] and cr.inst.powerStatus == "ON":
             cr.inst.getPowerSavingMode()  # Get power savings mode
             if cr.inst.powerSavingMode == "OFF":
                 menu.entryconfig(name + " Picture Off ", state=tk.NORMAL)
@@ -5515,8 +5510,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             menu.entryconfig("Turn Off " + name, state=tk.NORMAL)
 
         # Never allow turning off computer by menu (breaks suspend process)
-        if cr.arp_dict['type_code'] == GLO['LAPTOP_B'] or \
-                cr.arp_dict['type_code'] == GLO['DESKTOP']:
+        if cr.mac_dict['type_code'] == GLO['LAPTOP_B'] or \
+                cr.mac_dict['type_code'] == GLO['DESKTOP']:
             menu.entryconfig("Turn Off " + name, state=tk.DISABLED)
 
         # Enable moving row up and moving row down
@@ -5648,7 +5643,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
     def forgetDevice(self, cr):
         """ Forget Device - when device removed or IP changed.
             - Remove cr.item from Devices Treeview
-            - Delete arp_dict from ni.arp_dicts list
+            - Delete mac_dict from ni.mac_dicts list
             - Delete inst_dict from ni.instances list
             - Delete MAC Address from ni.view_order list
 
@@ -5660,19 +5655,19 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.photos    Copy of treeview images saved from garbage collection
 
         LISTS of DICTIONARIES
-        ni.arp_dicts   First time discovered, thereafter read from disk
+        ni.mac_dicts   First time discovered, thereafter read from disk
         ni.instances   [{mac:99, instance:TclGoogleAndroidTV}...{}]
 
         """
         _who = self.who + "forgetDevice():"
 
-        for arp_ndx, arp_dict in enumerate(ni.arp_dicts):
-            if arp_dict['mac'] == cr.mac:
-                v1_print(_who, "Found existing ni.arp_dict:", arp_dict['name'],
+        for arp_ndx, mac_dict in enumerate(ni.mac_dicts):
+            if mac_dict['mac'] == cr.mac:
+                v1_print(_who, "Found existing ni.mac_dict:", mac_dict['name'],
                          "arp_ndx:", arp_ndx)
                 break
         else:
-            v0_print(_who, "Not found ni.arp_dict!")
+            v0_print(_who, "Not found ni.mac_dict!")
             return
 
         for inst_ndx, inst_dict in enumerate(ni.instances):
@@ -5694,7 +5689,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         # Confirmation prompt
         title = "Confirm removal."
-        text = "Are you sure you want to remove: '" + arp_dict['name'] + "'"
+        text = "Are you sure you want to remove: '" + mac_dict['name'] + "'"
         answer = message.AskQuestion(self, title, text, "no", win_grp=self.win_grp,
                                      thread=self.refreshThreadSafe)
 
@@ -5707,7 +5702,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         if answer.result != 'yes':
             return  # Don't delete pids
 
-        ni.arp_dicts.pop(arp_ndx)
+        ni.mac_dicts.pop(arp_ndx)
         ni.instances.pop(inst_ndx)
 
         # renumber iid for following treeview rows
@@ -5957,7 +5952,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.resuming = False  # Allow error dialogs to appear on screen
         GLO['APP_RESTART_TIME'] = now  # Sensors log restart at 0.0 seconds
         GLO['LOG_EVENTS'] = False  # Turn off command event logging
-        self.force_refresh_power_time = now + 60.0
+        self.force_refresh_power_time = now + 60.0  # Recheck power 1 minute after resume
 
     def resumeWait(self, timer=None, alarm=True, title=None, abort=True):
         """ Wait x seconds for devices to come online. If 'timer' passed do a
@@ -6183,10 +6178,12 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
     def refreshAllPowerStatuses(self, auto=False):
         """ Read ni.instances and update the power statuses.
-            Called from one place: self.Rediscover(auto=auto)
+            Called from: self.Rediscover(auto=auto) every x seconds.
+            Called from: self.refreshApp() 60 seconds after startup or resume.
+
             If Devices Treeview is visible (mounted) update power status.
-            TreeviewRow.Get() creates a device instance.
-            Use device instance to get Power Status.
+            TreeviewRow.Get() creates a row instance to update text.
+            Optional fading row instance in and out.
 
             :param auto: If 'False', called from menu "Rediscover Now". Can
                 also be forced on by auto-rediscovery on first time.
@@ -6288,104 +6285,124 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             tr.Add(new_row)
             self.tree.see(str(new_row))
 
+        def checkChanges(new_dict, old_dict):
+            """ Check rediscovered mac_dict to previously known mac_dict.
+                Any changes are updated realtime into ni.mac_dicts[] but HomA
+                may require restarting for Network Devices treeview display.
+
+                :param new_dict: rediscovered mac_dict
+                :param old_dict: mutable existing mac_dict updated with changes
+            """
+            if new_dict['mac'] != old_dict['mac']:
+                v0_print(_who, "new_dict['mac'] != old_dict['mac']:",
+                         new_dict['mac'], old_dict['mac'])
+                v0_print("This should NEVER happen!")
+            if new_dict['ip'] != 'irrelevant' and new_dict['ip'] != old_dict['ip']:
+                v0_print(_who, "new_dict['ip'] != old_dict['ip']:",
+                         new_dict['ip'], old_dict['ip'])
+                old_dict['ip'] = new_dict['ip']
+            if new_dict['name'] != old_dict['name']:
+                v0_print(_who, "new_dict['name'] != old_dict['name']:",
+                         new_dict['name'], old_dict['name'])
+                old_dict['name'] = new_dict['name']
+            if new_dict['alias'] != old_dict['alias']:
+                v0_print(_who, "new_dict['alias'] != old_dict['alias']:",
+                         new_dict['alias'], old_dict['alias'])
+                old_dict['alias'] = new_dict['alias']
+
         def dodge():
-            """ Get out of dodge """
+            """ Get out of dodge (graceful exit). """
             self.rediscovering = False
             self.updateDropdown()  # Enable menu options
             self.last_rediscover_time = time.time()
 
-        v2_print(_who, "Rediscovery count:", len(rd.arp_dicts))
+        v2_print(_who, "Rediscovery count:", len(rd.mac_dicts))
 
-        # Refresh power status for all device instances in ni.arp_dicts
-        self.refreshAllPowerStatuses(auto=auto)  # When auto false, rows highlighted
+        self.refreshAllPowerStatuses(auto=auto)  # When auto=False, rows highlighted
 
-        for i, rediscover in enumerate(rd.arp_dicts):
+        for i, rd_mac_dict in enumerate(rd.mac_dicts):
             if not self.isActive:
-                dodge()
+                dodge()  # Get out of dodge (graceful exit).
                 return
 
-            mac = rediscover['mac']
+            mac = rd_mac_dict['mac']
             # TCL.LAN (192.168.0.17) at <incomplete> on enp59s0
             if mac == '<incomplete>':
                 v1_print(_who, "Skipping invalid MAC:", mac)
                 continue
 
-            ip = rediscover['ip']
+            ip = rd_mac_dict['ip']
             # ? (20.20.20.1) at a8:4e:3f:82:98:b2 [ether] on enp59s0
             if ip == '?':
                 v1_print(_who, "Skipping invalid IP:", ip)
                 continue
 
             v2_print("Checking MAC:", mac, "IP:", ip)
-            arp_mac = ni.arp_for_mac(mac)  # NOTE different than rediscover !
-            if not arp_mac:
-                # Add ni.arp_dicts, ni.instances, ni.devices, ni.view_order
+            mac_dict = ni.get_mac_dict(mac)  # NOTE different than rd_mac_dict !
+            if not bool(mac_dict):
+                # Add ni.mac_dicts, ni.instances, ni.devices, ni.view_order
                 v0_print(_who, "new MAC discovered:", mac)
-                start = len(ni.arp_dicts)  # start = offset to next added arp_dict
-                ni.arp_dicts.append(rediscover)  # arp_dict for 1 found device
+
+                start = len(ni.mac_dicts)  # start = offset to next added mac_dict
+                # mac_dict = {"mac": mac, "ip": ip, "name": name, "alias": alias}
+                ni.mac_dicts.append(rd_mac_dict)  # mac_dict for 1 found device
                 discovered, instances, view_order = \
-                    discover(update=False, start=start, end=start+1)  # last arp_dict
+                    discover(update=False, start=start, end=start+1)  # last mac_dict
 
                 if len(discovered) != 1:
                     v0_print(_who, "Catastrophic error! Invalid len(discovered):",
                              len(discovered))
-                    dodge()
+                    dodge()  # Get out of dodge (graceful exit).
                     return
+
+                # Format: 'SONY.LAN (192.168.0.19) at ac:9b:0a:df:3f:d9 [ether] on enp59s0'
+                ni.devices = copy.deepcopy(rd.devices)  # Copy ALL rediscovered devices.
+                # Unfortunately, ni.mac_dicts saved to filename "devices.json"
 
                 if bool(instances):
                     ni.instances.append(instances[0])
-                    v1_print(_who, "Adding MAC to ni.instances:", mac)
+                    v0_print(_who, "Adding MAC to ni.instances:", mac)
                 else:
                     v1_print(_who, "Unrecognized instance type for MAC:", mac)
                     continue
 
                 ni.view_order.append(mac)  # New instance appears at treeview bottom.
-                ni.devices = copy.deepcopy(rd.devices)  # Log ALL new discovered device.
-                # 2025-05-15 TODO: Limit deep copy to ONE device at a time.
                 addTreeviewRow(mac)  # Only update Devices Treeview when mounted.
 
             elif mac not in ni.view_order:
-                v2_print(_who, "ni.arp_dicts MAC not in view order:", mac)
-                # ni.arp_dicts MAC not in view order: a8:4e:3f:82:98:b2   <-- ROUTER
-                pass  # TODO: 2024-11-28 - Check rd.arp changes from ni.arp
+                v2_print(_who, "ni.mac_dicts MAC not in view order:", mac)
 
-            arp_inst = ni.inst_for_mac(mac)
-            if bool(arp_inst):
-                v2_print(_who, "found instance:", arp_inst['mac'])
+            mac_inst = ni.inst_for_mac(mac)
+            if bool(mac_inst):
+                v2_print(_who, "found instance:", mac_inst['mac'])
                 # 2025-05-14 If in tree, check changes to host name, IP, alias, etc.
                 if mac not in ni.view_order:
                     v0_print(_who, "arp exists, instance exists, but no view order")
-                    v0_print("Inserting", rediscover['mac'], rediscover['name'])
+                    v0_print("Inserting", rd_mac_dict['mac'], rd_mac_dict['name'])
                     ni.view_order.append(mac)
                     addTreeviewRow(mac)  # Only update Devices Treeview when mounted.
+                checkChanges(rd_mac_dict, mac_dict)
                 continue
 
-            # Instance doesn't exist for existing arp mac
-            v2_print(_who, "No Instance for ni.arp_dicts MAC:", mac)
-            # No Instance for ni.arp_dicts MAC: a8:4e:3f:82:98:b2   <-- ROUTER
-
-            # Application().Rediscover(): ni.arp_dicts MAC not in view order: c0:79:82:41:2f:1f
-            # NetworkInfo().inst_for_mac(): mac address unknown: 'c0:79:82:41:2f:1f'
-            # Application().Rediscover(): No Instance for ni.arp_dicts MAC: c0:79:82:41:2f:1f
-            instance = ni.test_for_instance(arp_mac)
+            # Instance doesn't exist for a mac_dict['mac']
+            v2_print(_who, "No Instance for ni.mac_dicts MAC:", mac)
+            instance = ni.test_for_instance(mac_dict)
             if not bool(instance):
-                continue
+                continue  # Router, ethernet adapter, wifi adapter, smartphone, etc.
 
-            v0_print("="*80, "\n" + _who, "Found NEW INSTANCE or",
-                     "rediscovered LOST INSTANCE:")
+            v0_print("="*80, "\n" + _who, "Discovered a NEW INSTANCE or",
+                     "rediscovered a LOST INSTANCE:")
             v0_print(instance)
             ni.instances.append(instance)
-            arp_mac['type_code'] = instance['instance'].type_code
-            ni.view_order.append(rediscover['mac'])
-            #ni.arp_dicts[i] = arp_mac  # Update arp list
-            # 2025-01-16 arp_mac s/b updated in place. Check all usage above
-            v0_print("="*80)
+            mac_dict['type_code'] = instance['instance'].type_code  # mutable mac_dict
+            ni.view_order.append(rd_mac_dict['mac'])
             addTreeviewRow(mac)  # Only update Devices Treeview when mounted.
+            v0_print("="*80)
 
         # All steps done: Wait for next rediscovery period
         if bool(rd.cmdEvents):
             ni.cmdEvents.extend(rd.cmdEvents)  # For auto-rediscover, rd.cmdEvents[] empty
-        dodge()
+        dodge()  # Get out of dodge (graceful exit).
 
     def refreshPowerStatusForInst(self, inst):
         """ Called by BluetoothLED """
@@ -6737,7 +6754,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         x, y = hc.GetMouseLocation()
 
         found_inst = None
-        for mac_arp in ni.arp_dicts:
+        for mac_arp in ni.mac_dicts:
             instance = ni.inst_for_mac(mac_arp['mac'], not_found_error=False)
             if not bool(instance):
                 continue  # empty dictionary
@@ -6787,8 +6804,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             if bool(instance):  # MAC address matches BLE device's MAC discovered
                 scrollbox.highlight_pattern(address, "red")
                 scrollbox.highlight_pattern(name, "yellow")
-                arp_dict = ni.arp_for_mac(address)
-                arp_dict['ip'] = name  # ip isn't used for bluetooth.
+                mac_dict = ni.get_mac_dict(address)
+                mac_dict['ip'] = name  # ip isn't used for bluetooth.
                 # 2025-01-15 TODO: Update Treeview Row with new name.
             else:  # empty dictionary
                 scrollbox.highlight_pattern(address, "blue")
@@ -7684,12 +7701,12 @@ def discover(update=False, start=None, end=None):
     """ Test arp devices for device type using .isDevice() by mac address.
         Called from mainline and app.Rediscover()
 
-        Before calling use ni = NetworkInfo() to create ni.arp_dicts[{}, {}...]
-        app.Rediscover() uses rd = NetworkInfo() to create rd.arp_dicts
+        Before calling use ni = NetworkInfo() to create ni.mac_dicts[{}, {}...]
+        app.Rediscover() uses rd = NetworkInfo() to create rd.mac_dicts
         
-        :param update: If True, update ni.arp_dicts entry with type_code
-        :param start: ni.arp_dicts starting index for loop
-        :param end: ni.arp_dicts ending index (ends just before passed index)
+        :param update: If True, update ni.mac_dicts entry with type_code
+        :param start: ni.mac_dicts starting index for loop
+        :param end: ni.mac_dicts ending index (ends just before passed index)
         :returns: list of known device instances
     """
     _who = "homa.py discover()"
@@ -7705,9 +7722,9 @@ def discover(update=False, start=None, end=None):
     if not start:
         start = 0
     if not end:
-        end = len(ni.arp_dicts)  # Not tested as of 2024-11-10
+        end = len(ni.mac_dicts)  # Not tested as of 2024-11-10
 
-    for i, arp in enumerate(ni.arp_dicts[start:end]):
+    for i, arp in enumerate(ni.mac_dicts[start:end]):
         # arp = {"mac": mac, "ip": ip, "name": name, "alias": alias, "type_code": 99}
         v2_print("\nTest for device type using 'arp' dictionary:", arp)
 
@@ -7721,7 +7738,7 @@ def discover(update=False, start=None, end=None):
         instances.append(instance)  # instance = {"mac": arp['mac'], "instance": inst}
         view_order.append(arp['mac'])  # treeview ordered by MAC address saved to disk
         if update:
-            ni.arp_dicts[i] = arp  # Update arp list with type_code found in instance
+            ni.mac_dicts[i] = arp  # Update arp list with type_code found in instance
 
     return discovered, instances, view_order
 
@@ -7764,7 +7781,7 @@ def open_files():
     """ Called during startup. Read "devices.json" file if it exists.
         Return previously discovered devices and build new instances.
         Reading from disk quickly mirrors discover() generation:
-            ni.arp_dicts[{}, {}...{}] - all devices, optional type_code
+            ni.mac_dicts[{}, {}...{}] - all devices, optional type_code
             discovered[{}, {}...{}] - devices only with type_code
             ni.instances[{}, {}...{}] - instances matching discovered
     """
@@ -7781,10 +7798,10 @@ def open_files():
         return ni.discovered, ni.instances, ni.view_order
 
     with open(fname, "r") as f:
-        # TODO: discover() will wipe out ni.arp_dicts.
-        #       Must merge old and new ni.arp_dicts.
+        # TODO: discover() will wipe out ni.mac_dicts.
+        #       Must merge old and new ni.mac_dicts.
         v2_print("Opening last arp dictionaries file:", fname)
-        ni.arp_dicts = json.loads(f.read())
+        ni.mac_dicts = json.loads(f.read())
 
     fname = g.USER_DATA_DIR + os.sep + GLO['VIEW_ORDER_FNAME']
     build_view_order = True
@@ -7795,7 +7812,7 @@ def open_files():
             build_view_order = False
 
     # Assign instances
-    for arp in ni.arp_dicts:
+    for arp in ni.mac_dicts:
         try:
             type_code = arp['type_code']
         except KeyError:
@@ -7837,7 +7854,7 @@ def open_files():
 def save_files():
     """ Called when exiting and on demand. """
     with open(g.USER_DATA_DIR + os.sep + GLO['DEVICES_FNAME'], "w") as f:
-        f.write(json.dumps(ni.arp_dicts))
+        f.write(json.dumps(ni.mac_dicts))
     with open(g.USER_DATA_DIR + os.sep + GLO['VIEW_ORDER_FNAME'], "w") as f:
         f.write(json.dumps(ni.view_order))
 
@@ -7877,7 +7894,7 @@ def main():
     # 2024-10-13 - adb_reset() is breaking TCL TV discovery???
     _discovered, _instances, _view_order = open_files()
     if len(_instances) == 0:
-        # Discover all devices and update ni.arp_dicts
+        # Discover all devices and update ni.mac_dicts
         ni.discovered, ni.instances, ni.view_order = discover(update=True)
 
         v1_print()
