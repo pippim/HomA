@@ -4492,6 +4492,168 @@ def gnome_screenshot(geom):
     return raw_img
 
 
+class VolumeSlider:
+    """ Volume Slider for Pulse Audio 'ffplay' Sink in mserve.
+        Volume Slider for Sony TV Audio controlled via REST API.
+    """
+
+    # noinspection SpellCheckingInspection
+    def __init__(self, master_frm, borderwidth=0, row=0, column=1, columnspan=2,
+                 sticky=tk.EW, padx=5, pady=(8, 4), tt=None):
+        """ Define slider frame object and objects within. """
+
+        ''' Volume Slider Frame '''
+        self.slider_frm = ttk.Frame(master_frm, borderwidth=borderwidth)
+        self.slider_frm.grid(row=row, column=column, columnspan=columnspan,
+                             sticky=sticky, padx=padx, pady=pady)
+        self.slider_frm.columnconfigure(0, weight=0)  # low or off speaker symbol
+        self.slider_frm.columnconfigure(1, weight=5)  # Volume Slider
+        self.slider_frm.columnconfigure(2, weight=0)  # high or full speaker symbol
+        self.slider_frm.rowconfigure(0, weight=0)
+
+        self.tt = tt  # Tooltips
+
+        self.ffplay_mute = None  # Lowest volume icon
+        self.ffplay_slider = None  # Slider control
+        self.ffplay_full = None  # Highest volume icon
+
+    def createLowVolume(self, *_args):
+        """ Low volume / mute icon """
+
+        ''' self.ffplay_mute  LEFT: 🔉 U+F1509  RIGHT: 🔊 U+1F50A 
+            🔇 (1f507) 🔈 (1f508) 🔉 (1f509) 🔊 (1f50a)
+        '''
+        self.ffplay_mute = tk.Label(
+            self.slider_frm, borderwidth=0, highlightthickness=0,
+            text="    🔇", justify=tk.CENTER, font=g.FONT)  # justify not working
+        self.ffplay_mute.grid(row=0, column=0, sticky=tk.W)
+
+        def volume_mute():
+            """ Click on volume mute icon (speaker with diagonal line on left) """
+            self.check_sinks()
+            self.pav_ctl.sink = self.force_sink(
+                self.pav_ctl.sink, self.pav_ctl.pid, trace="ffplay_mute button")
+            pav.fade(self.pav_ctl.sink,
+                     float(pav.get_volume(self.pav_ctl.sink)),
+                     0, .5, step_cb=self.init_ffplay_slider)
+            self.init_ffplay_slider(0)  # Final step to 0 display
+
+        self.ffplay_mute.bind("<Button-1>", lambda _: volume_mute())
+
+        # self.ffplay_mute.bind("<Button-1>", lambda _: pav.fade(
+        #    # 2024-04-29 change play_ctl to pav_ctl
+        #    self.pav_ctl.sink, float(pav.get_volume(self.pav_ctl.sink)),
+        #    25, .5, step_cb=self.init_ffplay_slider))
+
+        text = "Speaker with diagonal line.\n"
+        text += "Click to mute volume.\n"
+        text += "Music keeps playing with no sound.\n"
+        text += "You can also click on album art to\n"
+        text += "toggle pausing and playing music."
+        self.tt.add_tip(self.ffplay_mute, tool_type='label',
+                        text=text, anchor="sw")
+
+        ''' self.ffplay_full  RIGHT: 🔊 U+1F50A 
+            🔇 (1f507) 🔈 (1f508) 🔉 (1f509) 🔊 (1f50a)
+        '''
+        self.ffplay_full = tk.Label(
+            self.slider_frm, borderwidth=0, highlightthickness=0,
+            text="    🔊", font=g.FONT)  # justify not working
+        self.ffplay_full.grid(row=0, column=2)
+
+        def volume_full():
+            """ Click on full volume icon (speaker with three waves on right) """
+            self.check_sinks()
+            self.pav_ctl.sink = self.force_sink(
+                self.pav_ctl.sink, self.pav_ctl.pid, trace="ffplay_full button")
+            max_vol = self.get_max_volume()
+            pav.fade(self.pav_ctl.sink,
+                     float(pav.get_volume(self.pav_ctl.sink)),
+                     max_vol, .5, step_cb=self.init_ffplay_slider)
+            self.init_ffplay_slider(max_vol)  # Final step to 100 display
+
+        self.ffplay_full.bind("<Button-1>", lambda _: volume_full())
+
+        # self.ffplay_full.bind("<Button-1>", lambda _: pav.fade(
+        # 2024-04-29 change play_ctl to pav_ctl
+        # self.pav_ctl.sink, float(pav.get_volume(self.pav_ctl.sink)),
+        # 100, .5, step_cb=self.init_ffplay_slider))
+
+        text = "Speaker with three waves.\n"
+        text += "Click to restore the volume to 100%."
+        self.tt.add_tip(self.ffplay_full, tool_type='label',
+                        text=text, anchor="se")
+
+        ''' Volume Slider https://www.tutorialspoint.com/python/tk_scale.htm '''
+        self.ffplay_slider = tk.Scale(  # highlight color doesn't seem to work?
+            self.slider_frm, orient=tk.HORIZONTAL, tickinterval=0, showvalue=0,
+            highlightcolor="Blue", activebackgroun="Gold", troughcolor="Black",
+            command=self.set_ffplay_sink, borderwidth=0, cursor='boat red red')
+        self.ffplay_slider.grid(row=0, column=1, padx=4, ipady=1, sticky=tk.EW)
+
+        text = "Volume slider active when music plays:\n\n"
+        text += "Click and drag slider to change volume.\n"
+        text += "Click space left of slider to reduce volume.\n"
+        text += "Click space right of slider to increase volume.\n"
+        text += "Click small speaker on left to mute.\n"
+        text += "Click large speaker on right for full volume."
+        self.tt.add_tip(self.ffplay_slider, tool_type='label',
+                        text=text, anchor="sc")
+
+    def createSlider(self, *_args):
+        """ Volume Slider - second object in Slider Form """
+
+        ''' Volume Slider https://www.tutorialspoint.com/python/tk_scale.htm '''
+        self.ffplay_slider = tk.Scale(  # highlight color doesn't seem to work?
+            self.slider_frm, orient=tk.HORIZONTAL, tickinterval=0, showvalue=0,
+            highlightcolor="Blue", activebackgroun="Gold", troughcolor="Black",
+            command=self.set_ffplay_sink, borderwidth=0, cursor='boat red red')
+        self.ffplay_slider.grid(row=0, column=1, padx=4, ipady=1, sticky=tk.EW)
+
+        text = "Volume slider active when music plays:\n\n"
+        text += "Click and drag slider to change volume.\n"
+        text += "Click space left of slider to reduce volume.\n"
+        text += "Click space right of slider to increase volume.\n"
+        text += "Click small speaker on left to mute.\n"
+        text += "Click large speaker on right for full volume."
+        self.tt.add_tip(self.ffplay_slider, tool_type='label',
+                        text=text, anchor="sc")
+
+    def createLoudVolume(self, *_args):
+        """ Loud volume / Full volume """
+
+        ''' self.ffplay_full  RIGHT: 🔊 U+1F50A 
+            🔇 (1f507) 🔈 (1f508) 🔉 (1f509) 🔊 (1f50a)
+        '''
+        self.ffplay_full = tk.Label(
+            self.slider_frm, borderwidth=0, highlightthickness=0,
+            text="    🔊", font=g.FONT)  # justify not working
+        self.ffplay_full.grid(row=0, column=2)
+
+        def volume_full():
+            """ Click on full volume icon (speaker with three waves on right) """
+            self.check_sinks()
+            self.pav_ctl.sink = self.force_sink(
+                self.pav_ctl.sink, self.pav_ctl.pid, trace="ffplay_full button")
+            max_vol = self.get_max_volume()
+            pav.fade(self.pav_ctl.sink,
+                     float(pav.get_volume(self.pav_ctl.sink)),
+                     max_vol, .5, step_cb=self.init_ffplay_slider)
+            self.init_ffplay_slider(max_vol)  # Final step to 100 display
+
+        self.ffplay_full.bind("<Button-1>", lambda _: volume_full())
+
+        # self.ffplay_full.bind("<Button-1>", lambda _: pav.fade(
+        # 2024-04-29 change play_ctl to pav_ctl
+        # self.pav_ctl.sink, float(pav.get_volume(self.pav_ctl.sink)),
+        # 100, .5, step_cb=self.init_ffplay_slider))
+
+        text = "Speaker with three waves.\n"
+        text += "Click to restore the volume to 100%."
+        self.tt.add_tip(self.ffplay_full, tool_type='label',
+                        text=text, anchor="se")
+
+
 # ==============================================================================
 #
 #   toolkit.py - ToolTips(), .add_tip(), .set_text(), .toggle_position(),

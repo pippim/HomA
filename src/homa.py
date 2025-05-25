@@ -333,7 +333,6 @@ class DeviceCommonSelf:
             if forgive is False:
                 v1_print(who, "cmdReturncode:", self.cmdReturncode)
                 v1_print(" ", self.cmdString)
-                # 2025-01-13 TODO: Log this. Also log the time-outs.
 
             # 2024-12-21 `timeout` never returns error message
             if self.cmdReturncode == 124 and self.cmdCommand[0] == "timeout":
@@ -645,7 +644,6 @@ class Globals(DeviceCommonSelf):
             "ROUTER_M": 200,  # Router Modem
 
             "SUDO_PASSWORD": None,  # Sudo password required for laptop backlight
-            # 2025-01-04 TODO: get backlight with runCommand()
             "BACKLIGHT_NAME": backlight_name,  # intel_backlight
             "BACKLIGHT_ON": "0",  # Sudo echo to "/sys/class/backlight/intel_backlight/bl_power"
             "BACKLIGHT_OFF": "4",  # ... will control laptop display backlight power On/Off.
@@ -655,7 +653,11 @@ class Globals(DeviceCommonSelf):
             # to "ON" / "OFF" 100=DESKTOP, 110=LAPTOP_B, 120=LAPTOP_D, 200=ROUTER_M
 
             "TREEVIEW_COLOR": "WhiteSmoke",  # Treeview main color
-            "TREE_EDGE_COLOR": "White"  # Treeview edge color 5 pixels wide
+            "TREE_EDGE_COLOR": "White",  # Treeview edge color 5 pixels wide
+            "ALLOW_REMOTE_TO_SUSPEND": True,  # Sony getPower()
+            "ALLOW_VOLUME_CONTROL": True,  # Sony getVolume() and setVolume()
+            "QUIET_VOLUME": 20,  # 10pm - 9am
+            "NORMAL_VOLUME": 36  # Normal volume (9am - 10pm)
         }
 
     def openFile(self):
@@ -681,16 +683,16 @@ class Globals(DeviceCommonSelf):
         except (TypeError, IndexError):  # No color saved
             self.dictGlobals['LED_LIGHTS_COLOR'] = None
 
-        ''' TEMPLATE TO ADD A NEW FIELD TO DICTIONARY '''
-        #try:
-        #    _s = self.dictGlobals['TREEVIEW_COLOR']
-        #    print("Found GLO['TREEVIEW_COLOR']:", _s)
-        #    print("Found GLO['TREE_EDGE_COLOR']", self.dictGlobals['TREE_EDGE_COLOR'])
-        #except KeyError:
-        #    self.dictGlobals['TREEVIEW_COLOR'] = "WhiteSmoke"
-        #    self.dictGlobals['TREE_EDGE_COLOR'] = "White"
-        #    print("Create GLO['TREEVIEW_COLOR']:", GLO['TREEVIEW_COLOR'])
-
+        ''' TEMPLATE TO ADD A NEW FIELD TO DICTIONARY 
+        try:
+            _s = self.dictGlobals['ALLOW_REMOTE_TO_SUSPEND']
+            print("Found GLO['ALLOW_REMOTE_TO_SUSPEND']:", _s)
+            print("Found GLO['ALLOW_VOLUME_CONTROL']", self.dictGlobals['ALLOW_VOLUME_CONTROL'])
+        except KeyError:
+            self.dictGlobals['ALLOW_REMOTE_TO_SUSPEND'] = True
+            self.dictGlobals['ALLOW_VOLUME_CONTROL'] = True
+            print("Create GLO['ALLOW_REMOTE_TO_SUSPEND']:", GLO['ALLOW_REMOTE_TO_SUSPEND'])
+        '''
 
         ''' Decrypt SUDO PASSWORD '''
         with warnings.catch_warnings():
@@ -803,13 +805,17 @@ class Globals(DeviceCommonSelf):
             #   edit callback, tooltip text
             ("SONY_PWD", 1, RW, STR, STR, 10, DEC, MIN, MAX, CB,
              "Password for Sony REST API"),
-            ("CONFIG_FNAME", 6, RO, STR, STR, WID, DEC, MIN, MAX, CB,
-             "Configuration filename"),
-            ("DEVICES_FNAME", 6, RO, STR, STR, WID, DEC, MIN, MAX, CB,
-             "discovered network devices filename"),
-            ("VIEW_ORDER_FNAME", 6, RO, STR, STR, WID, DEC, MIN, MAX, CB,
-             "Network Devices Treeview display order filename"),
-            # Timeouts improve device interface performance
+            ("ALLOW_REMOTE_TO_SUSPEND", 1, RW, BOOL, BOOL, 2, DEC, MIN, MAX, CB,
+             "When Sony TV is powered off with the TV\n"
+             "remote control, the system is suspended."),
+            ("ALLOW_VOLUME_CONTROL", 1, RW, BOOL, BOOL, 2, DEC, MIN, MAX, CB,
+             "Monitor Sony TV volume levels and set to\n"
+             "quiet volume or normal volume on restart."),
+            ("QUIET_VOLUME", 1, RW, INT, INT, 3, DEC, 5, 80, CB,
+             "Audio System volume level between\n10pm and 9am (20:00 and 9:00)"),
+            ("NORMAL_VOLUME", 1, RW, INT, INT, 3, DEC, 5, 80, CB,
+             "Audio System volume level between\n9am and 10:00pm (9:00 and 20:00)"),
+            # Timeouts improve incorrect device communication performance
             ("PLUG_TIME", 3, RW, FLOAT, STR, 6, DEC, MIN, MAX, CB,
              "Smart plug timeout to turn power on/off"),
             ("CURL_TIME", 1, RW, FLOAT, STR, 6, DEC, MIN, MAX, CB,
@@ -857,7 +863,6 @@ class Globals(DeviceCommonSelf):
              "Override runCommand events'\nlogging and --verbose3 printing"),
             ("EVENT_ERROR_COUNT", 0, HD, INT, INT, 9, 0, MIN, MAX, CB,
              "To enable/disable View Dropdown menu 'Discovery errors'"),
-            # 2024-12-29 TODO: SENSOR_XXX should be FLOAT not STR?
             ("SENSOR_CHECK", 5, RW, FLOAT, FLOAT, 7, DEC, MIN, MAX, CB,
              "Check `sensors`, CPU/GPU temperature\nand Fan speeds every x seconds"),
             ("SENSOR_LOG", 5, RW, FLOAT, FLOAT, 9, DEC, MIN, MAX, CB,
@@ -874,6 +879,12 @@ class Globals(DeviceCommonSelf):
              "TCL Google Android TV using adb after `wakeonlan`"),
             ("BLE_LS", 4, RO, INT, INT, 2, DEC, MIN, MAX, CB,
              "Bluetooth LED Light Strip"),
+            ("CONFIG_FNAME", 6, RO, STR, STR, WID, DEC, MIN, MAX, CB,
+             "Configuration filename"),
+            ("DEVICES_FNAME", 6, RO, STR, STR, WID, DEC, MIN, MAX, CB,
+             "discovered network devices filename"),
+            ("VIEW_ORDER_FNAME", 6, RO, STR, STR, WID, DEC, MIN, MAX, CB,
+             "Network Devices Treeview display order filename"),
             ("BACKLIGHT_NAME", 7, RW, STR, STR, 30, DEC, MIN, MAX, CB,
              "E.G. 'intel_backlight', 'nvidia_backlight', etc."),
             ("BACKLIGHT_ON", 7, RW, STR, STR, 2, DEC, MIN, MAX, CB,
@@ -994,7 +1005,9 @@ class Computer(DeviceCommonSelf):
         if self.CheckInstalled('hostnamectl'):
             # 2024-12-16 TODO: convert to self.runCommand()
             #   universal_newlines: https://stackoverflow.com/a/38182530/6929343
-            machine_info = sp.check_output(["hostnamectl", "status"], universal_newlines=True)
+            # 2024-12-16 TODO: convert to self.runCommand()
+            machine_info = sp.check_output(
+                ["hostnamectl", "status"], universal_newlines=True)
             m = re.search('Chassis: (.+?)\n', machine_info)
             self.chassis = m.group(1)  # TODO: Use this for Dell Virtual temp/fan driver
         else:
@@ -1303,10 +1316,11 @@ class Computer(DeviceCommonSelf):
             return "ON"  # Default to always turn bias lights on
 
         text = ext.read_into_string(fname)
+        text = text.rstrip("\n") if text else ""  # Sometimes 'OFF\n'
         v3_print("\n" + _who, "SUNLIGHT_PERCENT string:", text, "\n")
 
         try:
-            percent_str = text.split("%")[0]
+            percent_str = text.split("%")[0]  # If no "%" gets all text
         except IndexError:
             v0_print(_who, GLO['SUNLIGHT_PERCENT'], "line 1 missing '%' character:",
                      "'" + text + "'.")
@@ -1379,9 +1393,6 @@ class NetworkInfo(DeviceCommonSelf):
         v3_print("\n===========================  arp -a  ===========================")
         # Format: 'SONY.LAN (192.168.0.19) at ac:9b:0a:df:3f:d9 [ether] on enp59s0'
         self.arp_results = []
-        # Unfortunately, ni.mac_dicts saved to filename "devices.json"
-        # TODO: Rename mac_dicts to device_dicts because it includes non-arp devices
-        #           like bluetooth, ethernet adapter, wifi adapter, and router.
         command_line_list = ["arp", "-a"]
         event = self.runCommand(command_line_list, _who)
 
@@ -1573,15 +1584,15 @@ class NetworkInfo(DeviceCommonSelf):
         return "No Alias"
 
     def make_temp_file(self, stuff=None):
-        """ Make temporary file with optional text. - NOT USED but Works
+        """ Make temporary file with optional text. - NOT USED
             Caller must call os.remove(temp_fname)
-            :returns: temp_fname (temporary filename /run/user/1000/homa.XXXXXXXX)
+            :returns: temp_fname (temporary filename E.G. /run/user/1000/homa.XXXXXXXX)
         """
         _who = self.who + "make_temp_file():"
 
         # Create temporary file in RAM for curl command
-        # TODO: check dir /run/user/1000, if not use /tmp
-        command_line_list = ["mktemp", "--tmpdir=/run/user/1000", "homa.XXXXXXXX"]
+        tmpdir = g.TEMP_DIR.rstrip(os.sep)
+        command_line_list = ["mktemp", "--tmpdir=" + tmpdir, "homa.XXXXXXXX"]
         event = self.runCommand(command_line_list, _who)
 
         if event['returncode'] != 0:
@@ -1687,7 +1698,6 @@ class NetworkInfo(DeviceCommonSelf):
             return {"result": [{"status": returncode}]}
 
         try:
-            # TODO: check if more than one line returned
             reply_dict = json.loads(text[0])
         except ValueError:
             v2_print(_who, "Invalid 'text':", text)  # Sample below on 2024-10-08
@@ -1710,7 +1720,7 @@ class NetworkInfo(DeviceCommonSelf):
 
         v0_print(_who, "mac address unknown: '" + str(mac) + "'")
 
-        return {}  # TODO: Format dictionary with 'mac': and error
+        return {}
 
     def inst_for_mac(self, mac, not_found_error=True):
         """ Get device instance for mac address. Instances are dynamically
@@ -1728,7 +1738,7 @@ class NetworkInfo(DeviceCommonSelf):
         if not_found_error:
             v2_print(_who, "mac address unknown: '" + mac + "'")
 
-        return {}  # TODO: Format dictionary with 'mac': and error
+        return {}
 
     def test_for_instance(self, arp):
         """ Test if arp dictionary is a known device type and create
@@ -1755,7 +1765,6 @@ class NetworkInfo(DeviceCommonSelf):
         def test_one(cname):
             """ Test if hs100, SonyTV, GoogleTV, Bluetooth LED, Laptop, etc. """
             inst = cname(arp['mac'], arp['ip'], arp['name'], arp['alias'])
-            # 2025-02-02 TODO: Check if dependencies are installed.
             if not inst.isDevice(forgive=True):
                 return False
 
@@ -1790,13 +1799,12 @@ class NetworkInfo(DeviceCommonSelf):
         if test_one(SonyBraviaKdlTV):
             return instance
 
-        # Special testing. android.isDevice was failing without extra time.
-        #   TODO: ni.adb_reset() too long or android.Connect() is timing out.
         if test_one(TclGoogleAndroidTV):
             v0_print(_who, "Android TV found:", arp['ip'])
             v0_print("instance:", instance, "\n")
             return instance
         elif arp['ip'] == "192.168.0.17":  # "devices", "-l"
+            # Special testing. android.isDevice was failing without extra time.
             v0_print(_who, "Android TV failed!:", arp['ip'])
 
         if test_one(BluetoothLedLightStrip):
@@ -2429,11 +2437,8 @@ Later:
                        strftime('%I:%M %p').strip('0').rjust(8)))
         except tk.TclError:
             v0_print(_who, "sec_str already exists in Sensors Treeview:", sec_str)
-            # 2025-03-26 TODO: Make key unique by auto-assigning iid
 
-        # self.tree.see(sec_str)  # 2025-03-26  #
-        self.tree.see(self.getLastRowIid())  # 2025-03-26  #
-        # 2024-12-28: Occasionally iid not found in FlashLastRow() so update_idletasks
+        self.tree.see(self.getLastRowIid())
         self.tree.update_idletasks()
 
     @staticmethod
@@ -2821,7 +2826,6 @@ https://stackoverflow.com/questions/2829613/how-do-you-tell-if-a-string-contains
         self.type = "SonyBraviaKdlTV"
         self.type_code = GLO['KDL_TV']
 
-        self.allowRemoteToSuspend = False  # 2025-05-11 TODO: Global variable to override
         self.powerSavingMode = "?"  # set with getPowerSavingMode()
         self.volume = "?"  # Set with getVolume()  # 28
         self.volumeLast = "?"  # Last recorded volume for spamming notify-send
@@ -2879,6 +2883,9 @@ https://stackoverflow.com/questions/2829613/how-do-you-tell-if-a-string-contains
             Normally event logging would be turned off to prevent large dictionary.
         """
         _who = self.who + "checkPowerOffSuspend():"
+        if not GLO['ALLOW_REMOTE_TO_SUSPEND']:
+            return False  # Feature disabled
+        
         if self.menuPowerOff:
             return False  # Powered off by HomA Right Click doesn't count
 
@@ -2898,8 +2905,11 @@ https://stackoverflow.com/questions/2829613/how-do-you-tell-if-a-string-contains
             Normally event logging would be turned off to prevent large dictionary.
         """
         _who = self.who + "checkVolumeChange():"
+        if not GLO['ALLOW_VOLUME_CONTROL']:
+            return False  # Feature disabled
+
         if self.powerStatus != "ON":
-            return False
+            return False  # TV isn't powered on, can't check current volume
 
         self.getVolume(forgive=forgive)  # Occasionally get curl error 124 timeout
         if self.volume == self.volumeLast:
@@ -3196,6 +3206,33 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/audio/v1_0/g
 
         return reply
 
+    def setStartupVolume(self, target="speaker", forgive=False):
+        """ Set volume to normal between 9am - 10pm or quiet 10pm - 9 am """
+        _who = self.who + "setStartupVolume():"
+        if self.powerStatus != "ON":
+            v0_print(_who, "Sony 'powerStatus' != 'ON': '" + self.powerStatus + "'.")
+            return
+        self.getVolume()
+
+        curr_volume = int(self.volumeSpeaker)  # Could be self.volumeHeadphone. Not supported.
+        hour = dt.datetime.today().hour
+        v0_print(_who, "Current value of self.volumeSpeaker:", self.volumeSpeaker,
+                 "\n  Hour of day:", hour)
+
+        isNormal = True if 9 <= hour <= 20 else False
+        isQuiet = not isNormal
+
+        volume_str = ""  # No volume change
+        if isNormal and curr_volume < GLO['NORMAL_VOLUME']:
+            volume_str = str(GLO['NORMAL_VOLUME'])
+        if isQuiet and curr_volume > GLO['QUIET_VOLUME']:
+            volume_str = str(GLO['QUIET_VOLUME'])
+
+        if not volume_str:
+            return  # No volume changes
+
+        self.setVolume(volume_str, target=target, forgive=forgive)
+
     def getVolume(self, target="speaker", forgive=False):
         """ Get Sony Bravia KDL TV volume
             Currently just speaker volume, but headphone volume can be returned too.
@@ -3209,21 +3246,17 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/audio/v1_0/g
         # {'volume': 28, 'maxVolume': 100, 'minVolume': 0, 'target': 'speaker', 'mute': False},
         # {'volume': 15, 'maxVolume': 100, 'minVolume': 0, 'target': 'headphone', 'mute': False}
         # ]], 'id': 33}
-        #print(_who, "curl reply_dict:", reply_dict)
-        # SonyBraviaKdlTV().getVolume(): curl reply_dict:
-        # {'result': [
-        # [{'volume': 23, 'maxVolume': 100, 'minVolume': 0, 'target': 'speaker',
-        # 'mute': False},
-        # {'volume': 15, 'maxVolume': 100, 'minVolume': 0, 'target': 'headphone',
-        # 'mute': False}]], 'id': 33}
 
         try:
             if target == "speaker":
                 reply = reply_dict['result'][0][0]['volume']
                 self.volumeSpeaker = reply
-            else:
+            elif target == "headphones":
                 reply = reply_dict['result'][0][1]['volume']  # headphones
                 self.volumeHeadphones = reply
+            else:
+                v0_print(_who, "Unknown target:", target)
+                reply = "0"
             self.volume = reply
         except (KeyError, IndexError):
             reply = reply_dict  # Probably "7" for not a Sony TV
@@ -3231,6 +3264,61 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/audio/v1_0/g
         # SonyBraviaKdlTV().getVolume(): curl reply: 28
 
         return reply
+
+    def setVolume(self, volume, target="speaker", forgive=False):
+        """ Set Sony Bravia KDL TV volume
+
+            Version 1.0:
+            https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/
+                audio/v1_0/setAudioVolume/index.html
+                {
+                    "method": "setAudioVolume",
+                    "id": 601,
+                    "params": [{
+                        "volume": "18",
+                        "target": "speaker"
+                    }],
+                    "version": "1.0"
+                }
+
+            Version 1.2 (display volume level on TV) gets Error code 403 (Forbiddn):
+            https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/
+                audio/v1_2/setAudioVolume/index.html
+                {
+                    "method": "setAudioVolume",
+                    "id": 98,
+                    "params": [{
+                        "volume": "5",
+                        "ui": "on",
+                        "target": "speaker"
+                    }],
+                    "version": "1.2"
+                }
+
+        """
+
+        if True is True:
+            RESTid = "601"
+            params = '[{"volume":"' + str(volume) + '", "target": "' + target + '"}]'
+            ver = "1.0"
+        else:
+            RESTid = "98"
+            params = '[{"volume":"' + str(volume) + \
+                     '", "ui": "on", "target": "' + target + '"}]'
+            ver = "1.2"  # Unsupported version error: "[14, '1.2']"
+
+        _who, JSON_str = self.makeCommon("setAudioVolume", RESTid, params, ver=ver)
+        reply_dict = ni.os_curl(JSON_str, "audio", self.ip, forgive=forgive)
+        v2_print(_who, "curl reply_dict:", reply_dict)
+        self.checkReply(reply_dict, RESTid)
+
+        try:
+            err = reply_dict['error']
+            v0_print(_who, "Error:", err[0])
+            return "Err: " + str(err[0])  # 403, Forbidden
+            # error only occurs when using ni.curl() instead of ni.os_curl()
+        except KeyError:
+            pass  # No error
 
     def isDevice(self, forgive=False):
         """ Return True if active or standby, False if power off or no communication
@@ -3672,7 +3760,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         self.hci_mac = ""
         self.BluetoothStatus = "?"
         if not self.CheckInstalled("hcitool"):
-            # 2025-01-10 TODO: Message `hcitool` required
+            v0_print(_who, "Program 'hcitool' is not installed.")
             return self.BluetoothStatus
 
         command_line_list = ["hcitool", "dev"]
@@ -3703,12 +3791,14 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         return self.BluetoothStatus
 
     def resetBluetooth(self, reconnect=True):
-        """ Turn Bluetooth on. Called from Right-Click menu, Reset Bluetooth
-            Called from Dropdown View Menu - Bluetooth devices, getBluetoothDevices()
-            LED Lights status on treeview row - reset Bluetooth if power "?".
+        """ Reset Bluetooth.
+            Called by Application().__init__()
+            Called from BLE LED Lights Right-Click menu, Reset Bluetooth
+            Called by getBluetoothDevices() - View Dropdown Menu, Bluetooth devices
+            LED Lights status on treeview row calls resetBluetooth() if power "?".
 
-            Don't confuse self.BluetoothStatus (bluetooth on adapter) with
-            self.powerStatus (Bluetooth LED Lights at MAC address).
+            Don't confuse self.BluetoothStatus (bluetooth on radio adapter) with
+            self.powerStatus for Bluetooth LED Lights at specified MAC address.
 
             Lifted from gatttool.py connect()
 
@@ -3726,7 +3816,6 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
 
         # Dependencies installed?
         if not self.CheckInstalled("hciconfig"):
-            # 2025-01-10 TODO: Message `hcitool` required
             msg = "The program `hciconfig` is required to reset Bluetooth.\n\n"
             msg += "sudo apt-get install hciconfig bluez bluez-tools rfkill\n\n"
             self.app.showInfoMsg("Missing program.", msg, icon="error")
@@ -3830,7 +3919,6 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         v2_print(self.cmdString)
 
         ''' run command with os.popen() because sp.Popen() fails on ">" '''
-        # 2025-01-15 TODO: Log to cmdEvents
         f = os.popen(self.cmdString)
 
         returncode = f.close()  # https://stackoverflow.com/a/70693068/6929343
@@ -4004,8 +4092,6 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
             self.showMessage(err=err, count=0)  # Bluetooth device not connected to computer
             return self.powerStatus
 
-        # TODO: Multiple profiles in list[dict{LOW, HIGH, SPAN, STEP, BOTS, TOPS}...]
-
         # Parameters, Statistics and Color controls
         self.parm = {"low": low, "high": high, "span": span, "step": step,
                      "bots": bots, "tops": tops}  # breatheColors() parameters
@@ -4050,7 +4136,6 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
                 if self.connect_errors < self.MAX_FAIL:
                     # Try to connect 5 times. Error after 6th time never displayed
                     self.Connect(retry=self.MAX_FAIL + 1)  # Increments self.connect_errors on failure
-                    # APP_RESTART_TIME  TODO: Make global method in self.app.delta_str
                     delta = round(time.time() - GLO['APP_RESTART_TIME'], 2)
                     v1_print("{0:>8.2f}".format(delta), "|", _who, "Attempted reconnect:",
                              self.connect_errors + 1, "time(s).")
@@ -4274,7 +4359,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
                 else:
                     v0_print(_who, "Breathing Colors invalid power",
                              "status: '" + self.powerStatus + "'.")
-                break  # 2025-01-25 TODO: Display self.stat and self.parm
+                break
 
             if turning_up:  # End turning up. Begin turning down.
                 v2_print(ext.ch(), "Turning down brightness")
@@ -4458,12 +4543,11 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         if "cannot start" in msg:
             # gatttool could not find computer's bluetooth adapter (driver not running)
             msg += "Turn on bluetooth in Ubuntu. If bluetooth was on and won't\n"
-            msg += "restart then you can reboot or try these commands:\n\n"
-            # noinspection SpellCheckingInspection
-            msg += "\tsudo rmmod btusb btintel\n"
-            # noinspection SpellCheckingInspection
-            msg += "\tsudo modprobe btusb btintel\n"
-            msg += "\tsudo service bluetooth restart\n\n"
+            msg += "restart then reboot. Sometimes two reboots are required.\n\n"
+            msg += "Ensure LED lights can be controlled by your smartphone.\n\n"
+            msg += "In HomA, right-click on LED light strips and select:\n"
+            msg += "\t'Reset Bluetooth'.\n"
+            msg += "\tThen from the same menu, select 'Turn On Bluetooth LED'.\n"
 
         elif "not connected" in msg:
             # bluetooth device not connected to computer's bluetooth adapter
@@ -4485,9 +4569,8 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
 
         if count > 0:
             msg += "Error occurred " + str(count) + " times.\n\n"
-        msg += "At command line, does 'bluetoothctl show' display your devices?\n"
-        msg += "NOTE: Type 'exit' to exit the 'bluetoothctl' application.\n\n"
-        msg += "Try 'Reset Bluetooth' and 'Turn on " + self.name + "' for quick fix."
+        msg += "Does Ubuntu display your Bluetooth devices? Right-click on LED lights\n"
+        msg += "and try 'Reset Bluetooth' and then 'Turn on " + self.name + "' for quick fix."
         v1_print(_who, msg + "\n")
         if self.app is not None:
             if not self.app.suspending and not self.app.resuming and \
@@ -4541,7 +4624,7 @@ $ ps aux | grep gatttool | grep -v grep | wc -l
         v2_print("\n" + _who, "Send GATT cmd to:", self.name)
 
         if self.device is None:
-            self.Connect()  # 2025-02-10 TODO: Connect in loop
+            self.Connect()
 
         try:
             tc.powerOn(self.device)
@@ -4761,7 +4844,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         ''' File/Edit/View/Tools dropdown menu bars - Window ID required '''
         self.file_menu = self.edit_menu = self.view_menu = self.tools_menu = None
-        self.buildDropdown()  # Build Dropdown Menu Bars after 'sm =' class declared
+        self.buildDropdown()
 
         ''' Create treeview with internet devices. '''
         self.populateDevicesTree()
@@ -4775,9 +4858,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.main_help_id = "HelpNetworkDevices"  # Toggles to HelpSensors and HelpDevices
         self.usingDevicesTreeview = True  # Startup uses Devices Treeview
         self.buildButtonBar(self.sensors_btn_text)
-
-        # Dropdown Menu Bars Set options DISABLED or NORMAL based on context
-        self.updateDropdown()
 
         # Experiments to delay rediscover when there is GUI activity
         self.minimizing = False  # When minimizing, override focusIn()
@@ -4808,6 +4888,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         if self.bleSaveInst:
             self.bleSaveInst.resetBluetooth()
             self.bleSaveInst.turnOn()
+
+        ''' If Sony TV used, enable Sony Volume controls '''
+        self.updateDropdown()
 
         ''' Polling and processing with refresh tkinter loop forever '''
         while self.refreshApp():  # Run forever until quit
@@ -4926,6 +5009,17 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.tools_menu.add_command(label="Forget sudo password", underline=0,
                                     font=g.FONT, command=forgetPassword, state=tk.DISABLED)
 
+        volume_menu = tk.Menu(self.tools_menu, tearoff=0)
+        volume_menu.add_command(label='Normal', font=g.FONT, underline=1, background="green",
+                                command=lambda: self.sonySaveInst.setVolume(
+                                    GLO['NORMAL_VOLUME']), state=tk.NORMAL)
+        volume_menu.add_command(label='Quiet', font=g.FONT, underline=1, background="red",
+                                command=lambda: self.sonySaveInst.setVolume(
+                                    GLO['QUIET_VOLUME']), state=tk.NORMAL)
+        self.tools_menu.add_cascade(label="Sony volume level", font=g.FONT,
+                                    underline=0, menu=volume_menu, state=tk.DISABLED)
+        volume_menu.config(activebackground="SkyBlue3", activeforeground="black")
+
         self.tools_menu.add_separator()
 
         self.tools_menu.add_command(label="Big number calculator", font=g.FONT,
@@ -5019,6 +5113,10 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.tools_menu.entryconfig("Forget sudo password", state=tk.DISABLED)
         else:
             self.tools_menu.entryconfig("Forget sudo password", state=tk.NORMAL)
+        if self.sonySaveInst and GLO['ALLOW_VOLUME_CONTROL']:
+            self.tools_menu.entryconfig("Sony volume level", state=tk.NORMAL)
+        else:
+            self.tools_menu.entryconfig("Sony volume level", state=tk.DISABLED)
 
     def exitApp(self, kill_now=False, *_args):
         """ <Escape>, X on window, 'Exit from dropdown menu or Close Button"""
@@ -5082,10 +5180,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         exit()  # exit() required to completely shut down app
 
     def minimizeApp(self, *_args):
-        """ Minimize GUI Application() window using xdotool.
-            2024-12-08 TODO: Minimize child windows (Countdown and Big Number Calc.)
-                However, when restoring windows it can be on another monitor.
-        """
+        """ Minimize GUI Application() window using xdotool. """
         _who = self.who + "minimizeApp():"
         # noinspection SpellCheckingInspection
         command_line_list = ["xdotool", "windowminimize", str(GLO['WINDOW_ID'])]
@@ -5199,8 +5294,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         for i, mac in enumerate(ni.view_order):
             mac_dict = ni.get_mac_dict(mac)
             if len(mac_dict) < 2:
-                v1_print(_who, "len(mac_dict) < 2")
-                continue  # TODO: Error message on screen
+                v0_print(_who, "len(mac_dict) < 2 for MAC:", mac)
+                continue
 
             nr = TreeviewRow(self)  # Setup treeview row processing instance
             nr.New(mac)  # Setup new row
@@ -5778,7 +5873,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.update()  # process pending tk events in queue
 
         ''' 1 minute after start or resume refresh lagging power statuses '''
-        if self.force_refresh_power_time:
+        if self.force_refresh_power_time and now > self.force_refresh_power_time:
             self.refreshAllPowerStatuses()  # Display "ON", "OFF" or "?"
             self.force_refresh_power_time = 0.0  # Don't do it again
 
@@ -5945,6 +6040,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         self.turnAllPower("ON")  # Turn all devices on and show new status in treeview
 
+        if self.sonySaveInst and GLO['ALLOW_VOLUME_CONTROL']:
+            self.sonySaveInst.setStartupVolume()  # 9am - 10pm normal, else quiet volume
+
         now = time.time()
         self.last_rediscover_time = now - GLO['REDISCOVER_SECONDS'] * 2  # Force discovery
         self.last_refresh_time = now + 1.0  # Prevent running resumeFromSuspend() again
@@ -5984,8 +6082,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             if self.rediscovering:  # 2025-01-08
                 v0_print(_who, "Rediscovery in progress. Aborting Countdown")
                 return  # if rediscovery, machine locks up when timer finishes.
-                # 2025-01-10 TODO: Disable timer menu option when rediscovery is
-                #   running or when timer is already running.
 
         if countdown_sec <= 0:
             return  # No delay after resume
@@ -6028,8 +6124,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         """ Loop through instances and set power state to "ON" or "OFF".
             Called by Suspend ("OFF") and Resume ("ON")
             If devices treeview is mounted, update power status in each row
-
-            2025-05-13 TODO: Power lights last to allow time to read eyesome updates.
 
             :param state: Power state to set; "ON" or "OFF"
             :param fade: Fade in and out, false = No fading
@@ -6671,8 +6765,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
     def DisplayTimings(self):
         """ Loop through ni.instances and display cmdEvents times:
                 Count: 9, Minimum: 9.99, Maximum: 9.99, Average 9.99.
-
-            2024-12-21 TODO: Merge common code with DisplayErrors() > DisplayCommon()
         """
         _who = self.who + "DisplayTimings():"
         title = "Discovery timings"
@@ -6786,7 +6878,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         if len(device_list) == 0:
             return
 
-        # 2025-01-16 TODO: Check for function already running at top.
         scrollbox = self.DisplayCommon(_who, title, x=x, y=y, width=700,
                                        help="ViewBluetoothDevices")
         if scrollbox is None:
@@ -6806,7 +6897,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 scrollbox.highlight_pattern(name, "yellow")
                 mac_dict = ni.get_mac_dict(address)
                 mac_dict['ip'] = name  # ip isn't used for bluetooth.
-                # 2025-01-15 TODO: Update Treeview Row with new name.
             else:  # empty dictionary
                 scrollbox.highlight_pattern(address, "blue")
                 scrollbox.highlight_pattern(name, "green")
@@ -6888,6 +6978,11 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.bleScrollbox.delete(6.0, "end")
 
         all_lines = self.bleSaveInst.monitorBreatheColors()
+        try:
+            scrollbox.insert("end", all_lines)
+        except TclError as err:
+            v0_print(_who, "Tkinter error:")
+            v0_print(err)
         if all_lines is None:
             close()
             return
@@ -6914,6 +7009,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             Slider buttons for Night and Day Volume.
             Picture On/Off checkbox.
             Subwoofer On/Off checkbox. (Not sure if this will work)
+            Subwoofer level slider.
             Scrollbox for all current Sony TV settings.
 
             Calls DisplayCommon to create Window, Frame and Scrollbox.
@@ -6972,7 +7068,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             "Subwoofer Freq", sony.subwooferFreq)
         scrollbox.insert("end", "\n\n")
 
-
         self.last_red = self.last_green = self.last_blue = 0
 
         # Body is only updated when red, green or blue change
@@ -6989,7 +7084,11 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         scrollbox.delete(6.0, "end")
 
         all_lines = self.bleSaveInst.monitorBreatheColors()
-        scrollbox.insert("end", all_lines)
+        try:
+            scrollbox.insert("end", all_lines)
+        except TclError as err:
+            v0_print(_who, "Tkinter error:")
+            v0_print(err)
 
         scrollbox.highlight_pattern("Blue:", "blue")
         scrollbox.highlight_pattern("Green:", "green")
@@ -7010,8 +7109,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             Caller has 90 heading rows, 10 footer rows and 10 columns to use. For
                 example, DisplayBreathing() uses 4 heading rows and 5 columns.
 
-            2025-02-04 TODO: create self.event_scrollbox instead of 'return scrollbox'
-
         """
 
         if self.event_scroll_active and self.event_top:
@@ -7023,10 +7120,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.event_btn_frm = None
 
         def close(*_args):
-            """ Close window painted by this pretty_column() method """
+            """ Close window painted by this DisplayCommon() method """
             if not self.event_scroll_active:
                 return
-            scrollbox.unbind("<Button-1>")  # 2024-12-21 TODO: old code, use unknown
             self.win_grp.unregister_child(self.event_top)
             self.tt.close(self.event_top)
             self.event_scroll_active = None
@@ -7206,15 +7302,12 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         if found_inst and found_inst.device is not None:
             found_inst.Disconnect()  # started device's gatttool will be killed & lags
-            # TODO: Update treeview with "?" power status like .setNight() & .setColor()
             if self.usingDevicesTreeview:
                 cr = TreeviewRow(self)
                 iid = cr.getIidForInst(found_inst)
                 cr.Get(iid)
                 if iid is not None:
-                    resp = "?"
-                    text = "  " + str(resp)
-                    cr.tree.item(iid, text=text)
+                    cr.tree.item(iid, text=" ?")
                     cr.tree.update_idletasks()
                 else:
                     v0_print(_who, "Could not get devices treeview row.")
@@ -7798,8 +7891,6 @@ def open_files():
         return ni.discovered, ni.instances, ni.view_order
 
     with open(fname, "r") as f:
-        # TODO: discover() will wipe out ni.mac_dicts.
-        #       Must merge old and new ni.mac_dicts.
         v2_print("Opening last arp dictionaries file:", fname)
         ni.mac_dicts = json.loads(f.read())
 
