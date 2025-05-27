@@ -2827,6 +2827,7 @@ https://stackoverflow.com/questions/2829613/how-do-you-tell-if-a-string-contains
         self.type_code = GLO['KDL_TV']
 
         self.powerSavingMode = "?"  # set with getPowerSavingMode()
+        self.hasVolumeSet = False  # On Startup check quiet/normal volume
         self.volume = "?"  # Set with getVolume()  # 28
         self.volumeLast = "?"  # Last recorded volume for spamming notify-send
         self.volumeSpeaker = "?"
@@ -2883,10 +2884,8 @@ https://stackoverflow.com/questions/2829613/how-do-you-tell-if-a-string-contains
             Normally event logging would be turned off to prevent large dictionary.
         """
         _who = self.who + "checkPowerOffSuspend():"
-        if not GLO['ALLOW_REMOTE_TO_SUSPEND']:
-            return False  # Feature disabled
-        
-        if self.menuPowerOff:
+
+        if self.menuPowerOff:  # Only sony tv remote control power off counts.
             return False  # Powered off by HomA Right Click doesn't count
 
         self.getPower(forgive=forgive)
@@ -2905,8 +2904,6 @@ https://stackoverflow.com/questions/2829613/how-do-you-tell-if-a-string-contains
             Normally event logging would be turned off to prevent large dictionary.
         """
         _who = self.who + "checkVolumeChange():"
-        if not GLO['ALLOW_VOLUME_CONTROL']:
-            return False  # Feature disabled
 
         if self.powerStatus != "ON":
             return False  # TV isn't powered on, can't check current volume
@@ -3299,7 +3296,7 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/audio/v1_0/g
 
         if True is True:
             RESTid = "601"
-            params = '[{"volume":"' + str(volume) + '", "target": "' + target + '"}]'
+            params = '[{"volume": "' + str(volume) + '", "target": "' + target + '"}]'
             ver = "1.0"
         else:
             RESTid = "98"
@@ -3311,6 +3308,15 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/audio/v1_0/g
         reply_dict = ni.os_curl(JSON_str, "audio", self.ip, forgive=forgive)
         v2_print(_who, "curl reply_dict:", reply_dict)
         self.checkReply(reply_dict, RESTid)
+
+        ''' Resume Error 2025-05-26
+SonyBraviaKdlTV().setStartupVolume(): Current value of self.volumeSpeaker: 21 
+  Hour of day: 15
+SonyBraviaKdlTV().setVolume(): Error: 40801 -- "Volume is out of range"
+
+Running via Tools Dropdown Menu doesn't cause a problem though?
+
+        '''
 
         try:
             err = reply_dict['error']
@@ -5854,7 +5860,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         GLO['LOG_EVENTS'] = False  # Turn off logging during Sony checks
 
         ''' Sony TV monitored for TV Remote power off suspends system? '''
-        if self.sonySaveInst and life_span > 2.0:
+        if GLO['ALLOW_REMOTE_TO_SUSPEND'] and self.sonySaveInst and life_span > 2.0:
             self.sonySaveInst.powerStatus = "?"  # Default if network down
             if self.sonySaveInst.checkPowerOffSuspend(forgive=True):  # check "OFF"
                 self.sony_suspended_system = True  # Sony TV initiated suspend
@@ -5862,9 +5868,14 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 # Will not return until Suspend finishes and resume finishes
 
         ''' Sony TV audio channel monitored for volume up/down display? '''
-        if self.sonySaveInst and life_span > 2.0:  # Give 20 seconds to settle down
+        if GLO['ALLOW_VOLUME_CONTROL'] and self.sonySaveInst and life_span > 2.0:
             if self.sonySaveInst.checkVolumeChange(forgive=True):
-                self.last_rediscover_time = time.time()
+                self.last_rediscover_time = time.time()  # 2025-05-27 review need
+
+            ''' Duplicate code on start and resume. '''
+            if not self.sonySaveInst.hasVolumeSet:
+                self.sonySaveInst.setStartupVolume()  # 9am - 10pm normal, else quiet volume
+                self.sonySaveInst.hasVolumeSet = True  # Don't check again
 
         GLO['LOG_EVENTS'] = True if log_status else False  # Sony done, restore logging
 
@@ -6041,7 +6052,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.turnAllPower("ON")  # Turn all devices on and show new status in treeview
 
         if self.sonySaveInst and GLO['ALLOW_VOLUME_CONTROL']:
-            self.sonySaveInst.setStartupVolume()  # 9am - 10pm normal, else quiet volume
+            self.sonySaveInst.hasVolumeSet = False  # Check quiet/normal volume again
 
         now = time.time()
         self.last_rediscover_time = now - GLO['REDISCOVER_SECONDS'] * 2  # Force discovery
