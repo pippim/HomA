@@ -1,5 +1,7 @@
-#!/usr/bin/env python
+#!/usr/bin/python
 # -*- coding: utf-8 -*-
+# /usr/bin/python3
+# /usr/bin/env python  # puts name "python" into top, not "homa.py"
 """
 Author: pippim.com
 License: GNU GPLv3. (c) 2024-2025
@@ -143,6 +145,13 @@ try:
 except NameError:  # name 'reload' is not defined
     pass  # Python 3 already in unicode by default
 
+# pprint (dictionary pretty print) is usually installed. But...
+pprint_installed = True
+try:
+    import pprint
+except ImportError:
+    pprint_installed = False
+
 # Vendor libraries preinstalled in subdirectories (ttkwidgets not used)
 import pygatt  # Bluetooth Low Energy (BLE) low-level communication
 import pygatt.exceptions  # pygatt error messages also used by trionesControl
@@ -174,6 +183,7 @@ class DeviceCommonSelf:
         self.passed_dependencies = []
         self.passed_installed = []
 
+        self.app = None  # Every instance has reference to Application() instance
         self.system_ctl = False  # Turning off TV shuts down / suspends system
         self.sony_suspended_system = False  # If TV powered off suspend system
 
@@ -388,8 +398,6 @@ class Router(DeviceCommonSelf):
 
         self.type = "Router"
         self.type_code = GLO['ROUTER_M']
-
-        self.app = None  # Set to Application() to call app.getSudoPassword()
 
         self.ether_name = ""  # eth0, enp59s0, etc
         self.ether_mac = ""  # aa:bb:cc:dd:ee:ff
@@ -1614,7 +1622,7 @@ class NetworkInfo(DeviceCommonSelf):
 
         return temp_fname
 
-    def curl(self, JSON_str, subsystem, ip, forgive=False):
+    def curl(self, JSON_str, subsystem, ip, rid="0", forgive=False):
         """ Use sub-process curl to communicate with REST API
             2024-10-21 - Broken for Sony Picture On/Off and Sony On/Off.
                 Use os_curl instead to prevent error message:
@@ -1640,18 +1648,21 @@ class NetworkInfo(DeviceCommonSelf):
                 v1_print(_who, "event['returncode']:", event['returncode'])
             else:
                 v0_print(_who, "event['returncode']:", event['returncode'])
-            return {"result": [{"status": event['returncode']}]}
+            return {"result": [{"status": event['returncode'], 'id': rid}]}
 
         try:
             reply_dict = json.loads(str(event['output']))  # str to convert from bytes
         except ValueError:
             v0_print(_who, "Invalid 'output':", event['output'])
-            reply_dict = {"result": [{"status": _who + "json.loads(event['output']) failed!"}]}
+            # 2025-05-28 Add 'id' dictionary expected by checkReply() method.
+            reply_dict = {"result": [{'status': '"' + _who +
+                                                ' json.loads(event[output]) failed!"',
+                                     'id': rid}]}
 
         v3_print(_who, "reply_dict:", reply_dict)
         return reply_dict
 
-    def os_curl(self, JSON_str, subsystem, ip, forgive=False):
+    def os_curl(self, JSON_str, subsystem, ip, rid="0", forgive=False):
         """ Use os.popen curl to communicate with REST API
             2024-10-21 - os_curl supports Sony Picture On/Off using os.popen(). When
                 using regular ni.curl() Sony REST API returns {"error": 403}
@@ -1667,15 +1678,17 @@ class NetworkInfo(DeviceCommonSelf):
             '-H', '"X-Auth-PSK: ' + GLO['SONY_PWD'] + '"', '--data', "'" + JSON_str + "'",
             'http://' + ip + '/sony/' + subsystem
         ]
-        self.cmdString = 'timeout ' + str(GLO['CURL_TIME']) + ' curl' +\
-            ' -s -H "Content-Type: application/json; charset=UTF-8" ' +\
-            ' -H "X-Auth-PSK: ' + GLO['SONY_PWD'] + '" --data ' + "'" + JSON_str + "'" +\
-            ' http://' + ip + '/sony/' + subsystem
+        self.cmdString = ' '.join(self.cmdCommand)  # 2025-05-28 shorter
+        #self.cmdString = 'timeout ' + str(GLO['CURL_TIME']) + ' curl' +\
+        #    ' -s -H "Content-Type: application/json; charset=UTF-8" ' +\
+        #    ' -H "X-Auth-PSK: ' + GLO['SONY_PWD'] + '" --data ' + "'" + JSON_str + "'" +\
+        #    ' http://' + ip + '/sony/' + subsystem
 
         ''' run command with os.popen() because sp.Popen() fails on ">" '''
         f = os.popen(self.cmdString + " 2>&1")
         text = f.read().splitlines()
         returncode = f.close()  # https://stackoverflow.com/a/70693068/6929343
+        returncode = 0 if returncode is None else returncode  # Added 2025-05-28
         v3_print(_who, "text:", text)
 
         ''' log event and v3_print debug lines '''
@@ -1686,7 +1699,8 @@ class NetworkInfo(DeviceCommonSelf):
         who = self.cmdCaller + " logEvent():"
         self.logEvent(who, forgive=forgive, log=True)
 
-        if returncode is not None:
+        #if returncode is not None:  # Changed 2025-05-28
+        if returncode:  # Added 2025-05-28
             if forgive:
                 v1_print(_who, "text:")
                 v1_print(" ", text)  # string, list
@@ -1695,15 +1709,22 @@ class NetworkInfo(DeviceCommonSelf):
                 v0_print(_who, "text:")
                 v0_print(" ", text)  # string, list
                 v0_print(_who, "returncode:", returncode)
-            return {"result": [{"status": returncode}]}
+            # 2025-05-28 Add 'id' dictionary expected by checkReply() method.
+            return {'result': [{'status': '"' + _who + ' returncode: ' +
+                                          str(returncode) + '"', 'id': rid}]}
 
         try:
             reply_dict = json.loads(text[0])
         except ValueError:
-            v2_print(_who, "Invalid 'text':", text)  # Sample below on 2024-10-08
-            reply_dict = {"result": [{"status": _who + "json.loads(text) failed!"}]}
+            v0_print(_who, "Invalid 'text':", text)  # Sample below on 2024-10-08
+            # 2025-05-28 Add 'id' dictionary expected by checkReply() method.
+            reply_dict = {"result": [{'status': '"' + _who +
+                                                ' json.loads(text) failed!"',
+                                     'id': rid}]}
 
         v3_print(_who, "reply_dict:", reply_dict)
+        # NetworkInfo().turnPictureOn().os_curl(): reply_dict:
+        #   {'result': [], 'id': 52}
         return reply_dict
 
     def get_mac_dict(self, mac):
@@ -2511,8 +2532,6 @@ class LaptopDisplay(DeviceCommonSelf):
         self.wifi_mac = cp.wifi_mac  # aa:bb:cc:dd:ee:ff
         self.wifi_ip = cp.wifi_ip  # 192.168.0.999
 
-        self.app = None  # Parent app for calling GetPassword() method.
-
     def isDevice(self, forgive=False):
         """ Test if passed ip == ethernet ip or WiFi ip.
             Initially a laptop base could be assigned with IP but now it
@@ -2863,18 +2882,66 @@ https://stackoverflow.com/questions/2829613/how-do-you-tell-if-a-string-contains
         """ Verify correct RESTid embedded in reply from REST API
             Use sys._getframe(1).f_code.co_name to get caller's name
         """
+        def print_dict():
+            """ Print dictionary with ppprint if available """
+            if pprint_installed:
+                print_string = pprint.pformat(reply, indent=2)
+                v0_print(print_string)
+            else:
+                v0_print(" ", reply)
+
         # noinspection PyProtectedMember
         _who = self.who + sys._getframe(1).f_code.co_name + "().checkReply():"
         try:
             embedId = str(reply['id'])  # Reply id returned as integer
             if embedId != RESTid:
                 v0_print(_who, "embedId: ", embedId, "!= RESTid:", RESTid)
+                print_dict()
+
         except (TypeError, KeyError):
             embedId = ""
-            v0_print(_who, "TypeError / KeyError:\n ", reply)
+            v0_print(_who, "TypeError / KeyError:\n ")
+            print_dict()
 
         v2_print(_who, "curl reply_dict:", reply)  # E.G. {'result': [], 'id': 55}
         return embedId == RESTid
+
+    def checkSonyEvents(self):
+        """ Called from app.refreshApp() every 16 to 33 ms.
+            Check if Sony TV Remote turned off TV to suspend system.
+            Check if Sony TV Remote changed volume and display percentage.
+            Check one-time to set Sony TV volume to normal or quiet.
+
+            2025-06-01 Originally in Application() moved to SonyBraviaKdlTV()
+        """
+        if self.powerStatus == "?":
+            self.getPower()  # "?" when network down or resuming
+            # 2025-05-31 TODO: If "ON" update treeview and dropdown menu
+        life_span = time.time() - GLO['APP_RESTART_TIME'] \
+            if self.powerStatus == "ON" else 0.0
+        log_status = GLO['LOG_EVENTS']  # Current event logging status
+        GLO['LOG_EVENTS'] = False  # Turn off logging during Sony checks
+
+        ''' Sony TV monitored for TV Remote power off suspends system? '''
+        if GLO['ALLOW_REMOTE_TO_SUSPEND'] and life_span > 2.0:
+            self.powerStatus = "?"  # Default if network down
+            if self.checkPowerOffSuspend(forgive=True):  # check "OFF"
+                self.sony_suspended_system = True  # Sony TV initiated suspend
+                return
+                # self.Suspend(sony_remote_powered_off=True)  # Turns on event logging
+                # Will not return until Suspend finishes and resume finishes
+
+        ''' Sony TV audio channel monitored for volume up/down display? '''
+        if GLO['ALLOW_VOLUME_CONTROL'] and life_span > 2.0:
+            if self.checkVolumeChange(forgive=True):
+                self.app.last_rediscover_time = time.time()  # 2025-05-27 review need
+
+            ''' One-time set volume to quiet or normal on startup and resume. '''
+            if not self.hasVolumeSet:
+                self.setStartupVolume()  # 9am - 10pm normal, else quiet volume
+                self.hasVolumeSet = True  # Don't check again
+
+        GLO['LOG_EVENTS'] = True if log_status else False  # Sony done, restore logging
 
     def checkPowerOffSuspend(self, forgive=False):
         """ If TV powered off with remote control. If so suspend system.
@@ -2942,7 +3009,7 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/
 
         RESTid = "50"
         _who, JSON_str = self.makeCommon("getPowerStatus", RESTid, '[]')
-        reply_dict = ni.curl(JSON_str, "system", self.ip, forgive=forgive)
+        reply_dict = ni.curl(JSON_str, "system", self.ip, RESTid, forgive=forgive)
         self.powerStatus = "?"  # Can be "ON", "OFF" or "?"
         if not forgive and not self.checkReply(reply_dict, RESTid):
             return self.powerStatus
@@ -2975,7 +3042,7 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/
 
         RESTid = "55"
         _who, JSON_str = self.makeCommon("setPowerStatus", RESTid, '[{"status": true}]')
-        reply_dict = ni.os_curl(JSON_str, "system", self.ip, forgive=forgive)
+        reply_dict = ni.os_curl(JSON_str, "system", self.ip, RESTid, forgive=forgive)
         self.powerStatus = "?"  # Can be "ON", "OFF" or "?"
         if not forgive and not self.checkReply(reply_dict, RESTid):
             return self.powerStatus
@@ -2997,7 +3064,7 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/
 
         RESTid = "55"
         _who, JSON_str = self.makeCommon("setPowerStatus", RESTid, '[{"status": false}]')
-        reply_dict = ni.os_curl(JSON_str, "system", self.ip, forgive=forgive)
+        reply_dict = ni.os_curl(JSON_str, "system", self.ip, RESTid, forgive=forgive)
         self.powerStatus = "?"  # Can be "ON", "OFF" or "?"
         if not forgive and not self.checkReply(reply_dict, RESTid):
             return self.powerStatus
@@ -3021,7 +3088,7 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/
 
         RESTid = "51"
         _who, JSON_str = self.makeCommon("getPowerSavingMode", RESTid, '[]')
-        reply_dict = ni.curl(JSON_str, "system", self.ip, forgive=forgive)
+        reply_dict = ni.curl(JSON_str, "system", self.ip, RESTid, forgive=forgive)
         self.powerSavingMode = "?"  # Can be "ON", "OFF" or "?"
         if not forgive and not self.checkReply(reply_dict, RESTid):
             return self.powerSavingMode
@@ -3054,8 +3121,8 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/
         RESTid = "52"
         _who, JSON_str = self.makeCommon("setPowerSavingMode", RESTid, '[{"mode": "off"}]')
 
-        reply_dict = ni.os_curl(JSON_str, "system", self.ip, forgive=forgive)
-        #reply_dict = ni.curl(JSON_str, "system", self.ip, forgive=forgive)
+        reply_dict = ni.os_curl(JSON_str, "system", self.ip, RESTid, forgive=forgive)
+        #reply_dict = ni.curl(JSON_str, "system", self.ip, RESTid, forgive=forgive)
         self.checkReply(reply_dict, RESTid)
 
         try:
@@ -3076,7 +3143,7 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/system/v1_0/
         _who, JSON_str = self.makeCommon("setPowerSavingMode", RESTid,
                                          '[{"mode": "pictureOff"}]')
 
-        reply_dict = ni.os_curl(JSON_str, "system", self.ip, forgive=forgive)
+        reply_dict = ni.os_curl(JSON_str, "system", self.ip, RESTid, forgive=forgive)
         # 2025-04-12 Single quotes are around --data json packet
         ''' FROM Tools, View timings:
 NetworkInfo().os_curl(): timeout 0.2 curl -s -H "Content-Type: application/json; 
@@ -3150,7 +3217,7 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/audio/v1_1/g
         RESTid = "73"
         _who, JSON_str = self.makeCommon("getSoundSettings", RESTid,
                                          '[{"target": "outputTerminal"}]', ver="1.1")
-        reply_dict = ni.curl(JSON_str, "audio", self.ip, forgive=forgive)
+        reply_dict = ni.curl(JSON_str, "audio", self.ip, RESTid, forgive=forgive)
         self.checkReply(reply_dict, RESTid)
         # USB Subwoofer is off:
         # SonyBraviaKdlTV().getSoundSettings(): curl reply_dict: {'result': [[
@@ -3193,7 +3260,7 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/audio/v1_0/g
         RESTid = "67"
         parm = '[{"target": "' + target + '"}]'
         _who, JSON_str = self.makeCommon("getSpeakerSettings", RESTid, parm)
-        reply_dict = ni.curl(JSON_str, "audio", self.ip, forgive=forgive)
+        reply_dict = ni.curl(JSON_str, "audio", self.ip, RESTid, forgive=forgive)
         self.checkReply(reply_dict, RESTid)
 
         try:
@@ -3209,11 +3276,14 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/audio/v1_0/g
         if self.powerStatus != "ON":
             v0_print(_who, "Sony 'powerStatus' != 'ON': '" + self.powerStatus + "'.")
             return
+
+        isEventLogging = GLO['LOG_EVENTS']  # Log all suspend events
+        GLO['LOG_EVENTS'] = True  # Log volume command events
         self.getVolume()
 
         curr_volume = int(self.volumeSpeaker)  # Could be self.volumeHeadphone. Not supported.
         hour = dt.datetime.today().hour
-        v0_print(_who, "Current value of self.volumeSpeaker:", self.volumeSpeaker,
+        v1_print(_who, "Current value of self.volumeSpeaker:", self.volumeSpeaker,
                  "\n  Hour of day:", hour)
 
         isNormal = True if 9 <= hour <= 20 else False
@@ -3225,10 +3295,9 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/audio/v1_0/g
         if isQuiet and curr_volume > GLO['QUIET_VOLUME']:
             volume_str = str(GLO['QUIET_VOLUME'])
 
-        if not volume_str:
-            return  # No volume changes
-
-        self.setVolume(volume_str, target=target, forgive=forgive)
+        if volume_str:
+            self.setVolume(volume_str, target=target, forgive=forgive)
+        GLO['LOG_EVENTS'] = True if isEventLogging else False
 
     def getVolume(self, target="speaker", forgive=False):
         """ Get Sony Bravia KDL TV volume
@@ -3237,7 +3306,7 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/audio/v1_0/g
 
         RESTid = "33"
         _who, JSON_str = self.makeCommon("getVolumeInformation", RESTid, '[]')
-        reply_dict = ni.curl(JSON_str, "audio", self.ip, forgive=forgive)
+        reply_dict = ni.curl(JSON_str, "audio", self.ip, RESTid, forgive=forgive)
         v2_print(_who, "curl reply_dict:", reply_dict)
         # SonyBraviaKdlTV().getVolume(): curl reply_dict: {'result': [[
         # {'volume': 28, 'maxVolume': 100, 'minVolume': 0, 'target': 'speaker', 'mute': False},
@@ -3278,7 +3347,7 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/audio/v1_0/g
                     "version": "1.0"
                 }
 
-            Version 1.2 (display volume level on TV) gets Error code 403 (Forbiddn):
+            Version 1.2 (display volume level on TV) gets Error code 403 (Forbidden):
             https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/
                 audio/v1_2/setAudioVolume/index.html
                 {
@@ -3305,7 +3374,7 @@ https://pro-bravia.sony.net/develop/integrate/rest-api/spec/service/audio/v1_0/g
             ver = "1.2"  # Unsupported version error: "[14, '1.2']"
 
         _who, JSON_str = self.makeCommon("setAudioVolume", RESTid, params, ver=ver)
-        reply_dict = ni.os_curl(JSON_str, "audio", self.ip, forgive=forgive)
+        reply_dict = ni.os_curl(JSON_str, "audio", self.ip, RESTid, forgive=forgive)
         v2_print(_who, "curl reply_dict:", reply_dict)
         self.checkReply(reply_dict, RESTid)
 
@@ -3695,7 +3764,6 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         # but the real name is obtained using `hcitool dev` in getBluetoothStatus()
         self.hci_mac = ""  # Bluetooth chipset MAC address
         self.device = None  # LED Light Strip device instance obtained with MAC address
-        self.app = None  # Parent app for calling GetPassword() and other methods.
 
         self.temp_fname = None  # Temporary filename for all devices report
         self.fake_top = None  # For color chooser placement geometry
@@ -4080,6 +4148,18 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
 
     def breatheColors(self, low=4, high=30, span=6.0, step=0.275, bots=1.5, tops=0.5):
         """ Breathe Colors: R, R&G, G, G&B, B, B&R
+
+            Automatically called by BluetoothLedLightStrip.turnOn() method.
+            BluetoothLedLightStrip.turnOn() method is automatically called
+            during homa.py startup and resuming from suspend. Manually called via
+            Right Click in Network Devices Treeview menu for LED light strip.
+
+            OVERVIEW:
+            Suspends self.refreshApp() running in self.App.__init__() loop.
+            Calls cr.inst.breatheColors() which loops forever and:
+                Exit if app.isActive is False
+                Exit if self.already_breathing_colors is False
+                Calls app.refreshApp after each LED set color as time permits
 
         :param low: Low value (darkest) E.G. 4 (Too low and lights might turn off)
         :param high: High value (brightest) E.G. 30 (Max is 255 which is too bright)
@@ -4662,20 +4742,22 @@ $ ps aux | grep gatttool | grep -v grep | wc -l
         return self.powerStatus
 
     def turnOff(self):
-        """ Turn Off BLE (Bluetooth Low Energy) LED Light Strip.
-            Warning: Does NOT disconnect. This must be done when suspending system.
-        """
+        """ Turn Off BLE (Bluetooth Low Energy) LED Light Strip. """
 
         _who = self.who + "turnOff():"
         v2_print("\n" + _who, "Send GATT cmd to:", self.name)
 
         if self.device is None:
-            self.Connect()  # 2025-02-15 why bother connecting just to disconnect?
+            if self.powerStatus == "ON":
+                # Power status on but no connection, reconnect to turn off lights
+                self.Connect()
+            else:
+                return  # Already "OFF" or "?"
 
         try:
             tc.powerOff(self.device)
-            self.already_breathing_colors = False
             self.powerStatus = "OFF"  # Can be "ON", "OFF" or "?"
+            self.already_breathing_colors = False
             return self.powerStatus
         except pygatt.exceptions.NotConnectedError as err:
             v0_print(_who, err)
@@ -4881,9 +4963,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 - BLE LED Light Strip() needs to call .showInfoMsg() method.  '''
         for instance in ni.instances:
             inst = instance['instance']
-            if inst.type_code == GLO['LAPTOP_D'] or inst.type_code == GLO['ROUTER_M']:
-                inst.app = self  # calls sudo
-            elif inst.type_code == GLO['BLE_LS']:
+            inst.app = self  # Needed for passwords, showInfo(), app variables
+            if inst.type_code == GLO['BLE_LS']:
                 inst.app = self  # BluetoothLedLightStrip calls app.showInfoMsg()
                 ble.app = self  # For functions called from Dropdown menu
                 self.bleSaveInst = inst  # For breathing colors monitoring
@@ -5665,10 +5746,22 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         cr.tree.update_idletasks()
 
     def breatheLEDColors(self, cr):
-        """ Mouse right button click selected "Breathing colors".
+        """ Manual mouse right button click selected "Breathing colors".
+
+            Call cr.inst.breatheColors() method. Which is also automatically
+            called by BluetoothLedLightStrip.turnOn() method
+            during homa.py startup and resuming from suspend.
+
+            OVERVIEW:
+            Suspends self.refreshApp() running in self.App.__init__() loop.
+            Calls cr.inst.breatheColors() which loops forever and:
+                Exit if app.isActive is False
+                Exit if self.already_breathing_colors is False
+                Calls app.refreshApp after each LED set color as time permits
+
         """
         _who = self.who + "breatheLEDColors():"
-        resp = cr.inst.breatheColors()
+        resp = cr.inst.breatheColors()  # Loops forever until self.isActive False
         self.last_refresh_time = time.time()
         if not self.isActive:
             return
@@ -5823,11 +5916,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         """ Sleeping loop until need to do something. Fade tooltips. Resume from
             suspend. Monitor Sony TV settings. Rediscover devices.
 
-            When a message is displayed, or input is requested, lost time causes
-            a fake resume from suspend condition. After dialog boxes, use command:
-
-                self.last_refresh_time = time.time()  # Refresh idle loop
-
         """
 
         _who = self.who + "refreshApp()"
@@ -5854,30 +5942,41 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             return False  # self.close() has set to None
 
         ''' Special Sony TV features after Sony TV on for 2 seconds '''
-        life_span = time.time() - GLO['APP_RESTART_TIME'] \
-            if self.sonySaveInst and self.sonySaveInst.powerStatus == "ON" else 0.0
-        log_status = GLO['LOG_EVENTS']  # Current event logging status
-        GLO['LOG_EVENTS'] = False  # Turn off logging during Sony checks
-
-        ''' Sony TV monitored for TV Remote power off suspends system? '''
-        if GLO['ALLOW_REMOTE_TO_SUSPEND'] and self.sonySaveInst and life_span > 2.0:
-            self.sonySaveInst.powerStatus = "?"  # Default if network down
-            if self.sonySaveInst.checkPowerOffSuspend(forgive=True):  # check "OFF"
-                self.sony_suspended_system = True  # Sony TV initiated suspend
+        if self.sonySaveInst:
+            self.sonySaveInst.checkSonyEvents()  # 2025-06-01 new method
+            if self.sony_suspended_system is True:  # Sony TV initiated suspend
                 self.Suspend(sony_remote_powered_off=True)  # Turns on event logging
                 # Will not return until Suspend finishes and resume finishes
+                self.sony_suspended_system = False  # not needed but insurance
+            """ 2025-06-01 code ported to new method .checkSonyEvents()
+            if self.sonySaveInst.powerStatus == "?":
+                self.sonySaveInst.getPower()  # "?" when network down or resuming
+                # 2025-05-31 TODO: If "ON" update treeview and dropdown menu
+            life_span = time.time() - GLO['APP_RESTART_TIME'] \
+                if self.sonySaveInst.powerStatus == "ON" else 0.0
+            log_status = GLO['LOG_EVENTS']  # Current event logging status
+            GLO['LOG_EVENTS'] = False  # Turn off logging during Sony checks
 
-        ''' Sony TV audio channel monitored for volume up/down display? '''
-        if GLO['ALLOW_VOLUME_CONTROL'] and self.sonySaveInst and life_span > 2.0:
-            if self.sonySaveInst.checkVolumeChange(forgive=True):
-                self.last_rediscover_time = time.time()  # 2025-05-27 review need
+            ''' Sony TV monitored for TV Remote power off suspends system? '''
+            if GLO['ALLOW_REMOTE_TO_SUSPEND'] and life_span > 2.0:
+                self.sonySaveInst.powerStatus = "?"  # Default if network down
+                if self.sonySaveInst.checkPowerOffSuspend(forgive=True):  # check "OFF"
+                    self.sony_suspended_system = True  # Sony TV initiated suspend
+                    self.Suspend(sony_remote_powered_off=True)  # Turns on event logging
+                    # Will not return until Suspend finishes and resume finishes
 
-            ''' Duplicate code on start and resume. '''
-            if not self.sonySaveInst.hasVolumeSet:
-                self.sonySaveInst.setStartupVolume()  # 9am - 10pm normal, else quiet volume
-                self.sonySaveInst.hasVolumeSet = True  # Don't check again
+            ''' Sony TV audio channel monitored for volume up/down display? '''
+            if GLO['ALLOW_VOLUME_CONTROL'] and life_span > 2.0:
+                if self.sonySaveInst.checkVolumeChange(forgive=True):
+                    self.last_rediscover_time = time.time()  # 2025-05-27 review need
 
-        GLO['LOG_EVENTS'] = True if log_status else False  # Sony done, restore logging
+                ''' Duplicate code on start and resume. '''
+                if not self.sonySaveInst.hasVolumeSet:
+                    self.sonySaveInst.setStartupVolume()  # 9am - 10pm normal, else quiet volume
+                    self.sonySaveInst.hasVolumeSet = True  # Don't check again
+
+            GLO['LOG_EVENTS'] = True if log_status else False  # Sony done, restore logging
+            """
 
         ''' Always give time slice to tooltips - requires sql.py color config '''
         self.tt.poll_tips()  # Tooltips fade in and out
@@ -5893,18 +5992,16 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         ''' Displaying statistics for Bluetooth LED Light Strip breathing colors? '''
         if self.bleSaveInst and self.bleScrollbox:
-            self.DisplayBreathing()
+            self.DisplayBreathing()  # Display single step in Bluetooth LEDs
 
         ''' Check `sensors` (if installed) every GLO['SENSOR_CHECK'] seconds '''
         sm.Sensors()
 
-        ''' Speedy derivative when called by CPU intensive methods. Also  
-            called by waiting messages within first rediscovery process when
-            a second rediscovery will break things. '''
-        if not tk_after:
+        ''' Speedy derivative called by CPU intensive methods. '''
+        if not tk_after:  # Skip tkinter update and 16 to 33ms sleep
             return self.winfo_exists()  # Application window destroyed?
 
-        ''' Sunlight percentage every minute '''
+        ''' Get sunlight percentage every minute for LED light strip '''
         minute = ext.h(now).split(":")[1]
         if minute != self.last_minute:
             night = cp.getNightLightStatus()
@@ -5930,8 +6027,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.after(sleep)  # Sleep until next GLO['REFRESH_MS'] (30 to 60 fps)
         self.last_refresh_time = time.time()
 
-        ''' Wrapup '''
-        return self.winfo_exists()  # Go back to caller as success or failure
+        ''' Back to __init__(), breatheColors(), showInfo(), etc.  '''
+        return self.winfo_exists()  # Return app window status to caller
 
     def Suspend(self, sony_remote_powered_off=False, *_args):
         """ Power off devices and suspend system.
@@ -5955,6 +6052,14 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             v0_print(_who, "Aborting suspend.", msg)
             return
 
+        def dodge():
+            """ 2025-05-30 Copied from self.Rediscover() make method later. """
+            self.rediscovering = False
+            self.updateDropdown()  # Enable menu options
+            self.last_rediscover_time = time.time()
+
+        dodge()
+
         v0_print(_who, "Suspending system...")
         self.suspending = True  # Prevent error dialog from interrupting suspend
         self.resuming = False
@@ -5967,8 +6072,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             _event = self.runCommand(command_line_list, _who)  # def runCommand
             self.tt.zap_tip_window(self.suspend_btn)  # Remove any tooltip window.
 
-        self.isActive = False  # Signal closing so methods shut down elegantly.
-        self.suspending = True  # Don't display error messages
+        self.isActive = False  # Signal breatheColors() to shut down elegantly
+        self.suspending = True  # Don't display error messages with self.showInfo()
         self.resuming = False
 
         if self.bleSaveInst:  # Is breathing colors active?
@@ -5990,6 +6095,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             else:
                 last_now = now
 
+        ''' Resume from suspend '''
+
         time_to_suspend = last_now - start_suspend - 0.05  # assume half way of 100ms
         v0_print(_who, "Time required to suspend the system:", time_to_suspend)
 
@@ -5999,10 +6106,12 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                  tmf.days(delta), " ="*4 + "\n")
 
         GLO['LOG_EVENTS'] = False  # Turn off event logging
-        self.last_refresh_time = start_suspend
-        self.isActive = True  # Signal closing so methods shut down elegantly.
+        #self.last_refresh_time = start_suspend  # 2025-05-30 using wrong time
+        self.last_refresh_time = resume_now  # 2025-05-30 was using wrong time
+        self.isActive = True  # Signal breatheColors() can start
         self.suspending = False
-        self.resuming = True  # Don't display error messages
+        self.resuming = True  # Don't display error messages with self.showInfo()
+        dodge()  # 2025-05-30 After suspend, self.rediscovering was True
 
         ''' Automatically call resume to power on devices. '''
         self.resumeFromSuspend(suspended_by_homa=True)
@@ -6323,7 +6432,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 continue  # No Devices Treeview to update
 
             if iid is None:
-                continue  # Instance not in Devices Treeview, perhaps a smartphone?
+                continue  # Instance not in Devices Treeview or treeview not mounted
 
             old_text = cr.text  # Treeview row's old power state "  ON", etc.
             cr.text = "  " + inst.powerStatus  # Display treeview row's new power state
@@ -7024,12 +7133,14 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             Scrollbox for all current Sony TV settings.
 
             Calls DisplayCommon to create Window, Frame and Scrollbox.
+
+            TODO: create DisplayArps(), DisplayHosts(), DisplayDevices()
         """
         _who = self.who + "DisplaySony():"
         sony = cr.inst_dict['instance']
         title = "Sony TV Settings"
 
-        x, y = hc.GetMouseLocation()
+        x, y = hc.GetMouseLocation()  # 2025-05-30 TODO move into DisplayCommon()
         scrollbox = self.DisplayCommon(_who, title, x=x, y=y, width=1200,
                                        help="ViewBluetoothDevices")
         if scrollbox is None:
@@ -7333,448 +7444,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
             # NOTE: After killing CPU percentage declines over time for <defunct>.
             # After 15 or 20 minutes the <defunct> start to disappear on their own.
-
-
-# ==============================================================================
-#
-#       SonyTvVolume() class. Tkinter slider to set SonyTv volume level
-#
-# ==============================================================================
-class SonyTvVolume:
-    """
-    2025-03-30 Copied from mserve.py tvVolume() class.
-
-    Usage by caller:
-
-    self.tv_vol = tvVolume(parent, name, title, text, tooltips=self.tt,
-                           thread=self.get_refresh_thread,
-                           playlists=self.playlists, info=self.info)
-          - Music must be playing (name=ffplay) or at least a song paused.
-
-    if self.tv_vol and self.tv_vol.top:
-        - Volume top level exists so lift() overtop of self.lib_top
-
-    Disabled during Loudness Normalization.
-
-    """
-
-    def __init__(self, top=None, name="ffplay", title=None, text=None,
-                 tooltips=None, thread=None, playlists=None,
-                 info=None, get_config=None, save_config=None):
-        """
-        """
-        # self-ize parameter list
-        self.parent = top  # self.parent is self.lib_top
-        self.name = name  # Process name to search for current volume
-        self.title = title  # E.G. "Set volume for mserve"
-        self.text = text  # "Adjust mserve volume to match other apps"
-        self.tt = tooltips  # Tooltips pool for buttons
-        self.get_thread_func = thread  # E.G. self.get_refresh_thread
-        self.playlists = playlists
-        self.info = info
-        self.get_config = get_config  # get_hockey_state
-        self.save_config = save_config  # save_hockey_state
-
-        self.last_sink = None
-        self.last_volume = None
-        self.curr_volume = None
-        self.slider = None
-        self.mon = None  # Monitors() class
-
-        # 2025-03-30 fields added after move from mserve.py tvVolume() class.
-        self.useDaytime = self.useNighttime = 0  # Automatic volume for Day / Night?
-        self.volDaytime = self.volNighttime = 0  # Volume for Day / Night
-        self.secDaytime = self.secNighttime = 0  # +/- seconds for Sunrise/Sunset
-
-        self.slider_frm = None  # Volume slider frame
-
-        ''' self.ffplay_mute  LEFT: 🔉 U+F1509  RIGHT: 🔊 U+1F50A 
-            🔇 (1f507) 🔈 (1f508) 🔉 (1f509) 🔊 (1f50a)
-        '''
-        self.ffplay_mute = tk.Label(
-            self.slider_frm, borderwidth=0, highlightthickness=0,
-            text="    🔉", justify=tk.CENTER, font=g.FONT)  # justify not working
-        self.ffplay_mute.grid(row=0, column=0, sticky=tk.W)
-
-        def volume_mute():
-            """ Click on volume mute icon (speaker with diagonal line on left) """
-            self.check_sinks()
-            self.pav_ctl.sink = self.force_sink(
-                self.pav_ctl.sink, self.pav_ctl.pid, trace="ffplay_mute button")
-            pav.fade(self.pav_ctl.sink,
-                     float(pav.get_volume(self.pav_ctl.sink)),
-                     0, .5, step_cb=self.init_ffplay_slider)
-            self.init_ffplay_slider(0)  # Final step to 0 display
-
-        self.ffplay_mute.bind("<Button-1>", lambda _: volume_mute())
-
-        # self.ffplay_mute.bind("<Button-1>", lambda _: pav.fade(
-        #    # 2024-04-29 change play_ctl to pav_ctl
-        #    self.pav_ctl.sink, float(pav.get_volume(self.pav_ctl.sink)),
-        #    25, .5, step_cb=self.init_ffplay_slider))
-
-        # focus in/out aren't working :(
-        self.ffplay_mute.bind("<FocusIn>", lambda _: print("focus in"))
-        self.ffplay_mute.bind("<FocusOut>", lambda _: print("focus out"))
-
-        text = "Speaker with one wave.\n"
-        text += "Click to set volume to {}%."
-        self.tt.add_tip(self.ffplay_mute, tool_type='label',
-                        text=text, anchor="sw")
-
-        ''' self.ffplay_full  RIGHT: 🔊 U+1F50A 
-            🔇 (1f507) 🔈 (1f508) 🔉 (1f509) 🔊 (1f50a)
-        '''
-        self.ffplay_full = tk.Label(
-            self.slider_frm, borderwidth=0, highlightthickness=0,
-            text="    🔊", font=g.FONT)  # justify not working
-        self.ffplay_full.grid(row=0, column=2)
-
-        def volume_full():
-            """ Click on full volume icon (speaker with three waves on right) """
-            self.check_sinks()
-            self.pav_ctl.sink = self.force_sink(
-                self.pav_ctl.sink, self.pav_ctl.pid, trace="ffplay_full button")
-            max_vol = self.get_max_volume()
-            pav.fade(self.pav_ctl.sink,
-                     float(pav.get_volume(self.pav_ctl.sink)),
-                     max_vol, .5, step_cb=self.init_ffplay_slider)
-            self.init_ffplay_slider(max_vol)  # Final step to 100 display
-
-        self.ffplay_full.bind("<Button-1>", lambda _: volume_full())
-
-        # self.ffplay_full.bind("<Button-1>", lambda _: pav.fade(
-        # 2024-04-29 change play_ctl to pav_ctl
-        # self.pav_ctl.sink, float(pav.get_volume(self.pav_ctl.sink)),
-        # 100, .5, step_cb=self.init_ffplay_slider))
-
-        text = "Speaker with three waves.\n"
-        text += "Click to set volume to {}%."
-        self.tt.add_tip(self.ffplay_full, tool_type='label',
-                        text=text, anchor="se")
-
-        ''' Volume Slider https://www.tutorialspoint.com/python/tk_scale.htm '''
-        self.ffplay_slider = tk.Scale(  # highlight color doesn't seem to work?
-            self.slider_frm, orient=tk.HORIZONTAL, tickinterval=0, showvalue=0,
-            highlightcolor="Blue", activebackgroun="Gold", troughcolor="Black",
-            command=self.set_ffplay_sink, borderwidth=0, cursor='boat red red')
-        self.ffplay_slider.grid(row=0, column=1, padx=4, ipady=1, sticky=tk.EW)
-
-        text = "{} Volume:\n\n"
-        text += "Click and drag slider to change volume.\n"
-        text += "Click space left of slider to reduce volume.\n"
-        text += "Click space right of slider to increase volume.\n"
-        text += "Click small speaker on left for {}% volume.\n"
-        text += "Click large speaker on right for {}% volume."
-        self.tt.add_tip(self.ffplay_slider, tool_type='label',
-                        text=text, anchor="sc")
-
-        ''' Controls to resize art to fit frame spanning metadata # rows '''
-        self.play_frm.bind("<Configure>", self.on_resize)
-        self.start_w = self.play_frm.winfo_reqheight()
-        self.start_h = self.play_frm.winfo_reqwidth()
-
-        ''' Regular geometry is no good. Linked to lib_top is better '''
-        self.top = tk.Toplevel()
-        try:
-            xy = (self.parent.winfo_x() + g.PANEL_HGT * 3,
-                  self.parent.winfo_y() + g.PANEL_HGT * 3)
-        except AttributeError:  # Music Location Tree instance has no attribute 'winfo_x'
-            print("self.parent failed to get winfo_x")
-            xy = (100, 100)
-
-        self.top.minsize(width=g.BTN_WID * 10, height=g.PANEL_HGT * 10)
-        self.top.geometry('+%d+%d' % (xy[0], xy[1]))
-        self.top.title("Volume During TV Commercials - mserve")
-        self.top.configure(background="#eeeeee")  # Replace "LightGrey"
-        self.top.columnconfigure(0, weight=1)
-        self.top.rowconfigure(0, weight=1)
-
-        ''' Set program icon in taskbar '''
-        img.taskbar_icon(self.top, 64, 'white', 'lightskyblue', 'black')
-
-        ''' Create master frame '''
-        self.vol_frm = tk.Frame(self.top, borderwidth=g.FRM_BRD_WID,
-                                relief=tk.RIDGE, bg="#eeeeee")
-        self.vol_frm.grid(column=0, row=0, sticky=tk.NSEW)
-        self.vol_frm.columnconfigure(0, weight=1)
-        self.vol_frm.columnconfigure(1, weight=5)
-        self.vol_frm.rowconfigure(0, weight=1)
-        ms_font = g.FONT
-
-        ''' Instructions '''
-        PAD_X = 5
-        if not self.text:  # If text wasn't passed as a parameter use default
-            self.text = "\nSet mserve volume during Hockey TV Commercials\n\n" + \
-                        "When TV commercials appear during a hockey game,\n" + \
-                        "you can click the commercial button and mserve\n" + \
-                        "will play music for the duration of the commercials.\n\n" + \
-                        "Sometimes the volume of the hockey game is lower than\n" + \
-                        "normal and you have the system volume turned up.\n" + \
-                        "In this case, you want to set mserve to a lower volume here. \n"
-        tk.Label(self.vol_frm, text=self.text, justify="left", bg="#eeeeee",
-                 font=ms_font) \
-            .grid(row=0, column=0, columnspan=3, sticky=tk.W, padx=PAD_X)
-
-        ''' Create images for checked and unchecked radio buttons '''
-        box_height = int(g.MON_FONTSIZE * 2.2)
-        self.radio_boxes = img.make_checkboxes(
-            box_height, 'WhiteSmoke', 'LightGray', 'Green')
-
-        def check_button_var(txt, scr_name, row, col):
-            """ Create TK label text and radio box value. """
-            tk.Label(self.vol_frm, text=txt, font=g.FONT, bg="#eeeeee"). \
-                grid(row=row, column=col, sticky=tk.W)
-            fld = tk.Checkbutton(
-                self.vol_frm, variable=scr_name, anchor=tk.W, bg="#eeeeee",
-                image=self.radio_boxes[0], selectimage=self.radio_boxes[2]
-            )
-            fld.grid(row=row, column=col + 1, sticky=tk.W, padx=5, pady=5)
-            return fld
-
-        self.commercial_secs = tk.IntVar()
-        self.intermission_secs = tk.IntVar()
-        self.tv_application = tk.StringVar()
-        self.tv_move_window = tk.BooleanVar()
-        self.tv_window_anchor = tk.StringVar()
-        self.tv_move_with_compiz = tk.BooleanVar()
-        self.tv_monitor = tk.StringVar()
-        self.mon = monitor.Monitors()
-        """
-        mon.string_list:
-            Screen 1, HDMI-0, 1920x1080, +0+=0
-            Screen 2, DP-1-1, 3840x2160, +1920+0
-            Screen 3, eDP-1-1, 1920x1080, +3870+2160
-
-        Monitor SQL Configuration: 20-char Name, MAC, IP, ED ID, Manufacturer,
-        Model, Serial Number, Purchase Date, warranty, 60-char name, physical size,
-        LAN MAC, LAN IP, WiFi MAC, WiFi IP, Backlight MAC, Backlight IP,
-        adaptive brightness, communication channel, communication language, power
-        on command, power off command, screen off command, screen on command,
-        volume up command, volume down command, mute command, un-mute command,
-        disable eyesome command, enable eyesome command, xrandr name, monitor 0-#,
-        screen width, height, x-offset, y-offset, image (300x300 or so)
-        """
-        tk.Label(self.vol_frm, text="Commercial seconds:", bg="#eeeeee",
-                 font=ms_font).grid(row=1, column=0, sticky=tk.W)
-        tk.Entry(self.vol_frm, textvariable=self.commercial_secs,
-                 font=ms_font).grid(row=1, column=1, sticky=tk.W)
-        tk.Label(self.vol_frm, text="Intermission seconds:", bg="#eeeeee",
-                 font=ms_font).grid(row=2, column=0, sticky=tk.W)
-        tk.Entry(self.vol_frm, textvariable=self.intermission_secs,
-                 font=ms_font).grid(row=2, column=1, sticky=tk.W)
-        tk.Label(self.vol_frm, text="TV application name:", bg="#eeeeee",
-                 font=ms_font).grid(row=3, column=0, sticky=tk.W)
-        tk.Entry(self.vol_frm, textvariable=self.tv_application,
-                 font=ms_font).grid(row=3, column=1, sticky=tk.W)
-        tk.Label(self.vol_frm, text="TV Monitor:", bg="#eeeeee",
-                 font=ms_font).grid(row=4, column=0, sticky=tk.W)
-        # 2024-07-04 - Style needed to change color of 'readonly'
-        # https://stackoverflow.com/a/18610520/6929343
-        ttk.Combobox(self.vol_frm, textvariable=self.tv_monitor,
-                     height=len(self.mon.string_list), values=self.mon.string_list,
-                     width=len(self.mon.string_list[0]), state="readonly",
-                     font=ms_font).grid(row=4, column=1, sticky=tk.W)
-        _fld_move_window = check_button_var(
-            "Move play window to TV?", self.tv_move_window, 5, 0)
-        _fld_move_with_compiz = check_button_var(
-            "Tricky move with Compiz?", self.tv_move_with_compiz, 6, 0)
-        ''' 
-Defined top of file mserve.py:
-TV_APP_NAME = "Firefox"  # Hockey TV application running on Firefox browser
-TV_VOLUME = 60  # Hockey TV mserve plays music at 60% volume level
-TV_BREAK1 = 90  # Hockey TV commercial break is 90 seconds
-TV_BREAK2 = 1080  # Hockey TV intermission is 18 minutes
-TV_MONITOR = 0  # Monitor hosting Hockey TV broadcast
-TV_MOVE_WINDOW = True  # During TV commercials, play window moves over top
-TV_WINDOW_ANCHOR = "center"  # Center play window on Hockey monitor
-TV_MOVE_WITH_COMPIZ = False  # Smooth monitor jump but prone to glitches        
-        '''
-
-        ''' Volume During TV Commercials Slider '''
-        self.slider = tk.Scale(self.vol_frm, from_=100, to=25, tickinterval=5,
-                               command=self.set_sink, bg="#eeeeee")
-        self.slider.grid(row=0, column=3, rowspan=7, padx=5, pady=5, sticky=tk.NS)
-
-        ''' button frame '''
-        bottom_frm = tk.Frame(self.vol_frm, bg="#eeeeee")
-        bottom_frm.grid(row=10, columnspan=4, pady=(10, 5), sticky=tk.E)
-
-        ''' Apply Button '''
-        self.apply_button = tk.Button(bottom_frm, text="✔ Apply",
-                                      width=g.BTN_WID2 - 6, font=g.FONT,
-                                      command=self.apply)
-        self.apply_button.grid(row=0, column=0, padx=10, pady=5, sticky=tk.E)
-        if self.tt:
-            self.tt.add_tip(self.apply_button, "Save Volume Slider changes and exit.",
-                            anchor="nw")
-        self.top.bind("<Return>", self.apply)  # DO ONLY ONCE?
-
-        ''' Help Button - 
-            https://www.pippim.com/programs/mserve.html#HelpTvVolume '''
-        ''' ⧉ Help - Videos and explanations on pippim.com '''
-
-        help_text = "Open a new window in the default web browser for\n"
-        help_text += "videos and explanations about this function.\n"
-        help_text += "https://www.pippim.com/programs/mserve.html#\n"
-
-        help_btn = tk.Button(
-            bottom_frm, text="⧉ Help", font=g.FONT,
-            width=g.BTN_WID2 - 4, command=lambda: g.web_help("HelpTvVolume"))
-        help_btn.grid(row=0, column=1, padx=10, pady=5, sticky=tk.E)
-        if self.tt:
-            self.tt.add_tip(help_btn, help_text, anchor="ne")
-
-        ''' Close Button '''
-        self.close_button = tk.Button(bottom_frm, text="✘ Close",
-                                      width=g.BTN_WID2 - 6, font=g.FONT,
-                                      command=self.close)
-        self.close_button.grid(row=0, column=2, padx=(10, 5), pady=5,
-                               sticky=tk.E)
-        if self.tt:
-            self.tt.add_tip(self.close_button, "Close Volume Slider, ignore changes.",
-                            anchor="ne")
-        self.top.bind("<Escape>", self.close)  # DO ONLY ONCE?
-        self.top.protocol("WM_DELETE_WINDOW", self.close)
-
-        ''' Get current volume & Read stored volume '''
-        self.last_volume, self.last_sink = self.get_volume()  # Reset this value when ending
-        if not self.read_vol():
-            message.ShowInfo(self.parent, "Initialization of mserve in progress.",
-                             "Cannot adjust volume until playlist loaded into mserve.",
-                             icon='error', thread=self.get_thread_func)
-            self.close()
-
-        # Adjusting volume with no sound source isn't helpful
-        if self.last_volume is None:
-            title = "No Sound is playing."
-            text = "Cannot adjust volume until a song is playing."
-            message.ShowInfo(self.parent, title, text,
-                             icon='warning', thread=self.get_thread_func)
-            self.info.cast(title + "\n" + text, 'warning')
-            self.close()
-
-        if self.top:  # May have been closed above.
-            self.top.update_idletasks()
-
-    def get_volume(self, name=None):
-        """ Get volume of 'ffplay' before resetting volume """
-        if name is None:
-            name = self.name  # self.name defaults to "ffplay"
-
-        all_sinks = pav.get_all_sinks()  # Recreates pav.sinks_now
-        for Sink in all_sinks:
-            if Sink.name == name:
-                return int(Sink.volume), Sink.sink_no_str
-
-        return None, None
-
-    def set_sink(self, value=None):
-        """ Called when slider changes value. Set sink volume to slider setting.
-            Credit: https://stackoverflow.com/a/19534919/6929343 """
-        if value is None:
-            print("tvVolume.set_sink() 'value' argument is None")
-            return
-        curr_vol, curr_sink = self.get_volume()
-        pav.set_volume(curr_sink, value)
-        self.curr_volume = value  # Record for saving later
-
-    def read_vol(self):
-        """ Get last saved volume.  Based on get_hockey. If nothing found
-            set defaults. """
-        self.curr_volume = 100  # mserve volume when TV commercial on air
-        if not self.get_config(set_menu=False):
-            return None
-
-        ''' Setup screen fields  '''
-        self.curr_volume = TV_VOLUME
-        self.commercial_secs.set(TV_BREAK1)
-        self.intermission_secs.set(TV_BREAK2)
-        self.tv_application.set(TV_APP_NAME)
-        self.tv_monitor.set(self.mon.string_list[TV_MONITOR])
-        self.tv_move_window.set(TV_MOVE_WINDOW)
-        self.tv_move_with_compiz.set(TV_MOVE_WITH_COMPIZ)
-        if self.last_volume:
-            pav.fade(self.last_sink, self.last_volume, self.curr_volume, 1)
-        self.slider.set(self.curr_volume)
-        self.top.update_idletasks()
-        return True
-
-    def save_vol(self):
-        """ Save volume setting during TV Hockey Broadcast Commercials
-
-        From: MusicLocationTree().self.save_hockey_state():
-
-        Comments = "Hockey TV Commercial Buttons used?"
-        tv_dict = dict()
-        tv_dict['TV_MONITOR'] = TV_MONITOR
-        tv_dict['TV_MOVE_WINDOW'] = TV_MOVE_WINDOW
-        tv_dict['TV_WINDOW_ANCHOR'] = TV_WINDOW_ANCHOR
-        tv_dict['TV_MOVE_WITH_COMPIZ'] = TV_MOVE_WITH_COMPIZ
-        Target = json.dumps(tv_dict)
-
-        self.save_config_for_loc(
-            'hockey_state', state, TV_APP_NAME, Size=TV_VOLUME, Count=TV_BREAK1,
-            Seconds=float(TV_BREAK2), Target=Target, Comments=Comments)
-
-        """
-
-        global TV_APP_NAME, TV_VOLUME, TV_BREAK1, TV_BREAK2
-        global TV_MONITOR, TV_MOVE_WINDOW, TV_MOVE_WITH_COMPIZ
-
-        # If we don't rewrite fields they get blanked out. Action=Location
-        try:
-            TV_BREAK1 = self.commercial_secs.get()
-            TV_BREAK2 = self.intermission_secs.get()
-        except ValueError:
-            message.ShowInfo(self.top, "Invalid Seconds Entered.",
-                             "Commercial or Intermission contains non-digit(s).",
-                             icon='error', thread=self.get_thread_func)
-            return False
-
-        TV_VOLUME = self.curr_volume
-        TV_APP_NAME = self.tv_application.get()
-        try:
-            TV_MONITOR = self.mon.string_list.index(self.tv_monitor.get())
-        except IndexError as _err:
-            print(_err)
-            TV_MONITOR = 0
-        TV_MOVE_WINDOW = self.tv_move_window.get()
-        TV_MOVE_WITH_COMPIZ = self.tv_move_with_compiz.get()
-
-        _volume, sink = self.get_volume(TV_APP_NAME)
-        if sink is None:
-            title = "Invalid TV Application Name."
-            text = "The application '" + TV_APP_NAME + \
-                   "', does not have a stream opened for sound.\n\n" + \
-                   "Ensure the application has opened a stream with sound."
-            self.info.cast(title + "\n\n" + text, 'error')
-            message.ShowInfo(self.top, title, text, icon='error',
-                             thread=self.get_thread_func)
-            return False
-
-        self.save_config()
-
-        return True
-
-    def close(self, *_args):
-        """ Close Volume During TV Commercials Window """
-        if self.tt and self.top:
-            self.tt.close(self.top)
-        self.top.destroy()
-        self.top = None  # Indicate volume slider is closed
-
-        ''' Adjust volume for playing mserve song back to starting level '''
-        curr_volume, curr_sink = self.get_volume()  # last_sink may have changed
-        if curr_volume and self.last_volume:
-            # curr_volume will be None when shutting down.
-            pav.fade(curr_sink, curr_volume, self.last_volume, 1)  # 1 second fade
-
-    # noinspection PyUnusedLocal
-    def apply(self, *args):
-        """ Save volume setting """
-        if self.save_vol():  # calls save_hockey_state()
-            self.close()
 
 
 def v0_print(*args, **kwargs):
