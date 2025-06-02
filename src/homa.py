@@ -184,8 +184,6 @@ class DeviceCommonSelf:
         self.passed_installed = []
 
         self.app = None  # Every instance has reference to Application() instance
-        self.system_ctl = False  # Turning off TV shuts down / suspends system
-        self.sony_suspended_system = False  # If TV powered off suspend system
 
         self.powerStatus = "?"  # "ON" or "OFF" after discovery
         self.suspendPowerOff = 0  # Did suspend power off the device?
@@ -2914,8 +2912,12 @@ https://stackoverflow.com/questions/2829613/how-do-you-tell-if-a-string-contains
 
             2025-06-01 Originally in Application() moved to SonyBraviaKdlTV()
         """
+        _who = self.who + "checkSonyEvents():"
+
         if self.powerStatus == "?":
+            v0_print(_who, "old self.powerStatus:", self.powerStatus)
             self.getPower()  # "?" when network down or resuming
+            v0_print(_who, "new self.powerStatus:", self.powerStatus)
             # 2025-05-31 TODO: If "ON" update treeview and dropdown menu
         life_span = time.time() - GLO['APP_RESTART_TIME'] \
             if self.powerStatus == "ON" else 0.0
@@ -2926,7 +2928,7 @@ https://stackoverflow.com/questions/2829613/how-do-you-tell-if-a-string-contains
         if GLO['ALLOW_REMOTE_TO_SUSPEND'] and life_span > 2.0:
             self.powerStatus = "?"  # Default if network down
             if self.checkPowerOffSuspend(forgive=True):  # check "OFF"
-                self.sony_suspended_system = True  # Sony TV initiated suspend
+                self.app.sony_suspended_system = True  # Sony TV initiated suspend
                 return
                 # self.Suspend(sony_remote_powered_off=True)  # Turns on event logging
                 # Will not return until Suspend finishes and resume finishes
@@ -4845,6 +4847,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             TkIconFont and TkTooltipFont - It is not advised to change these fonts.
             https://www.tcl-lang.org/man/tcl8.6/TkCmd/font.htm '''
 
+        self.sony_suspended_system = False  # If TV powered off suspended system
         self.suspend_time = 0.0  # last time system suspended
         self.suspending = False  # When True suppress error messages that delay suspend
         self.resume_time = 0.0  # last time system resumed from suspend
@@ -5948,35 +5951,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 self.Suspend(sony_remote_powered_off=True)  # Turns on event logging
                 # Will not return until Suspend finishes and resume finishes
                 self.sony_suspended_system = False  # not needed but insurance
-            """ 2025-06-01 code ported to new method .checkSonyEvents()
-            if self.sonySaveInst.powerStatus == "?":
-                self.sonySaveInst.getPower()  # "?" when network down or resuming
-                # 2025-05-31 TODO: If "ON" update treeview and dropdown menu
-            life_span = time.time() - GLO['APP_RESTART_TIME'] \
-                if self.sonySaveInst.powerStatus == "ON" else 0.0
-            log_status = GLO['LOG_EVENTS']  # Current event logging status
-            GLO['LOG_EVENTS'] = False  # Turn off logging during Sony checks
-
-            ''' Sony TV monitored for TV Remote power off suspends system? '''
-            if GLO['ALLOW_REMOTE_TO_SUSPEND'] and life_span > 2.0:
-                self.sonySaveInst.powerStatus = "?"  # Default if network down
-                if self.sonySaveInst.checkPowerOffSuspend(forgive=True):  # check "OFF"
-                    self.sony_suspended_system = True  # Sony TV initiated suspend
-                    self.Suspend(sony_remote_powered_off=True)  # Turns on event logging
-                    # Will not return until Suspend finishes and resume finishes
-
-            ''' Sony TV audio channel monitored for volume up/down display? '''
-            if GLO['ALLOW_VOLUME_CONTROL'] and life_span > 2.0:
-                if self.sonySaveInst.checkVolumeChange(forgive=True):
-                    self.last_rediscover_time = time.time()  # 2025-05-27 review need
-
-                ''' Duplicate code on start and resume. '''
-                if not self.sonySaveInst.hasVolumeSet:
-                    self.sonySaveInst.setStartupVolume()  # 9am - 10pm normal, else quiet volume
-                    self.sonySaveInst.hasVolumeSet = True  # Don't check again
-
-            GLO['LOG_EVENTS'] = True if log_status else False  # Sony done, restore logging
-            """
 
         ''' Always give time slice to tooltips - requires sql.py color config '''
         self.tt.poll_tips()  # Tooltips fade in and out
@@ -6033,7 +6007,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
     def Suspend(self, sony_remote_powered_off=False, *_args):
         """ Power off devices and suspend system.
             2025-04-30 Track if Sony TV remote initiated system suspend
-            self.sony_suspended_system = False
         """
 
         _who = self.who + "Suspend():"
