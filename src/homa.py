@@ -870,7 +870,8 @@ class Globals(DeviceCommonSelf):
             ("EVENT_ERROR_COUNT", 0, HD, INT, INT, 9, 0, MIN, MAX, CB,
              "To enable/disable View Dropdown menu 'Discovery errors'"),
             ("SENSOR_CHECK", 5, RW, FLOAT, FLOAT, 7, DEC, MIN, MAX, CB,
-             "Check `sensors`, CPU/GPU temperature\nand Fan speeds every x seconds"),
+             "Check `sensors`, CPU/GPU temperature\nand Fan speeds every x seconds."
+             "\nTo skip sensor checks, set value to 0."),
             ("SENSOR_LOG", 5, RW, FLOAT, FLOAT, 9, DEC, MIN, MAX, CB,
              "Log `sensors` every x seconds.\nLog more if Fan RPM speed changes"),
             ("FAN_GRANULAR", 5, RW, INT, INT, 6, DEC, MIN, MAX, CB,
@@ -1215,7 +1216,7 @@ class Computer(DeviceCommonSelf):
             pass
 
         command_line_list = GLO['POWER_OFF_CMD_LIST']  # systemctl suspend
-        v0_print(_who, ext.ch(), "Suspend command:", command_line_list)
+        v1_print(_who, ext.ch(), "Suspend command:", command_line_list)
         _event = self.runCommand(command_line_list, _who, forgive=forgive)
         # NOTE: this point is still reached because suspend pauses a bit
         # v0_print(_who, ext.ch(), "Command finished.")
@@ -2124,7 +2125,7 @@ class SystemMonitor(DeviceCommonSelf):
         self.skipped_checks = 0  # Skipped check when last check < x seconds
         self.number_checks = 0  # Number of checks
         self.skipped_fan_same = 0  # Don't log when fan speed the same
-        self.skipped_fan_200d = 0  # Don't log when fan speed different by 200 RPM
+        self.skipped_fan_diff = 0  # Don't log when fan speed different by < x RPM
         self.skipped_logs = 0  # Skipped logs due to time or fan speed ~ the same
         self.number_logs = 0  # Number of logs
         self.sensors_log = []  # List of self.curr_sensor dictionaries
@@ -2150,7 +2151,7 @@ class SystemMonitor(DeviceCommonSelf):
         if not self.CheckInstalled('sensors'):
             return
 
-        ''' Sample output from `sensors` (first 7 lines):
+        ''' Dell Virtual output from `sensors` (first 7 lines):
             $ sensors
             dell_smm-virtual-0
             Adapter: Virtual device
@@ -2202,7 +2203,7 @@ class SystemMonitor(DeviceCommonSelf):
             # Only report fan speed differences > 200 RPM
             if diff <= GLO['FAN_GRANULAR']:
                 # print("skipping diff:", diff)
-                self.skipped_fan_200d += 1
+                self.skipped_fan_diff += 1
                 return False  # Don't override last with current
 
             # Fan speed changed. Force logging by resetting last log time.
@@ -2884,7 +2885,7 @@ https://stackoverflow.com/questions/2829613/how-do-you-tell-if-a-string-contains
             """ Print dictionary with ppprint if available """
             if pprint_installed:
                 print_string = pprint.pformat(reply, indent=2)
-                v0_print(print_string)
+                v0_print(" ", print_string)
             else:
                 v0_print(" ", reply)
 
@@ -2898,7 +2899,7 @@ https://stackoverflow.com/questions/2829613/how-do-you-tell-if-a-string-contains
 
         except (TypeError, KeyError):
             embedId = ""
-            v0_print(_who, "TypeError / KeyError:\n ")
+            v0_print(_who, "TypeError / KeyError:")
             print_dict()
 
         v2_print(_who, "curl reply_dict:", reply)  # E.G. {'result': [], 'id': 55}
@@ -2915,10 +2916,11 @@ https://stackoverflow.com/questions/2829613/how-do-you-tell-if-a-string-contains
         _who = self.who + "checkSonyEvents():"
 
         if self.powerStatus == "?":
-            v0_print(_who, "old self.powerStatus:", self.powerStatus)
+            v1_print(_who, "old self.powerStatus:", self.powerStatus)
             self.getPower()  # "?" when network down or resuming
-            v0_print(_who, "new self.powerStatus:", self.powerStatus)
+            v1_print(_who, "new self.powerStatus:", self.powerStatus)
             # 2025-05-31 TODO: If "ON" update treeview and dropdown menu
+
         life_span = time.time() - GLO['APP_RESTART_TIME'] \
             if self.powerStatus == "ON" else 0.0
         log_status = GLO['LOG_EVENTS']  # Current event logging status
@@ -2961,7 +2963,7 @@ https://stackoverflow.com/questions/2829613/how-do-you-tell-if-a-string-contains
         if self.powerStatus != "OFF":
             return False  # Sony power status is "ON" or "?" or "Error:"
 
-        v0_print(_who, "Suspending due to Sony TV powerStatus:", self.powerStatus)
+        v1_print(_who, "Suspending due to Sony TV powerStatus:", self.powerStatus)
 
         return True  # app.refreshApp will suspend system now
 
@@ -4630,12 +4632,13 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
 
         if "cannot start" in msg:
             # gatttool could not find computer's bluetooth adapter (driver not running)
-            msg += "Turn on bluetooth in Ubuntu. If bluetooth was on and won't\n"
-            msg += "restart then reboot. Sometimes two reboots are required.\n\n"
+            msg += "Wait a minute to see if LED light strips turn on.\n\n"
             msg += "Ensure LED lights can be controlled by your smartphone.\n\n"
             msg += "In HomA, right-click on LED light strips and select:\n"
             msg += "\t'Reset Bluetooth'.\n"
-            msg += "\tThen from the same menu, select 'Turn On Bluetooth LED'.\n"
+            msg += "\tThen from the same menu, select 'Turn On Bluetooth LED'.\n\n"
+            msg += "Turn on bluetooth in Ubuntu. If bluetooth was on and won't\n"
+            msg += "restart then reboot. Sometimes two reboots are required.\n"
 
         elif "not connected" in msg:
             # bluetooth device not connected to computer's bluetooth adapter
@@ -5106,7 +5109,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         volume_menu.add_command(label='Quiet', font=g.FONT, underline=1, background="red",
                                 command=lambda: self.sonySaveInst.setVolume(
                                     GLO['QUIET_VOLUME']), state=tk.NORMAL)
-        self.tools_menu.add_cascade(label="Sony volume level", font=g.FONT,
+        self.tools_menu.add_cascade(label="Sony TV volume level", font=g.FONT,
                                     underline=0, menu=volume_menu, state=tk.DISABLED)
         volume_menu.config(activebackground="SkyBlue3", activeforeground="black")
 
@@ -5204,9 +5207,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         else:
             self.tools_menu.entryconfig("Forget sudo password", state=tk.NORMAL)
         if self.sonySaveInst and GLO['ALLOW_VOLUME_CONTROL']:
-            self.tools_menu.entryconfig("Sony volume level", state=tk.NORMAL)
+            self.tools_menu.entryconfig("Sony TV volume level", state=tk.NORMAL)
         else:
-            self.tools_menu.entryconfig("Sony volume level", state=tk.DISABLED)
+            self.tools_menu.entryconfig("Sony TV volume level", state=tk.DISABLED)
 
     def exitApp(self, kill_now=False, *_args):
         """ <Escape>, X on window, 'Exit from dropdown menu or Close Button"""
@@ -5251,13 +5254,13 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                      "to SAVE_CWD:", SAVE_CWD)
             os.chdir(SAVE_CWD)
 
-        ''' Print statistics - 9,999,999 right aligned. '''
+        ''' Print `sensors` statistics - 9,999,999 right aligned. '''
         if sm.number_logs:
             v0_print()
             v0_print("sm.skipped_checks  :", "{:,d}".format(sm.skipped_checks).rjust(9))
             v0_print("sm.number_checks   :", "{:,d}".format(sm.number_checks).rjust(9))
             v0_print("sm.skipped_fan_same:", "{:,d}".format(sm.skipped_fan_same).rjust(9))
-            v0_print("sm.skipped_fan_200d:", "{:,d}".format(sm.skipped_fan_200d).rjust(9))
+            v0_print("sm.skipped_fan_diff:", "{:,d}".format(sm.skipped_fan_diff).rjust(9))
             v0_print("sm.skipped_logs    :", "{:,d}".format(sm.skipped_logs).rjust(9))
             v0_print("sm.number_logs     :", "{:,d}".format(sm.number_logs).rjust(9))
 
@@ -5919,6 +5922,16 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         """ Sleeping loop until need to do something. Fade tooltips. Resume from
             suspend. Monitor Sony TV settings. Rediscover devices.
 
+            Multiple instances of refreshApp can be running:
+                1) Called in mainloop of Application.__init__()
+                2) Called by Right-Click Breathe Colors()
+                3) Called by Suspend->Resume->Breathe Colors()
+                4) Called by showInfo() and other user wait dialogs()
+                5) Called by ResumeWait() countdown timer
+
+            When a new instance of refreshApp() starts, the previous version(s)
+            is paused until the caller of the new instance finishes.
+
         """
 
         _who = self.who + "refreshApp()"
@@ -5927,14 +5940,12 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         if not self.winfo_exists():  # Application window destroyed?
             return False  # self.close() has destroyed window
 
-        ''' Is system shutting down? '''
-        if killer.kill_now:
+        if killer.kill_now:  # Is system shutting down?
             v0_print('\nhoma.py refresh() closed by SIGTERM')
             self.exitApp(kill_now=True)
             return False  # Not required because this point never reached.
 
-        ''' Resuming from suspend initiated outside of HomA? '''
-        now = time.time()
+        now = time.time()  # lost time means suspend initiated outside of HomA
         delta = now - self.last_refresh_time
         if delta > GLO['RESUME_TEST_SECONDS']:  # Assume > is resume from suspend
             v0_print("\n" + "= "*4, _who, "Resuming from suspend after:",
@@ -5944,15 +5955,17 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         if not self.winfo_exists():  # Application window destroyed?
             return False  # self.close() has set to None
 
-        ''' Special Sony TV features after Sony TV on for 2 seconds '''
-        if self.sonySaveInst:
+        if self.sonySaveInst:  # Check Sony TV special features if enabled
             self.sonySaveInst.checkSonyEvents()  # 2025-06-01 new method
             if self.sony_suspended_system is True:  # Sony TV initiated suspend
                 self.Suspend(sony_remote_powered_off=True)  # Turns on event logging
                 # Will not return until Suspend finishes and resume finishes
+                now = time.time()  # Time changed after resume
                 self.sony_suspended_system = False  # not needed but insurance
 
-        ''' Always give time slice to tooltips - requires sql.py color config '''
+            if not self.winfo_exists():  # Application window destroyed?
+                return False  # self.close() has set to None
+
         self.tt.poll_tips()  # Tooltips fade in and out
         self.update()  # process pending tk events in queue
 
@@ -5964,31 +5977,29 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         if not self.winfo_exists():  # Application window destroyed?
             return False  # self.close() has set to None
 
-        ''' Displaying statistics for Bluetooth LED Light Strip breathing colors? '''
-        if self.bleSaveInst and self.bleScrollbox:
+        if self.bleSaveInst and self.bleScrollbox:  # Statistics for breathing colors?
             self.DisplayBreathing()  # Display single step in Bluetooth LEDs
 
-        ''' Check `sensors` (if installed) every GLO['SENSOR_CHECK'] seconds '''
-        sm.Sensors()
+        # if GLO['SENSOR_CHECK'] <= 0 the feature is turned off
+        if GLO['SENSOR_CHECK'] > 0:
+            sm.Sensors()  # Check `sensors` every GLO['SENSOR_CHECK'] seconds
 
-        ''' Speedy derivative called by CPU intensive methods. '''
+        # Speedy derivative called by CPU intensive methods.
         if not tk_after:  # Skip tkinter update and 16 to 33ms sleep
             return self.winfo_exists()  # Application window destroyed?
 
-        ''' Get sunlight percentage every minute for LED light strip '''
-        minute = ext.h(now).split(":")[1]
-        if minute != self.last_minute:
-            night = cp.getNightLightStatus()
-            self.last_minute = minute
+        minute = ext.h(now).split(":")[1]  # Current minute for this hour
+        if minute != self.last_minute:  # Get sunlight percentage every minute
+            night = cp.getNightLightStatus()  # For LED light strip brightness boost
+            self.last_minute = minute  # Wait for minute change to check again
             v2_print(_who, ext.t(), "cp.getNightLightStatus():", night)
 
-        ''' Rediscover devices every GLO['REDISCOVER_SECONDS'] '''
         if int(now - self.last_rediscover_time) > GLO['REDISCOVER_SECONDS']:
             self.Rediscover(auto=True)  # Check for new network devices
 
-        ''' Should not happen very often, except after suspend resume '''
+        now = time.time()  # Time changed after .Sensors() and .Rediscover()
         if self.last_refresh_time > now:
-            v3_print(_who, "self.last_refresh_time: ",
+            v0_print(_who, "self.last_refresh_time: ",
                      ext.h(self.last_refresh_time), " >  now: ", ext.h(now))
             now = self.last_refresh_time  # Reset for proper sleep time
 
@@ -6001,7 +6012,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.after(sleep)  # Sleep until next GLO['REFRESH_MS'] (30 to 60 fps)
         self.last_refresh_time = time.time()
 
-        ''' Back to __init__(), breatheColors(), showInfo(), etc.  '''
         return self.winfo_exists()  # Return app window status to caller
 
     def Suspend(self, sony_remote_powered_off=False, *_args):
@@ -6025,15 +6035,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             v0_print(_who, "Aborting suspend.", msg)
             return
 
-        def dodge():
-            """ 2025-05-30 Copied from self.Rediscover() make method later. """
-            self.rediscovering = False
-            self.updateDropdown()  # Enable menu options
-            self.last_rediscover_time = time.time()
+        self.exitRediscover()  # Not required now. Called after resume finishes.
 
-        dodge()
-
-        v0_print(_who, "Suspending system...")
+        v1_print(_who, "\nSuspending system...")
         self.suspending = True  # Prevent error dialog from interrupting suspend
         self.resuming = False
         GLO['LOG_EVENTS'] = True  # Log all suspend events
@@ -6071,7 +6075,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         ''' Resume from suspend '''
 
         time_to_suspend = last_now - start_suspend - 0.05  # assume half way of 100ms
-        v0_print(_who, "Time required to suspend the system:", time_to_suspend)
+        v1_print(_who, "Time required to suspend the system:", time_to_suspend)
 
         resume_now = time.time()
         delta = resume_now - last_now
@@ -6084,7 +6088,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.isActive = True  # Signal breatheColors() can start
         self.suspending = False
         self.resuming = True  # Don't display error messages with self.showInfo()
-        dodge()  # 2025-05-30 After suspend, self.rediscovering was True
+        self.exitRediscover()  # 2025-05-30 After suspend, self.rediscovering was True
 
         ''' Automatically call resume to power on devices. '''
         self.resumeFromSuspend(suspended_by_homa=True)
@@ -6126,9 +6130,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         start_time = time.time()
         self.resumeWait()  # Wait for network to come online
         delta = int(time.time() - start_time)
-        v0_print(_who, "Waited", delta, "seconds for network to come up.")
+        v1_print(_who, "Waited", delta, "seconds for network to come up.")
         isNight = cp.getNightLightStatus()
-        v0_print(_who, "Nightlight status: '" + isNight + "'")
+        v1_print(_who, "Nightlight status: '" + isNight + "'")
         v1_print("\n" + _who, "ni.view_order:", ni.view_order)
 
         self.turnAllPower("ON")  # Turn all devices on and show new status in treeview
@@ -6137,13 +6141,13 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.sonySaveInst.hasVolumeSet = False  # Check quiet/normal volume again
 
         now = time.time()
-        self.last_rediscover_time = now - GLO['REDISCOVER_SECONDS'] * 2  # Force discovery
-        self.last_refresh_time = now + 1.0  # Prevent running resumeFromSuspend() again
+        self.last_refresh_time = now  # Prevent running resumeFromSuspend() again
         sm.last_sensor_log = now - GLO['SENSOR_LOG'] * 2  # Force sensors log immediately
         self.resuming = False  # Allow error dialogs to appear on screen
         GLO['APP_RESTART_TIME'] = now  # Sensors log restart at 0.0 seconds
         GLO['LOG_EVENTS'] = False  # Turn off command event logging
         self.force_refresh_power_time = now + 60.0  # Recheck power 1 minute after resume
+        self.exitRediscover()  # Should not be running, but force exit anyway
 
     def resumeWait(self, timer=None, alarm=True, title=None, abort=True):
         """ Wait x seconds for devices to come online. If 'timer' passed do a
@@ -6192,11 +6196,10 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 break
             if not self.winfo_exists():
                 break  # self.exitApp() has destroyed window
+
             self.dtb.update(str(int(start + countdown_sec - time.time())))
-            # Suspend uses: 'self.after(150)'
-            self.after(100)
-            # During countdown timer, don't trigger resumeFromSuspend()
-            self.last_refresh_time = time.time() + 1.0
+            self.after(100)  # Suspend uses: 'self.after(100)'
+            self.last_refresh_time = time.time()  # Don't trigger resume
             if timer or not self.CheckInstalled("nmcli"):
                 continue
 
@@ -6210,8 +6213,10 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             if self.CheckInstalled("aplay"):
                 command_line_list = ["aplay", GLO['TIMER_ALARM']]
                 self.runCommand(command_line_list, _who)
+
         self.dtb.close()
         self.dtb = None
+        self.last_refresh_time = time.time()
 
     def turnAllPower(self, state, fade=False, type_code=None):
         """ Loop through instances and set power state to "ON" or "OFF".
@@ -6224,7 +6229,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         """
         _who = self.who + "turnAllPower(" + state + "):"
         isNight = cp.getNightLightStatus()  # Already v0 printed in resumeFromSuspend()
-        v2_print(_who, "Nightlight status: '" + isNight + "'")  # Lights turn on at night
+        v1_print(_who, "Nightlight status: '" + isNight + "'")  # Lights turn on at night
         cr = None  # Network devices treeview row instance and current iid
         if fade and self.usingDevicesTreeview:
             cr = TreeviewRow(self)  # Used to fade in row over 300ms
@@ -6276,7 +6281,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
             if state == "ON":
                 if type_code is None:  # Called by Resume()
-                    v0_print(_who, "Switching power from '" + inst.powerStatus +
+                    v2_print(_who, "Switching power from '" + inst.powerStatus +
                              "' to 'ON':", inst.name)
                 else:  # Called by "Turn ALL Lights Power" menu option or similar
                     v1_print(_who, "Switching power from '" + inst.powerStatus +
@@ -6291,7 +6296,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 if inst.powerStatus == "ON":
                     # To avoid errors must be "ON" in order to turn "OFF".
                     if type_code is None:  # Called by Suspend()
-                        v0_print(_who, "Switching power from 'ON' to 'OFF':", inst.name)
+                        v2_print(_who, "Switching power from 'ON' to 'OFF':", inst.name)
                     else:  # Called by "Turn ALL Lights Power" menu option or similar
                         v1_print(_who, "Switching power from 'ON' to 'OFF':", inst.name)
                     inst.turnOff()  # inst.menuPowerOff += 1
@@ -6301,7 +6306,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                         # 2025-04-30 Track if Sony TV remote initiated system suspend
                         inst.remote_suspends_system = self.sony_suspended_system
             else:
-                v0_print(_who, "state is not 'ON' or 'OFF':", state)
+                v0_print(_who, inst.name, "power state is not 'ON' or 'OFF':", state)
                 return
 
             if type_code is None and inst.type_code == GLO['BLE_LS']:
@@ -6325,7 +6330,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             old_text = cr.text  # Treeview row old power state "  ON", etc.
             cr.text = "  " + str(inst.powerStatus)  # Display treeview row new power state
             if cr.text != old_text:
-                v1_print(_who, cr.mac, "Power status changed from: '"
+                v1_print(_who, inst.name, "Power status changed from: '"
                          + old_text.strip() + "' to: '" + cr.text.strip() + "'.")
             cr.Update(iid)  # Update iid with new ['text']
 
@@ -6497,19 +6502,19 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                          new_dict['alias'], old_dict['alias'])
                 old_dict['alias'] = new_dict['alias']
 
-        def dodge():
-            """ Get out of dodge (graceful exit). """
-            self.rediscovering = False
-            self.updateDropdown()  # Enable menu options
-            self.last_rediscover_time = time.time()
-
         v2_print(_who, "Rediscovery count:", len(rd.mac_dicts))
 
         self.refreshAllPowerStatuses(auto=auto)  # When auto=False, rows highlighted
 
         for i, rd_mac_dict in enumerate(rd.mac_dicts):
             if not self.isActive:
-                dodge()  # Get out of dodge (graceful exit).
+                self.exitRediscover()
+                return
+
+            if not self.rediscovering:
+                # Not used yet but someone else can force immediate exit
+                v0_print(_who, "Someone turned off rediscovering!")
+                self.exitRediscover()
                 return
 
             mac = rd_mac_dict['mac']
@@ -6539,7 +6544,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 if len(discovered) != 1:
                     v0_print(_who, "Catastrophic error! Invalid len(discovered):",
                              len(discovered))
-                    dodge()  # Get out of dodge (graceful exit).
+                    self.exitRediscover()
                     return
 
                 # Format: 'SONY.LAN (192.168.0.19) at ac:9b:0a:df:3f:d9 [ether] on enp59s0'
@@ -6589,7 +6594,13 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         # All steps done: Wait for next rediscovery period
         if bool(rd.cmdEvents):
             ni.cmdEvents.extend(rd.cmdEvents)  # For auto-rediscover, rd.cmdEvents[] empty
-        dodge()  # Get out of dodge (graceful exit).
+        self.exitRediscover()
+
+    def exitRediscover(self):
+        """ End the rediscovery method """
+        self.rediscovering = False
+        self.updateDropdown()  # Enable menu options
+        self.last_rediscover_time = time.time()
 
     def refreshPowerStatusForInst(self, inst):
         """ Called by BluetoothLED """
@@ -6666,15 +6677,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 From Application initialize with:   inst.app = self
                 From Instance call method with:     self.app.showInfoMsg()
         """
-        #def thread_safe():
-        #    """ Prevent self.refreshApp rerunning a second rediscovery during
-        #        Bluetooth connect error message waiting for acknowledgement
-        #    """
-        #    self.last_refresh_time = time.time()  # Prevent resume from suspend
-        #    self.last_rediscover_time = self.last_refresh_time
-        #    self.refreshApp(tk_after=False)
-        #    self.after(10)
-        #    self.update()  # Suspend button stays blue after mouseover ends>?
 
         message.ShowInfo(self, thread=self.refreshThreadSafe, icon=icon, align=align,
                          title=title, text=text, win_grp=self.win_grp)
@@ -7313,10 +7315,10 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         _who = self.who + "GATTToolJobs():"
         v1_print("\n" + _who, "Check GATTTool percentage")
         if not self.CheckInstalled("ps"):
-            v1_print(_who, "Command 'ps' not installed. Exiting.")
+            v0_print(_who, "Command 'ps' not installed. Exiting.")
             return
         if not self.CheckInstalled("grep"):
-            v1_print(_who, "Command 'grep' not installed. Exiting.")
+            v0_print(_who, "Command 'grep' not installed. Exiting.")
             return
 
         # When calling 'ps ux' for current user, can get a PID that is ending.
@@ -7356,16 +7358,16 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 # 5  [<USER>, '16969', '0.0',  '0.0', '21556', '3376', 'pts/27', 'Ss+', '10:51', '0:00']
                 # external.kill_pid_running() ERROR: os.kill  failed for PID: 15789
                 v1_print(" ", ll[:10])
-                if float(ll[2]) > 10.0:  # CPU percentage > 10%?
-                    v1_print("   PID:", ll[1], " | CPU usage over 10%:", ll[2])
+                if float(ll[2]) > 5.0:  # CPU percentage > 5%?
+                    v1_print("   PID:", ll[1], " | CPU usage over 5%:", ll[2])
                     high_pid_perc += 1  # Also has "?" instead of 'pts/99'
                 elif ll[6] == "?":
                     v1_print("   PID:", ll[1], " | 'pts/99' == '?'.  Skipping...")
                     continue
                 found_pids.append(ll)
 
-        # If less than 5 pids and none > 10% skip AskQuestion()
-        if len(found_pids) < 5 and high_pid_perc == 0:
+        # If less than 4 pids and none > 5% skip AskQuestion()
+        if len(found_pids) < 4 and high_pid_perc == 0:
             return
 
         ''' Found_pids have 12 results, 3 for each time view Bluetooth Devices is run:        

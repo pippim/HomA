@@ -626,9 +626,6 @@ class Monitors:
             return closest_y
 
 
-# OLDER CODE: Eventually yanked out.
-
-
 def get_monitors():
     """
         # OLDER CODE: Eventually yanked out.
@@ -694,9 +691,6 @@ def get_monitors():
         monitors.append(mon)
 
     return monitors
-
-
-''' Start of REAL code used today (May 2, 2021) '''
 
 
 def center(window):
@@ -1088,7 +1082,7 @@ def get_mouse_location(coord_only=True):
         Also used by homa.py and homa-indicator.py. Ported from homa-common.py.
     """
 
-    f = os.popen("xdotool getmouselocation")
+    f = os.popen("xdotool getmouselocation")  # 0.012 seconds
     text = f.read().strip()
     _returncode = f.close()  # https://stackoverflow.com/a/70693068/6929343
 
@@ -1115,6 +1109,23 @@ def get_mouse_location(coord_only=True):
 
     if coord_only:
         return xPos, yPos
+
+    # noinspection SpellCheckingInspection
+    """
+time xwd -root -silent | convert xwd:- -depth 8 -crop "1x1+20+20" txt:- | grep -om1 '#\w\+'
+    
+    
+#!/usr/bin/python -W ignore::DeprecationWarning
+import sys
+import gtk
+
+def get_pixel_rgb(x, y):
+    pixbuf = gtk.gdk.Pixbuf(gtk.gdk.COLORSPACE_RGB, False, 8, 1, 1)
+    pixbuf.get_from_drawable(gtk.gdk.get_default_root_window(),
+                             gtk.gdk.colormap_get_system(), 
+                             x, y, 0, 0, 1, 1)
+    return pixbuf.get_pixels_array()[0][0]
+    """
 
     Screen = get_value(2)
     Window = get_value(3)
