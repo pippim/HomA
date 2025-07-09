@@ -63,7 +63,7 @@ echo
 echo "=== UPDATING: $PWD"
 
 cp -r ~/HomA/Alarm_01.wav .
-cp -L ~/HomA/audio/ .  # PulseAudio sinks and volume
+cp -L ~/HomA/audio .  # Subdirectory with files and subdirectories
 cp -r ~/HomA/bias.jpg .
 cp -r ~/HomA/breathing.jpeg .
 cp -L ~/HomA/calc.py .  # symlink
@@ -89,7 +89,7 @@ cp -r ~/HomA/nighttime.png .
 cp -r ~/HomA/picture_off.png .
 cp -r ~/HomA/picture_on.png .
 cp -L ~/HomA/pimtube.py .  # Youtube video controller / ad skipper
-cp -L ~/HomA/pulsectl/ .  # PulseAudio controller for ad muting
+cp -L ~/HomA/pulsectl .  # Subdirectory with files and subdirectories
 cp -r ~/HomA/pygatt/ .  # Subdirectory with files and subdirectories
 cp -r ~/HomA/refresh.sh .  # Copy of this bash script might be helpful
 cp -r ~/HomA/reset.jpeg .
