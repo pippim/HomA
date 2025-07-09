@@ -209,35 +209,36 @@ def GetMouseLocation(coord_only=True):
     return xPos, yPos, Screen, Window
 
 
-def CheckRunning(title):
+def CheckRunning(name):
     """ Check if program is running; homa.py or eyesome-cfg.sh, etc.
-        Match passed 'title' to window decoration application name.
+        Match passed 'name' to window decoration application name.
     """
 
     mon = monitor.Monitors()  # Traditional Pippim abbreviation for Monitors() instance
-    #print("homa-indicator.py CheckRunning(): grep title:", title)
-    # wmctrl -lG | grep "$title"
-    cmd1 = sp.Popen(['wmctrl', "-lG"], stdout=sp.PIPE)
-    cmd2 = sp.Popen(['grep', title], stdin=cmd1.stdout, stdout=sp.PIPE)
-    output = cmd2.stdout.read().decode()  # Decode stdout stream to text
+    #print("homa-indicator.py CheckRunning(): grep name:", name)
+    # wmctrl -lG | grep "$name"
+    #cmd1 = sp.Popen(['wmctrl', "-lG"], stdout=sp.PIPE)
+    #cmd2 = sp.Popen(['grep', name], stdin=cmd1.stdout, stdout=sp.PIPE)
+    #output = cmd2.stdout.read().decode()  # Decode stdout stream to text
     #print("homa-indicator.py CheckRunning(): output:", output)
     # HomA   : 0x05c0000a  0 4354 72   1200 700    N/A HomA - Home Automation
     # Eyesome: 0x06400007  0 3449 667  782  882  alien eyesome setup
-    _line = output.split()
+    #_line = output.split()
     #print("_line[0]:", _line[0])  # _line[0]: 0x06000018
 
-    _active_window = mon.get_active_window()
+    #_active_window = mon.get_active_window()
     #print("mon.get_active_window():", _active_window)
     # (number=92274698L, name='homa-indicator', x=2261, y=1225, width=1734, height=902)
-    _active_monitor = mon.get_active_monitor()
+    #_active_monitor = mon.get_active_monitor()
     #print("mon.get_active_monitor():", _active_monitor)
     # (number=1, name='DP-1-1', x=1920, y=0, width=3840, height=2160, primary=False)
-    _mouse_monitor = mon.get_mouse_monitor()
+    #_mouse_monitor = mon.get_mouse_monitor()
     #print("mon.get_mouse_monitor():", _mouse_monitor)
     # (number=2, name='eDP-1-1', x=3840, y=2160, width=1920, height=1080, primary=True)
 
-    # 2024-12-08 TODO: Create list of application geometries for every monitor
-    return output
+    # Caller checks for len(output) > 4
+    mon.make_wn_list()
+    return mon.get_wn_by_name(name)
 
 
 def MoveHere(title, pos='top_right', adjust=0, new_window=True):

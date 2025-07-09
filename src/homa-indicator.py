@@ -20,6 +20,7 @@ warnings.filterwarnings("ignore", "ResourceWarning")  # PIL python 3 unclosed fi
 #       2024-12-08 - Use monitor.Monitors() for monitor aware window positions.
 #       2025-02-10 - Support Python 3 shebang.
 #       2025-06-01 - Change #!/usr/bin/env python to #!/usr/bin/python for top.
+#       2025-06-13 - CheckRunning() convert from wmctrl to Wnck methods. 
 #
 # ==============================================================================
 
@@ -124,15 +125,20 @@ def HomA(_):
     """
 
     # If not already running, start up homa.py
-    window = hc.CheckRunning(HOMA_TITLE)
+    #window = hc.CheckRunning(HOMA_TITLE)
     # window: 0x05c0000a  0 4354 72   1200 700    N/A HomA - Home Automation
-    if len(window) < 4:  # Not running yet
-        #print("homa-indicator.py HomA(): Starting HomA with '-f -s &'")
+    #if len(window) < 4:  # Not running yet
+    #    #print("homa-indicator.py HomA(): Starting HomA with '-f -s &'")
+    #    _out = os.popen("./homa.py -f -s &")
+    #    time.sleep(1.0)
+    #    new_window = True
+    #else:
+    #    new_window = False
+
+    new_window = False if hc.CheckRunning(HOMA_TITLE) else True
+    if new_window:
         _out = os.popen("./homa.py -f -s &")
         time.sleep(1.0)
-        new_window = True
-    else:
-        new_window = False
 
     # Move opened window to current mouse location
     hc.MoveHere(HOMA_TITLE, new_window=new_window, adjust=MOVE_WINDOW_RIGHT_ADJUST)

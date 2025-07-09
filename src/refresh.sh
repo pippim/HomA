@@ -63,6 +63,7 @@ echo
 echo "=== UPDATING: $PWD"
 
 cp -r ~/HomA/Alarm_01.wav .
+cp -L ~/HomA/audio/ .  # PulseAudio sinks and volume
 cp -r ~/HomA/bias.jpg .
 cp -r ~/HomA/breathing.jpeg .
 cp -L ~/HomA/calc.py .  # symlink
@@ -88,6 +89,7 @@ cp -r ~/HomA/nighttime.png .
 cp -r ~/HomA/picture_off.png .
 cp -r ~/HomA/picture_on.png .
 cp -L ~/HomA/pimtube.py .  # Youtube video controller / ad skipper
+cp -L ~/HomA/pulsectl/ .  # PulseAudio controller for ad muting
 cp -r ~/HomA/pygatt/ .  # Subdirectory with files and subdirectories
 cp -r ~/HomA/refresh.sh .  # Copy of this bash script might be helpful
 cp -r ~/HomA/reset.jpeg .
@@ -102,13 +104,17 @@ cp -r ~/HomA/ttkwidgets/ .  # Subdirectory with files and subdirectories
 cp -r ~/HomA/turn_off.png .
 cp -r ~/HomA/turn_on.png .
 cp -r ~/HomA/up.png .
+cp -L ~/HomA/vu_meter.py .  # Pippim volume meter
+cp -L ~/HomA/vu_pulse_audio.py .  # Pippim PulseAudio controller
 cp -r ~/HomA/wifi.png .
 cp -L ~/HomA/x11.py .  # symlink
 
 # Remove all .pyc files from commit
 find . -name "*.pyc" -exec rm -f "{}" \;
+git rm -r --cached *.pyc
 
 git add Alarm_01.wav
+git add audio
 git add bias.jpg
 git add breathing.jpeg
 git add calc.py
@@ -134,6 +140,7 @@ git add nighttime.png
 git add picture_off.png
 git add picture_on.png
 git add pimtube.py
+git add pulsectl/
 git add pygatt/
 git add refresh.sh
 git add reset.jpeg
@@ -148,6 +155,8 @@ git add ttkwidgets/
 git add turn_off.png
 git add turn_on.png
 git add up.png
+git add vu_meter.py
+git add vu_pulse_audio.py
 git add wifi.png
 git add x11.py
 

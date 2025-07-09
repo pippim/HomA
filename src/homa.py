@@ -25,10 +25,15 @@ warnings.filterwarnings("ignore", "ResourceWarning")  # PIL python 3 unclosed fi
 #       2025-02-10 - Support Python 3 shebang.
 #       2025-03-26 - Auto assign iid in Sensors Treeview fixes duplicate keys.
 #       2025-04-18 - Spam Sony TV Remote. Refresh from 16ms to 33ms for CPU %.
+#       2025-05-28 - Enhanced error checking and reporting.
+#       2025-06-13 - Convert wmctrl to Wnck used in monitor.py - mon.wn_list[].
 #
 # ==============================================================================
 
 '''
+    TODO: create DisplayArps(), DisplayHosts(), DisplayDevices()
+    WIP: Volume Meters, PulseAudio sinks and volume levels for YT ad skipping    
+
     REQUIRES:
     
     python(3)-appdirs
@@ -36,26 +41,28 @@ warnings.filterwarnings("ignore", "ResourceWarning")  # PIL python 3 unclosed fi
     python(3)-ttkwidgets  # Also stored as subdirectory in ~/HomA/ttkwidgets
     trionesControl   # Also stored as subdirectory in ~/HomA/ttkwidgets 
     gatttool   # Also stored as subdirectory in ~/HomA/ttkwidgets 
+    audio   # Stored as subdirectory in ~/HomA/audio 
+    pulsectl   # Stored as subdirectory in ~/HomA/pulsectl 
 
     xdotool  # To minimize window
     systemctl  # To suspend. Or suitable replacement like `suspend` external command
     adb  # Android debugging bridge for Google Android TV's
     curl  # For Sony Bravia KDL professional displays (TV's)
     bluez-tools  # For bluetooth communications including hci tools
+    wmctrl  # Get list of windows. To be removed in favour of Wnck
 
     Gatttool REQUIRES:
     python(3)-serial
 
-    2025-03-01 LONG TERM:
+    2025-03-01 LONG TERM (3 tasks completed by 2025-06-17):
         TODO: Sensors: Add average CPU Mhz and Load %.
                        Add Top 20 programs with Top 3 displayed.
-              Display volume level changes with lib-notify (tvpowered).
-              Suspend all and resume all (tvpowered).
+                       Consolidate fan and temperature changes per minute with
+                        up / down arrows on trend for each temp and fan 
               Dimmer (movie.sh) features where wakeup is based on mouse
                 passing over monitor for five seconds.
               xrandr monitor details - geometry & resolution.
               mmm features - track window geometry every minute.
-              eyesome interface for functions needing sudo permissions.
 
 '''
 
@@ -107,7 +114,7 @@ except ImportError:  # Python 2
 
     PYTHON_VER = "2"
 
-# print("PYTHON_VER", PYTHON_VER)
+# v0_print("PYTHON_VER", PYTHON_VER)
 
 from PIL import Image, ImageTk, ImageDraw, ImageFont
 
@@ -138,6 +145,7 @@ import random  # Temporary filenames
 import string  # Temporary filenames
 import base64  # Required for Cryptology
 from cryptography.fernet import Fernet  # To encrypt sudo password
+from collections import OrderedDict, namedtuple
 
 try:
     reload(sys)  # June 25, 2023 - Without utf8 sys reload, os.popen() fails on OS
@@ -164,6 +172,7 @@ import toolkit  # Various tkinter functions common to Pippim apps
 import message  # For dtb (Delayed Text Box)
 import image as img  # Image processing. E.G. Create Taskbar icon
 import timefmt as tmf  # Time formatting, ago(), days(), mm_ss(), etc.
+import vu_pulse_audio  # Volume Pulse Audio class pulsectl.Pulse()
 import external as ext  # Call external functions, programs, etc.
 import homa_common as hc  # hc.ValidateSudoPassword()
 from calc import Calculator  # Big Number calculator
@@ -179,7 +188,7 @@ class DeviceCommonSelf:
 
         self.who = who  # For debugging, print class name
 
-        self.dependencies_installed = None  # Parent will call self.CheckDependencies()
+        self.dependencies_installed = True  # Parent will call self.checkDependencies()
         self.passed_dependencies = []
         self.passed_installed = []
 
@@ -210,26 +219,28 @@ class DeviceCommonSelf:
         # time: 999.99 duration: 9.999 who: <_who> command: <command str>
         # text: <text> err: <text> return: <return code>
 
-    def CheckDependencies(self, dependencies, installed):
-        """ :param dependencies: list of dependencies.
-            :param installed: passed list of installed flags to be updated with test
-            :returns: False if any of dependency is missing. Otherwise return True
+    def checkDependencies(self, dependencies, installed):
+        """ :param dependencies: list of required dependencies.
+            :param installed: empty list to be updated with installed flags.
+            Sets self.dependencies_installed True ONLY if all are installed.
         """
         self.dependencies_installed = True
-        self.passed_dependencies = dependencies
-        self.passed_installed = installed
+        self.passed_dependencies = dependencies  # shallow copy of dependencies
+        self.passed_installed = installed  # copy of mutable installed flags
         for required in dependencies:
             if self.Which(required):
+                installed.append(True)
+            elif self.checkImport(required):
                 installed.append(True)
             else:
                 v0_print("Program:", required, "is required but is not installed")
                 installed.append(False)
                 self.dependencies_installed = False
 
-    def CheckInstalled(self, name):
+    def checkInstalled(self, name):
         """ Check if external program is installed. Could use `self.Which` but this
             method is faster and allows for future help text. Requires previous call
-            to `self.CheckDependencies(dep_list, inst_list)`.
+            to `self.checkDependencies(dep_list, inst_list)`.
 
             :param name: name of external program to check.
             :returns: False if external program is missing. Otherwise return True
@@ -237,7 +248,7 @@ class DeviceCommonSelf:
         try:
             ndx = self.passed_dependencies.index(name)
         except IndexError:
-            v1_print(self.who, "CheckInstalled(): Invalid name passed:", name)
+            v1_print(self.who, "checkInstalled(): Invalid name passed:", name)
             return False
         return self.passed_installed[ndx]
 
@@ -261,6 +272,24 @@ class DeviceCommonSelf:
 
         return None
 
+    def checkImport(self, name):
+        """ Check if variable name can be imported """
+        _who = self.who + "checkImport():"
+        try:
+            if name[-3:] == ".py":
+                name = name[:-3]
+                v3_print("new name:", name)
+        except IndexError:
+            pass  # not .py extension to strip
+
+        try:
+            _module = __import__(name)
+            v3_print("module can be imported:", name, _module)
+            return True
+        except ImportError:
+            v3_print("module not found!", name)
+            return False
+        
     def makePercentBar(self, percent):
         """ Make percentage bar of UTF-8 characters 0 to 100%
             Initial purpose is to spam volume level with `notify-send` as the TV
@@ -384,7 +413,7 @@ class Router(DeviceCommonSelf):
 
         self.requires = ['nmcli', 'ifconfig', 'sudo', 'systemctl']
         self.installed = []
-        self.CheckDependencies(self.requires, self.installed)
+        self.checkDependencies(self.requires, self.installed)
         v2_print(self.who, "Dependencies:", self.requires)
         v2_print(self.who, "Installed?  :", self.installed)
         # When reading /etc/hosts match from MAC address if available
@@ -414,7 +443,7 @@ class Router(DeviceCommonSelf):
         _who = self.who + "Interface():"
         v2_print(_who, "Test if Ethernet and/or WiFi interface is up.")
 
-        if not self.CheckInstalled('nmcli'):
+        if not self.checkInstalled('nmcli'):
             return
 
         command_line_list = ["nmcli", "con", "show"]
@@ -585,7 +614,7 @@ class Globals(DeviceCommonSelf):
 
         # Next four lines can be defined in DeviceCommonSelf.__init__()
         self.installed = []
-        self.CheckDependencies(self.requires, self.installed)
+        self.checkDependencies(self.requires, self.installed)
         v2_print(self.who, "Dependencies:", self.requires)
         v2_print(self.who, "Installed?  :", self.installed)
 
@@ -663,7 +692,14 @@ class Globals(DeviceCommonSelf):
             "ALLOW_REMOTE_TO_SUSPEND": True,  # Sony getPower()
             "ALLOW_VOLUME_CONTROL": True,  # Sony getVolume() and setVolume()
             "QUIET_VOLUME": 20,  # 10pm - 9am
-            "NORMAL_VOLUME": 36  # Normal volume (9am - 10pm)
+            "NORMAL_VOLUME": 36,  # Normal volume (9am - 10pm)
+
+            "YT_AD_BAR_COLOR": "",  # YouTube Ad progress bar color
+            "YT_AD_BAR_POINT": [],  # YouTube Ad progress bar start coordinates
+            "YT_VIDEO_BAR_COLOR": "",  # YouTube Video progress bar color
+            "YT_VIDEO_BAR_POINT": [],  # YouTube Ad progress bar start coordinates
+            "YT_SKIP_BTN_COLOR": "",  # YouTube Skip Ad button dominant color (white)
+            "YT_SKIP_BTN_POINT": []  # YouTube Skip Ad button coordinates (triangle tip)
         }
 
     def openFile(self):
@@ -689,15 +725,30 @@ class Globals(DeviceCommonSelf):
         except (TypeError, IndexError):  # No color saved
             self.dictGlobals['LED_LIGHTS_COLOR'] = None
 
-        ''' TEMPLATE TO ADD A NEW FIELD TO DICTIONARY 
+        '''
+        try:  # Delete bad key
+            s = self.dictGlobals['YT_SKIP_BAR_COLOR']
+            del self.dictGlobals['YT_SKIP_BAR_COLOR']
+            del self.dictGlobals['YT_SKIP_BAR_POINT']
+            self.dictGlobals["YT_SKIP_BTN_COLOR"] = ""
+            self.dictGlobals["YT_SKIP_BTN_POINT"] = []
+            v0_print("Deleted two bad keys YT_SKIP_BAR_COLOR / POINT")
+        except (TypeError, IndexError, KeyError):  # No bad key
+            pass
+        '''
+        ''' TEMPLATE TO ADD A NEW FIELD TO DICTIONARY  
         try:
-            _s = self.dictGlobals['ALLOW_REMOTE_TO_SUSPEND']
-            print("Found GLO['ALLOW_REMOTE_TO_SUSPEND']:", _s)
-            print("Found GLO['ALLOW_VOLUME_CONTROL']", self.dictGlobals['ALLOW_VOLUME_CONTROL'])
+            _s = self.dictGlobals['YT_AD_BAR_COLOR']
+            v0_print("Found GLO['YT_AD_BAR_COLOR']:", _s)
         except KeyError:
-            self.dictGlobals['ALLOW_REMOTE_TO_SUSPEND'] = True
-            self.dictGlobals['ALLOW_VOLUME_CONTROL'] = True
-            print("Create GLO['ALLOW_REMOTE_TO_SUSPEND']:", GLO['ALLOW_REMOTE_TO_SUSPEND'])
+            self.dictGlobals["YT_AD_BAR_COLOR"] = ""
+            self.dictGlobals["YT_AD_BAR_POINT"] = []
+            self.dictGlobals["YT_VIDEO_BAR_COLOR"] = ""
+            self.dictGlobals["YT_VIDEO_BAR_POINT"] = []
+            self.dictGlobals["YT_SKIP_BTN_COLOR"] = ""
+            self.dictGlobals["YT_SKIP_BTN_POINT"] = []
+
+            v0_print("Create GLO['YT_AD_BAR_COLOR']:", GLO['YT_AD_BAR_COLOR'])
         '''
 
         ''' Decrypt SUDO PASSWORD '''
@@ -789,7 +840,11 @@ class Globals(DeviceCommonSelf):
             ("Computer",
              "Laptop backlight display control codes.\n"
              "Define how the computer is suspended and\n"
-             "device code types excluded on resume.")
+             "device code types excluded on resume."),
+            ("YouTube",
+             "YouTube Ad Mute and Skip controls.\n"
+             "Colors and coordinates for the Ad and Video\n"
+             "progress bars and the Skip Ad button in YouTube.")
         ]
 
         HD = "hidden"
@@ -914,7 +969,19 @@ class Globals(DeviceCommonSelf):
              'Laptop display (backlight can be turned\n'
              'on/off separately from laptop base)'),
             ("ROUTER_M", 7, RO, INT, INT, 3, DEC, MIN, MAX, CB,
-             "Router connecting local network to global internet")
+             "Router connecting local network to global internet"),
+            ("YT_AD_BAR_COLOR", 8, RW, STR, STR, 9, DEC, MIN, MAX, CB,
+             "YouTube Ad progress bar color"),
+            ("YT_AD_BAR_POINT", 8, RW, STR, LIST, 30, DEC, MIN, MAX, CB,
+             "YouTube Ad progress bar start coordinates"),
+            ("YT_VIDEO_BAR_COLOR", 8, RW, STR, STR, 9, DEC, MIN, MAX, CB,
+             "YouTube video progress bar color"),
+            ("YT_VIDEO_BAR_POINT", 8, RW, STR, LIST, 30, DEC, MIN, MAX, CB,
+             "YouTube video progress bar start coordinates"),
+            ("YT_SKIP_BTN_COLOR", 8, RW, STR, STR, 9, DEC, MIN, MAX, CB,
+             "YouTube Skip Ad button dominant color"),
+            ("YT_SKIP_BTN_POINT", 8, RW, STR, LIST, 30, DEC, MIN, MAX, CB,
+             "YouTube Skip Ad button coordinates (triangle right tip)")
         ]
 
         help_id    = "https://www.pippim.com/programs/homa.html#"  # same as g.HELP_URL
@@ -924,6 +991,15 @@ class Globals(DeviceCommonSelf):
         listHelp   = [help_id, help_tag, help_text]
 
         return listTabs, listFields, listHelp
+
+    def getDescription(self, key):
+        """ return description matching dictionary key """
+        listTabs, listFields, listHelp = self.defineNotebook()
+        for field in listFields:
+            if field[0] == key:
+                return field[10]
+
+        v0_print("Catastrophic error. Key doesn't exist:", key)
 
     def updateGlobalVar(self, key, new_value):
         """ Validate a new dictionary field. """
@@ -1002,14 +1078,14 @@ class Computer(DeviceCommonSelf):
         self.requires = ['ip', 'getent', 'hostnamectl', 'gsettings',
                          'get-edid', 'parse-edid', 'xrandr']
         self.installed = []
-        self.CheckDependencies(self.requires, self.installed)
+        self.checkDependencies(self.requires, self.installed)
         v2_print(self.who, "Dependencies:", self.requires)
         v2_print(self.who, "Installed?  :", self.installed)
 
         self.chassis = ""  # "desktop", "laptop", "convertible", "server",
         # "tablet", "handset", "watch", "embedded", "vm" and "container"
 
-        if self.CheckInstalled('hostnamectl'):
+        if self.checkInstalled('hostnamectl'):
             # 2024-12-16 TODO: convert to self.runCommand()
             #   universal_newlines: https://stackoverflow.com/a/38182530/6929343
             # 2024-12-16 TODO: convert to self.runCommand()
@@ -1049,7 +1125,7 @@ class Computer(DeviceCommonSelf):
         ''' `socket` doesn't serve any useful purpose
         import socket
         _socks = [i[4][0] for i in socket.getaddrinfo(socket.gethostname(), None)]
-        print("socks:", _socks)  
+        v0_print("socks:", _socks)  
         # socks: ['127.0.1.1', '127.0.1.1', '127.0.1.1',
         # '192.168.0.12', '192.168.0.12', '192.168.0.12',
         # '192.168.0.10', '192.168.0.10', '192.168.0.10']
@@ -1092,7 +1168,7 @@ class Computer(DeviceCommonSelf):
         self.wifi_mac = ""  # aa:bb:cc:dd:ee:ff
         self.wifi_ip = ""  # 192.168.0.999
 
-        if not self.CheckInstalled('ip'):
+        if not self.checkInstalled('ip'):
             return ""  # Return null string = False
 
         command_line_list = ["ip", "a", "show", "dynamic"]
@@ -1287,7 +1363,7 @@ class Computer(DeviceCommonSelf):
         self.nightlight_active = True  # Default is nighttime to turn on lights.
         self.sunlight_percent = 0  # Percentage of sunlight, 0 = nighttime.
 
-        if self.CheckInstalled('gsettings'):
+        if self.checkInstalled('gsettings'):
             command_line_list = ["gsettings", "get",
                                  "org.gnome.settings-daemon.plugins.color",
                                  "night-light-enabled"]
@@ -1390,7 +1466,7 @@ class NetworkInfo(DeviceCommonSelf):
 
         self.requires = ['arp', 'getent', 'timeout', 'curl', 'adb']
         self.installed = []
-        self.CheckDependencies(self.requires, self.installed)
+        self.checkDependencies(self.requires, self.installed)
         v2_print(self.who, "Dependencies:", self.requires)
         v2_print(self.who, "Installed?  :", self.installed)
 
@@ -1569,7 +1645,7 @@ class NetworkInfo(DeviceCommonSelf):
 
         command_line_str = ' '.join(command_line_list)
 
-        if self.CheckInstalled('adb'):
+        if self.checkInstalled('adb'):
             v1_print(_who, "Running: '" + command_line_str + "'")
         else:
             v1_print(_who, "adb is not installed. Skipping")
@@ -1785,6 +1861,11 @@ class NetworkInfo(DeviceCommonSelf):
         def test_one(cname):
             """ Test if hs100, SonyTV, GoogleTV, Bluetooth LED, Laptop, etc. """
             inst = cname(arp['mac'], arp['ip'], arp['name'], arp['alias'])
+            if not inst.dependencies_installed:
+                # 2025-06-18 TODO: How to prevent instance init more than once to
+                #   check if dependencies are installed? Global supported variables
+                # v0_print("Missing Dependencies:", cname.required)
+                return False
             if not inst.isDevice(forgive=True):
                 return False
 
@@ -2061,6 +2142,47 @@ class TreeviewRow(DeviceCommonSelf):
                 return  # Changed tree during fade out
 
 
+class AudioControl(DeviceCommonSelf):
+    """ AudioControl() utilizes:
+
+            - vu_meter.py daemon to log PulseAudio left & right amplitudes
+            - toolkit.py VolumeMeters() class to display real-time LED VU meters
+            - pav = vu_pulse_audio.PulseAudio()  # PulseAudio Instance for sinks
+
+        Called by Application()
+
+    """
+
+    def __init__(self):
+        """ DeviceCommonSelf(): Variables used by all classes
+        USAGE: aud = AudioControl()
+               Application() self.audio = AudioControl()
+        """
+        DeviceCommonSelf.__init__(self, "AudioControl().")  # Define self.who
+        _who = self.who + "__init()__:"
+
+        self.requires = ['vu_meter.py', 'pyaudio.py', 'numpy.py', 'pulsectl.py']
+        self.installed = []
+        self.checkDependencies(self.requires, self.installed)
+        v2_print(self.who, "Dependencies:", self.requires)
+        v2_print(self.who, "Installed?  :", self.installed)
+
+        self.vum = None  # self.vum = toolkit.VolumeMeters(...)
+        self.pulse_working_on_start = False
+        self.isWorking = False  # Callers must check before doing anything
+        if not self.dependencies_installed:
+            return  # Cannot initialize anything
+
+        ''' dependency pulsectl.py is installed so check if pulseaudio running '''
+        global pav
+        pav = vu_pulse_audio.PulseAudio()
+        if not pav.pulse_is_working:
+            pav = None
+            return  # Cannot display VU meters if PulseAudio isn't working
+        self.pulse_working_on_start = True
+        self.isWorking = True  # All methods in AudioControl() should work now
+
+
 class SystemMonitor(DeviceCommonSelf):
     """ System Monitor - sensors CPU/GPU Temp and Fan Speeds.
 
@@ -2076,15 +2198,15 @@ class SystemMonitor(DeviceCommonSelf):
         import socket
         # https://docs.python.org/3/library/socket.html#socket.getaddrinfo
         hostname = socket.gethostname()
-        # print("Your Computer hostname is:", hostname)  # alien
+        # v0_print("Your Computer hostname is:", hostname)  # alien
 
         _IPAddr = socket.gethostbyname(hostname)
-        # print("Your Computer IP Address is:", _IPAddr)  # 127.0.1.1
+        # v0_print("Your Computer IP Address is:", _IPAddr)  # 127.0.1.1
 
         _IPAddr_ex = socket.gethostbyname_ex(hostname)
-        # print("Your Computer IP Address_ex is:")
+        # v0_print("Your Computer IP Address_ex is:")
         # for tup in IPAddr_ex:
-        #    print(tup)
+        #    v0_print(tup)
         # ('Alien',
         # ['AW', '17R3', 'WiFi', '9c:b6:d0:10:37:f7',
         #  'AW', '17R3', 'Ethernet', '28:f1:0e:2a:1a:ed'],
@@ -2113,7 +2235,7 @@ class SystemMonitor(DeviceCommonSelf):
         self.type_code = 900  # 2025-03-01 Fake type_code, need code setup
         self.requires = ['ifconfig', 'iwconfig', 'sensors', 'top']
         self.installed = []
-        self.CheckDependencies(self.requires, self.installed)
+        self.checkDependencies(self.requires, self.installed)
 
         v3_print(_who, "Dependencies:", self.requires)
         v3_print(_who, "Installed?  :", self.installed)
@@ -2148,7 +2270,7 @@ class SystemMonitor(DeviceCommonSelf):
         """
 
         _who = self.who + "Sensors():"
-        if not self.CheckInstalled('sensors'):
+        if not self.checkInstalled('sensors'):
             return
 
         ''' Dell Virtual output from `sensors` (first 7 lines):
@@ -2202,7 +2324,7 @@ class SystemMonitor(DeviceCommonSelf):
             diff = abs(curr - last)
             # Only report fan speed differences > 200 RPM
             if diff <= GLO['FAN_GRANULAR']:
-                # print("skipping diff:", diff)
+                # v0_print("skipping diff:", diff)
                 self.skipped_fan_diff += 1
                 return False  # Don't override last with current
 
@@ -2501,14 +2623,14 @@ class LaptopDisplay(DeviceCommonSelf):
         self.alias = alias  # AW 17R3 WiFi
         self.requires = ['ip', 'getent', 'hostnamectl', 'adb']
         self.installed = []
-        self.CheckDependencies(self.requires, self.installed)
+        self.checkDependencies(self.requires, self.installed)
         v2_print(self.who, "Dependencies:", self.requires)
         v2_print(self.who, "Installed?  :", self.installed)
 
         self.chassis = ""  # "desktop", "laptop", "convertible", "server",
         # "tablet", "handset", "watch", "embedded", "vm" and "container"
 
-        if self.CheckInstalled('hostnamectl'):
+        if self.checkInstalled('hostnamectl'):
             # 2024-12-16 TODO: convert to self.runCommand()
             #   universal_newlines: https://stackoverflow.com/a/38182530/6929343
             machine_info = sp.check_output(["hostnamectl", "status"], universal_newlines=True)
@@ -2689,7 +2811,7 @@ class SmartPlugHS100(DeviceCommonSelf):
         self.type_code = GLO['HS1_SP']
         self.requires = ['hs100.sh', 'nc', 'base64', 'od', 'nmap', 'shasum', 'arp']
         self.installed = []
-        self.CheckDependencies(self.requires, self.installed)
+        self.checkDependencies(self.requires, self.installed)
 
         _who = self.who + "__init__():"
         v3_print(_who, "Dependencies:", self.requires)
@@ -2859,7 +2981,7 @@ https://stackoverflow.com/questions/2829613/how-do-you-tell-if-a-string-contains
 
         self.requires = ['curl']
         self.installed = []
-        self.CheckDependencies(self.requires, self.installed)
+        self.checkDependencies(self.requires, self.installed)
         _who = self.who + "__init__():"
         v3_print(_who, "Dependencies:", self.requires)
         v3_print(_who, "Installed?  :", self.installed)
@@ -3475,7 +3597,7 @@ List of devices attached
         self.type_code = GLO['TCL_TV']
         self.requires = ['wakeonlan', 'adb']
         self.installed = []
-        self.CheckDependencies(self.requires, self.installed)
+        self.checkDependencies(self.requires, self.installed)
         _who = self.who + "__init__():"
         v3_print(_who, "Dependencies:", self.requires)
         v3_print(_who, "Installed?  :", self.installed)
@@ -3759,7 +3881,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         self.requires = ["rfkill", "systemctl", "hcitool", "hciconfig",
                          "grep", "sort", "uniq"]
         self.installed = []
-        self.CheckDependencies(self.requires, self.installed)
+        self.checkDependencies(self.requires, self.installed)
         v2_print(self.who, "Dependencies:", self.requires)
         v2_print(self.who, "Installed?  :", self.installed)
 
@@ -3837,7 +3959,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         self.hci_device = "hci0"  # Default if turned off and unknown
         self.hci_mac = ""
         self.BluetoothStatus = "?"
-        if not self.CheckInstalled("hcitool"):
+        if not self.checkInstalled("hcitool"):
             v0_print(_who, "Program 'hcitool' is not installed.")
             return self.BluetoothStatus
 
@@ -3893,7 +4015,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
             return "?"
 
         # Dependencies installed?
-        if not self.CheckInstalled("hciconfig"):
+        if not self.checkInstalled("hciconfig"):
             msg = "The program `hciconfig` is required to reset Bluetooth.\n\n"
             msg += "sudo apt-get install hciconfig bluez bluez-tools rfkill\n\n"
             self.app.showInfoMsg("Missing program.", msg, icon="error")
@@ -3972,7 +4094,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         _who = self.who + "getBluetoothDevices():"
 
         if self.app is None:
-            print(_who, "Cannot start until GUI is running.")
+            v0_print(_who, "Cannot start until GUI is running.")
             return ""
 
         if not self.elevateSudo():
@@ -4147,7 +4269,6 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
 
         self.device = None  # Force connect on next attempt
         self.powerStatus = "?"
-        # self.app.updateDropdown()  # 'NoneType' object has no attribute 'updateDropdown'
         return self.powerStatus
 
     def breatheColors(self, low=4, high=30, span=6.0, step=0.275, bots=1.5, tops=0.5):
@@ -4354,6 +4475,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
                 tk_after = False if ms < GLO['REFRESH_MS'] else True
                 rst = time.time()
                 self.app.refreshApp(tk_after=tk_after)
+                #app.refreshApp(tk_after=tk_after)  # 2025-06-19 Display doesn't update
                 if not tk_after:
                     time.sleep(fast_sleep)  # give 5 ms idle time
                     self.app.update_idletasks()  # Give screen and mouse response
@@ -4818,11 +4940,16 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         :param toplevel: Usually <None> except when called by another program.
         """
         DeviceCommonSelf.__init__(self, "Application().")  # Define self.who
+        _who = self.who + "__init__():"
 
-        global sm  # This machines fan speed and CPU temperatures
+        global sm  # Sensors Monitor - Fan speeds and Temperatures
 
         ''' Sony TV '''
-        self.sonySaveInst = None
+        self.sonySaveInst = None  # 2025-06-20 REVIEW: Use self.sony or self.kdl?
+
+        ''' LED VU Meters, pulseaudio sinks and volume levels '''
+        self.audio = AudioControl()  # VU Meter Class instance
+        # 2025-06-17 new self.audio consider global declaration aud = AudioControl()
 
         ''' Bluetooth Low Energy LED Light Strip Breathing Colors '''
         global ble  # Inside global ble, assign app = Application() which points here
@@ -4834,12 +4961,12 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.requires = ['arp', 'getent', 'timeout', 'curl', 'adb', 'hs100.sh', 'aplay',
                          'ps', 'grep', 'xdotool', 'wmctrl', 'nmcli', 'sensors']
         self.installed = []
-        self.CheckDependencies(self.requires, self.installed)
+        self.checkDependencies(self.requires, self.installed)
 
         if not self.dependencies_installed:
-            v1_print(_who, "Some Application() dependencies are not installed.")
-            v1_print(self.requires)
-            v1_print(self.installed)
+            v0_print(_who, "Some Application() dependencies are not installed.")
+            v0_print(self.requires)
+            v0_print(self.installed)
 
         ''' TkDefaultFont changes default font everywhere except tk.Entry in Color Chooser '''
         default_font = font.nametofont("TkDefaultFont")
@@ -4857,20 +4984,17 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.resuming = False  # When True suppress error messages that delay resume
 
         self.last_refresh_time = time.time()  # Refresh idle loop last entered time
-        # Normal rediscover period is shortened at boot time if fast start
-        self.last_rediscover_time = time.time()  # Last analysis of `arp -a`
-        self.rediscovering = False  # Is self.Rediscover() function in progress?
+        self.rediscovering = False
+        self.last_rediscover_time = time.time()
+        # self.exitRediscover() resets self.last_rediscover_time & self.rediscovering
         self.last_minute = "0"  # Check sunlight percentage every minute
         self.force_refresh_power_time = time.time() + 90.0  # 1 minute after treeview done
 
         if p_args.fast:
             # Allow 3 seconds to move mouse else start rediscover
             self.last_rediscover_time = time.time() - GLO['REDISCOVER_SECONDS'] + 3
-        #self.rediscover_done = True  # 16ms time slices until done.
-        #self.rediscover_row = 0  # Current row processed in Treeview
         self.tree = None  # Painted in populateDevicesTree()
-        # Images used in populateDevicesTree() and/or other methods
-        self.photos = None
+        self.photos = None  # Protect populateDevicesTree() images from recycling
 
         # Button Bar button images
         self.img_minimize = img.tk_image("minimize.png", 26, 26)
@@ -4927,10 +5051,10 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         ''' Big Number Calculator and Delayed Textbox (dtb) are child windows '''
         self.calculator = self.calc_top = self.dtb = None
 
-        ''' Display cmdEvents (toolkit.CustomScrolledText) as child window 
+        ''' DisplayCommon() cmdEvents (toolkit.CustomScrolledText) as child window 
             Also used to display Bluetooth devices and Breathing stats '''
         self.event_top = self.event_scroll_active = self.event_frame = None
-        self.event_btn_frm = None
+        self.event_scrollbox = self.event_btn_frm = None
 
         ''' Save Toplevel OS window ID for minimizing window '''
         self.update_idletasks()  # Make visible for wmctrl. Verified needed 2025-02-13
@@ -4961,7 +5085,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.last_motion_time = GLO['APP_RESTART_TIME']
 
         # Monitors and window positions when un-minimizing
-        self.monitors = self.windows = []  # List of dictionaries
+        #self.monitors = self.windows = []  # List of dictionaries
 
         ''' Assign this Application() instance to network devices (inst.app) variable:
                 - Laptop Display() and Router() needs to call .GetPassword() method.
@@ -4969,13 +5093,16 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 - BLE LED Light Strip() needs to call .showInfoMsg() method.  '''
         for instance in ni.instances:
             inst = instance['instance']
-            inst.app = self  # Needed for passwords, showInfo(), app variables
+            inst.app = self  # Needed for passwords, showInfoMsg(), refreshApp(), etc
             if inst.type_code == GLO['BLE_LS']:
-                inst.app = self  # BluetoothLedLightStrip calls app.showInfoMsg()
-                ble.app = self  # For functions called from Dropdown menu
+                # Only one BLE LED Light Strip can be supported.
                 self.bleSaveInst = inst  # For breathing colors monitoring
             elif inst.type_code == GLO['KDL_TV']:
-                self.sonySaveInst = inst  # For volume change
+                # The last Sony KDL TV in network devices will control audio
+                self.sonySaveInst = inst  # Sony TV volume change display
+
+        ble.app = self  # For View Dropdown menu -> Display Bluetooth Devices
+        self.audio.app = self  # Volume meters and PulseAudio Control
 
         ''' If bluetooth LED Light Strips used, resetBluetooth() always required '''
         if self.bleSaveInst:
@@ -4990,15 +5117,17 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             pass
 
     def getWindowID(self, title):
-        """ Use wmctrl to get window ID in hex and convert to decimal for xdotool """
+        """ Use wmctrl to get window ID in hex and convert to decimal for xdotool
+            2025-06-13 (It's Friday 13th!) Test new mon.wm_xid_int
+        """
         _who = self.who + "getWindowID():"
         GLO['WINDOW_ID'] = None  # Integer HomA OS Window ID
         v2_print(_who, "search for:", title)
 
-        if not self.CheckInstalled('wmctrl'):
+        if not self.checkInstalled('wmctrl'):
             v2_print(_who, "`wmctrl` is not installed.")
             return
-        if not self.CheckInstalled('xdotool'):
+        if not self.checkInstalled('xdotool'):
             v2_print(_who, "`xdotool` is not installed.")
             return
 
@@ -5012,6 +5141,12 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 continue
             v2_print("Title matches:", ' '.join(parts[3:]))
             GLO['WINDOW_ID'] = int(parts[0], 0)  # Convert hex window ID to decimal
+
+        # 2025-06-13 Test new mon.wm_xid_int
+        mon = monitor.Monitors()
+        mon.make_wn_list()  # Make Wnck list of all windows
+        # if mon.get_wn_by_name(title):
+        # GLO['WINDOW_ID'] = mon.wn_xid_int
 
         v2_print(_who, "GLO['WINDOW_ID']:", GLO['WINDOW_ID'])
         if GLO['WINDOW_ID'] is None:
@@ -5114,7 +5249,14 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         volume_menu.config(activebackground="SkyBlue3", activeforeground="black")
 
         self.tools_menu.add_separator()
+        self.tools_menu.add_command(label="Configure YouTube Ads", font=g.FONT,
+                                    underline=18, command=self.configureYouTube,
+                                    state=tk.DISABLED)
+        self.tools_menu.add_command(label="Watch YouTube Ad-mute", font=g.FONT,
+                                    underline=0, command=self.watchYouTube,
+                                    state=tk.DISABLED)
 
+        self.tools_menu.add_separator()
         self.tools_menu.add_command(label="Big number calculator", font=g.FONT,
                                     underline=0, command=self.openCalculator,
                                     state=tk.DISABLED)
@@ -5201,6 +5343,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.view_menu.entryconfig("Breathing stats", state=tk.DISABLED)
 
         ''' Tools Menu '''
+        self.tools_menu.entryconfig("Configure YouTube Ads", state=tk.NORMAL)
+        self.tools_menu.entryconfig("Watch YouTube Ad-mute", state=tk.NORMAL)
         self.tools_menu.entryconfig("Big number calculator", state=tk.NORMAL)
         if GLO['SUDO_PASSWORD'] is None:
             self.tools_menu.entryconfig("Forget sudo password", state=tk.DISABLED)
@@ -5523,8 +5667,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             sm.treeview_active = False
             self.populateDevicesTree()  # Build Network Devices Treeview
         else:
-            print("Invalid Button self.sensors_devices_btn['text']:",
-                  self.sensors_devices_btn['text'])
+            v0_print("Invalid Button self.sensors_devices_btn['text']:",
+                     self.sensors_devices_btn['text'])
             return
 
         self.updateDropdown()  # NORMAL/DISABLED options for view Sensors/Devices
@@ -5600,7 +5744,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 label=name + " Picture Off ", font=g.FONT, state=tk.DISABLED, compound=tk.LEFT,
                 image=self.img_picture_off, command=lambda: self.turnPictureOff(cr))
             menu.add_command(
-                label=name + " Settings ", font=g.FONT, state=tk.NORMAL, compound=tk.LEFT,
+                label=name + " Sound Control ", font=g.FONT, state=tk.NORMAL, compound=tk.LEFT,
                 image=self.img_mag_glass, command=lambda: self.DisplaySony(cr))
 
             menu.add_separator()
@@ -5969,10 +6113,10 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.tt.poll_tips()  # Tooltips fade in and out
         self.update()  # process pending tk events in queue
 
-        ''' 1 minute after start or resume refresh lagging power statuses '''
+        ''' 1 minute after restart, refresh lagging power statuses '''
         if self.force_refresh_power_time and now > self.force_refresh_power_time:
-            self.refreshAllPowerStatuses()  # Display "ON", "OFF" or "?"
             self.force_refresh_power_time = 0.0  # Don't do it again
+            self.refreshAllPowerStatuses()  # Display "ON", "OFF" or "?"
 
         if not self.winfo_exists():  # Application window destroyed?
             return False  # self.close() has set to None
@@ -6114,10 +6258,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             :param suspended_by_homa: Resume called after HomA suspended system
 
         """
-        #global rd  # 2025-05-15 comment out
-        #rd = None  # In case rediscovery was in progress during suspend
-        #self.rediscover_done = True  # 2025-05-15 comment out
         _who = self.who + "resumeFromSuspend():"
+        self.exitRediscover()  # Reset time so Rediscovery doesn't start during resume.
         if not suspended_by_homa:
             v0_print(_who, "Suspend was called outside of HomA.")
 
@@ -6147,7 +6289,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         GLO['APP_RESTART_TIME'] = now  # Sensors log restart at 0.0 seconds
         GLO['LOG_EVENTS'] = False  # Turn off command event logging
         self.force_refresh_power_time = now + 60.0  # Recheck power 1 minute after resume
-        self.exitRediscover()  # Should not be running, but force exit anyway
+        self.exitRediscover()  # Should not be running, but reset time for next
 
     def resumeWait(self, timer=None, alarm=True, title=None, abort=True):
         """ Wait x seconds for devices to come online. If 'timer' passed do a
@@ -6200,7 +6342,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.dtb.update(str(int(start + countdown_sec - time.time())))
             self.after(100)  # Suspend uses: 'self.after(100)'
             self.last_refresh_time = time.time()  # Don't trigger resume
-            if timer or not self.CheckInstalled("nmcli"):
+            if timer or not self.checkInstalled("nmcli"):
                 continue
 
             # Leave as soon as network is connected
@@ -6210,7 +6352,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 break  # 2025-04-21 - Took 12 seconds
 
         if timer and alarm is True:  # Play sound when timer ends
-            if self.CheckInstalled("aplay"):
+            if self.checkInstalled("aplay"):
                 command_line_list = ["aplay", GLO['TIMER_ALARM']]
                 self.runCommand(command_line_list, _who)
 
@@ -6377,8 +6519,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             TreeviewRow.Get() creates a row instance to update text.
             Optional fading row instance in and out.
 
-            :param auto: If 'False', called from menu "Rediscover Now". Can
-                also be forced on by auto-rediscovery on first time.
+            :param auto: If 'False' highlight Network Devices Treeview rows.
         """
         _who = self.who + "refreshAllPowerStatuses():"
 
@@ -6599,8 +6740,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
     def exitRediscover(self):
         """ End the rediscovery method """
         self.rediscovering = False
-        self.updateDropdown()  # Enable menu options
         self.last_rediscover_time = time.time()
+        self.last_refresh_time = self.last_rediscover_time  # 2025-06-21 added not test
+        self.updateDropdown()  # Enable menu options
 
     def refreshPowerStatusForInst(self, inst):
         """ Called by BluetoothLED """
@@ -6628,7 +6770,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
     @staticmethod
     def MouseWheel(event):
-        """ Mousewheel scroll defaults to 5 units, but tree has 4 images """
+        """ Mousewheel scroll defaults to 5 units, but tree has 3 images """
         if event.num == 4:  # Override mousewheel scroll up
             event.widget.yview_scroll(-1, "units")  # tree = event.widget
             return "break"  # Don't let regular event handler do scroll of 5
@@ -6794,6 +6936,784 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         ''' Move Calculator to cursor position '''
         hc.MoveHere("Big Number Calculator", 'top_left')
+
+    def configureYouTube(self):
+        """ Display Mouse Pointer coordinates (x, y) in real time. Grab
+            pixel color on mouse hover. Log results for YouTube Ad skipping.
+
+            Calls DisplayCommon to create Window, Frame and Scrollbox.
+            
+            Inspect and permanently store in preferences:
+            
+            - YouTube video playback progress bar location and color
+            - YouTube Ad first few seconds of progress bar location and color
+            - YouTube Ad skip button location and dominant color within button
+
+            NOTE: Alternate Ad Skip can be <ALT>+<Left Arrow> followed by
+                <ALT>+<Right Arrow> sent to browser window. Much faster but
+                not guaranteed to work all the time.
+        """
+        _who = self.who + "configureYouTube():"
+        title = "Configure YouTube Ads"
+
+        scrollbox = self.DisplayCommon(_who, title, width=1200, height=600,
+                                       help="ViewBluetoothDevices")
+        if scrollbox is None:
+            return  # Window already opened and method is running
+
+        # Tabs for self.event_scrollbox created by self.DisplayCommon()
+        # Tabs for windows list output similar to `wmctrl -lGp
+        #  X-offset  Y-offset  Width  Height  Name
+        tabs = ("100", "right", "200", "right", "300", "right",  # Width Height X-off
+                "400", "right", "420", "left")  # Y-offset Name
+        scrollbox.tag_config("hanging_indent", lmargin2=440)
+
+        def reset_tabs(event):
+            """ https://stackoverflow.com/a/46605414/6929343 """
+            event.widget.configure(tabs=tabs)
+
+        scrollbox.configure(tabs=tabs, wrap=tk.WORD)
+        scrollbox.bind("<Configure>", reset_tabs)
+
+        def _in(x, y, w, h, name):
+            """ Insert 2 parameter variable pairs into custom scrollbox """
+            line = "\t" + str(x) + "\t" + str(y) + "\t"
+            line += str(w) + "\t" + str(h) + "\t" + str(name) + "\n"
+            scrollbox.insert("end", line, "hanging_indent")
+
+        mon = monitor.Monitors()
+        mon.make_wn_list()  # dont like name but get_all_windows() already used
+        _in("X-offset", "Y-offset", "Width", "Height", "Window name")
+        scrollbox.insert("end", "\n")
+
+        for mon.wn_dict in mon.wn_list:
+            mon.unmake_wn_dict()  # Dictionary values to attribute variables
+            if mon.wn_height < 50 or mon.wn_x < 0 or mon.wn_y < 0:
+                continue  # Remove non-windows from display
+            _in(mon.wn_x, mon.wn_y, mon.wn_width, mon.wn_height, mon.wn_name)
+
+        scrollbox.highlight_pattern("Width", "green")
+        scrollbox.highlight_pattern("Height", "green")
+        scrollbox.highlight_pattern("X-offset", "yellow")
+        scrollbox.highlight_pattern("Y-offset", "yellow")
+        scrollbox.highlight_pattern("Window name", "blue")
+
+        ''' Display x, y pointer coordinates in self.event_top '''
+
+        '''
+        Skip Ad on YouTube using keyboard?
+        https://webapps.stackexchange.com/questions/100869/
+            keyboard-shortcut-to-close-the-ads-on-youtube
+        '''
+        pointer_frm = ttk.Frame(self.event_frame, borderwidth=g.FRM_BRD_WID,
+                                padding=(2, 2, 2, 2), relief=tk.RIDGE)
+        pointer_frm.grid(column=0, row=0, sticky=tk.NSEW)  # Label
+        pointer_frm.grid_columnconfigure(1, minsize=g.MON_FONTSIZE*12, weight=1)
+        pointer_frm.grid_columnconfigure(2, minsize=50, weight=0)  # Color rectangle
+
+        def add_row(row_no, label, _val, _type="Int", tt_text=None):
+            """ Add row to Pointer Location section
+                Column 0 contains label, Column 1 contains passed text which is
+                initialized into string variable returned to caller.
+            """
+            _who2 = _who + "add_row():"
+            label = ttk.Label(pointer_frm, text=label, font=g.FONT)
+            label.grid(row=row_no, column=0, sticky=tk.NSEW, padx=15, pady=10)
+            if _type == "String":
+                _var = tk.StringVar()
+            elif _type == "Int":
+                _var = tk.IntVar()
+            else:
+                v0_print(_who, "Unknown tk variable type:", _type)
+                return None
+
+            _var.set(_val)
+            text = ttk.Label(pointer_frm, textvariable=_var, font=g.FONT)
+            text.grid(row=row_no, column=1, sticky=tk.NSEW, padx=15)
+            if self.tt and tt_text:
+                self.tt_add(label, tt_text)
+            return _var
+
+        var_x = add_row(0, "X-offset:", 0)  # Mouse Pointer X
+        var_y = add_row(1, "Y-offset:", 0)  # Mouse Pointer Y
+        var_r = add_row(2, "Red:", 0)  # Red integer value
+        var_g = add_row(3, "Green:", 0)  # Green integer value
+        var_b = add_row(4, "Blue", 0)  # Blue integer value
+        var_h = add_row(5, "RGB Hex:", "?", _type="String")  # "#a1b2c3" hex color
+
+        # ScrollText with instructions third column row span 6
+        _sbt = "INSTRUCTIONS:\n\n"
+        _sbt += "1. Make YouTube fullscreen. Pause video and Ad for logging.\n"
+        _sbt += "2. Click on this window to regain focus for keystrokes.\n\n"
+        _sbt += "3. Hover mouse pointer over YouTube window areas (don't click) and:\n"
+        _sbt += "    - Press 'v' or 'V' to log red Video progress bar start.\n"
+        _sbt += "    - Press 'a' or 'A' to log yellow Ad progress bar start.\n"
+        _sbt += "    - Press 's' or 'S' to log Skip Ad button white triangle.\n\n"
+        _sbt += "4. Click Help button below for more instructions."
+
+        _sb = toolkit.CustomScrolledText(pointer_frm, state="normal", font=g.FONT,
+                                         height=11, borderwidth=15, relief=tk.FLAT)
+        toolkit.scroll_defaults(_sb)  # Default tab stops are too wide
+        _sb.config(tabs=("50", "100", "150"))
+        _sb.grid(row=0, column=3, rowspan=6, padx=3, pady=3, sticky=tk.EW)
+        pointer_frm.grid_columnconfigure(2, weight=1)  # scroll box
+        _sb.insert("end", _sbt)
+        _sb.highlight_pattern("red", "red")
+        _sb.highlight_pattern("yellow", "yellow")
+        _sb.highlight_pattern("white", "white")
+
+        # showInfo to confirm logging key is ignored if YouTube window has focus
+
+        def update_pointer():
+            """ Get mouse position and Update Display 
+                :returns True if x or y changed, else False
+            """
+            _x, _y = mon.get_mouse_pointer()
+            if _x is not None:
+                var_x.set(_x)
+                var_y.set(_y)
+            else:
+                v0_print(_who[:-1] + " update_pointer(): ERROR:", _y)
+            return _x, _y
+
+        # PyCharm Python 2 Error using Python 3 command: _RGBA.append(chr(_r))
+        # noinspection PyTypeChecker
+        def _update_colors():
+            """
+            2025-07-04 DEPRECATED.
+            Use toolkit.py PointerInspector().get_color() instead
+            Get colors at mouse position and Update Display
+            """
+            # Screen grab takes longer so only do it once .1 second into hover
+            ext.t_init(_who + "screen colors grab")
+            # create named tuple class with names x, y, w, h
+            Geom = namedtuple('Geom', ['x', 'y', 'w', 'h'])
+
+            # noinspection PyArgumentList
+            _geom = Geom(var_x.get(), var_y.get(), 1, 1)
+            _colors, _row_stride = mon.get_colors_at_geom(_geom)
+            v1_print(_who, "_colors: '" + _colors + "'  | type:", type(_colors),
+                     " | len:", len(_colors))
+            _r = _colors[0]
+            _g = _colors[1]
+            _b = _colors[2]
+            if len(_colors) > 3:
+                _a = _colors[3]
+            else:
+                _a = b"?"
+            _RGBA = bytearray()
+
+            # BELOW 3: Expected type 'int' (matched generic type '_T'), got 'str' instead
+            # Python 3 error: TypeError: an integer is required
+            try:
+                _RGBA.append(chr(_r))  # Python 3
+                _RGBA.append(chr(_g))
+                _RGBA.append(chr(_b))
+                _RGBA.append(chr(_a))
+            except TypeError:
+                _RGBA.append(_r)  # Python 2
+                _RGBA.append(_g)
+                _RGBA.append(_b)
+                _RGBA.append(_a)
+
+            integer_values = list(_RGBA)
+            v1_print("string values of _r, _g, _b, _a:", _r, _g, _b, _a)
+            v1_print("integer_values:", integer_values, "_RGBA:", _RGBA)
+            var_r.set(_RGBA[0])
+            var_g.set(_RGBA[1])
+            var_b.set(_RGBA[2])
+
+            #hex_strings = [hex(i)[2:] for i in integer_values[:3]]  # makes #e1621
+            hex_strings = []  # Fix 1 character makes #e1621
+            for i in integer_values[:3]:
+                hex_string = hex(i)[2:]
+                # hex_string: e | hex_string: 16 | hex_string: 20 | yields e1620
+                v2_print("hex_string:", hex_string)
+                hex_string = "0" + hex_string if len(hex_string) == 1 else hex_string
+                hex_strings.append(hex_string)
+
+            # Join the individual hexadecimal strings into a single string
+            result_string = "".join(hex_strings)
+            ext.t_end('no_print')  # average 0.0651 seconds
+            return "#" + result_string
+
+        pointer_color = ""  # string containing "#d1e2f3" Tkinter color code
+        pointer_x = None  # mouse pointer coordinates
+        pointer_y = None  # mouse pointer coordinates
+
+        def on_key_press(event):
+            """ Key press event """
+            #v0_print(_who, "on_key_press() event_char: '" + event.char + "'.")
+            _keysym = event.keysym
+            #v0_print("  keysym: '" + str(_keysym) + "'.")
+
+            if len(pointer_color) != 7:
+                v0_print(_who, "Cannot log when len(_color) != 7")
+                return
+            if pointer_x is None or pointer_y is None:
+                v0_print(_who, "Cannot log when pointer_x or pointer_y is <None>")
+                return
+
+            def _update(_color_key, _color, _point_key, _pointer_x, _pointer_y):
+                """ Show message with old and new values. Update new values. """
+
+                _msg = glo.getDescription(_color_key) + ":\n"
+                _msg += "\n  OLD color: " + str(GLO[_color_key])  # Could be <None>
+                _msg += "\n  NEW color: " + _color + "\n\n"
+                _msg += glo.getDescription(_point_key) + ":\n"
+                _msg += "\n  OLD [x, y] coordinates: " + str(GLO[_point_key])
+                _msg += "\n  NEW [x, y] coordinates: ["
+                _msg += str(_pointer_x) + "," + str(_pointer_y) + "]\n"
+                GLO[_color_key] = _color
+                GLO[_point_key] = [pointer_x, pointer_y]
+
+                self.showInfoMsg("New Color and Coordinates logged", _msg)
+
+            # Log Ad Progress bar starting location and color
+            if _keysym == "a" or _keysym == "A":
+                _update("YT_AD_BAR_COLOR", pointer_color,
+                        "YT_AD_BAR_POINT", pointer_x, pointer_y)
+
+            if _keysym == "v" or _keysym == "V":
+                _update("YT_VIDEO_BAR_COLOR", pointer_color,
+                        "YT_VIDEO_BAR_POINT", pointer_x, pointer_y)
+
+            if _keysym == "s" or _keysym == "S":
+                _update("YT_SKIP_BTN_COLOR", pointer_color,
+                        "YT_SKIP_BTN_POINT", pointer_x, pointer_y)
+
+        # tk.Canvas rectangle representing color in third column
+        _pi = toolkit.PointerInspector(pointer_frm, column=2, rowspan=6,
+                                       tt=self.tt, mon=mon)
+        _pointer_changed = time.time()
+        _color_changed = 0.0
+
+        # Loop forever until window closed
+        self.event_top.bind("<Key>", on_key_press)
+        while self.event_top and self.event_top.winfo_exists():
+            # 2025-06-25 TODO: Time slice for LED breathing, or create LED daemon
+            if not self.refreshApp(tk_after=False) or self.suspending:
+                break
+            try:
+                self.after(5)  # tk_after=False is too FAST
+                now = time.time()
+                last_x = var_x.get()
+                last_y = var_y.get()
+                pointer_x, pointer_y = update_pointer()
+                if pointer_x is None:
+                    v0_print(_who, "Catastrophic error:", pointer_y)
+                    break
+                if int(pointer_x) != last_x or pointer_y != last_y:
+                    _pointer_changed = now
+                    v3_print("_pointer_changed:", ext.t(_pointer_changed),
+                             "| last_x:", last_x, "pointer_x:", pointer_x,
+                             "| last_y:", last_y, "pointer_y:", pointer_y)
+                    v3_print("  type(last_x):", type(last_x), "type(pointer_x):",
+                             type(pointer_x), "| type(last_y):", type(last_y),
+                             "type(pointer_y):", type(pointer_y))
+
+                if now > _pointer_changed + .2 and _pointer_changed > _color_changed:
+                    # Screen grab takes longer so only do it once .1 second into hover
+                    pointer_color = _pi.get_colors(pointer_x, pointer_y)
+                    var_r.set(_pi.clr_r)
+                    var_g.set(_pi.clr_g)
+                    var_b.set(_pi.clr_b)
+                    var_h.set(pointer_color)  # Display RBG Hex
+                    _color_changed = now = time.time()  # old now + ~0.06
+                    v1_print(_who, "pointer_color:", pointer_color)
+                    _pi.refresh_canvas(pointer_color)  # canvas rectangle for color
+                    self.event_top.update_idletasks()
+
+            except (tk.TclError, AttributeError):
+                break  # Break in order to terminate vu_meter.py below
+            self.last_rediscover_time = now  # Prevent Rediscover
+            self.last_refresh_time = self.last_rediscover_time  # Prevent Resume
+
+        try:
+            self.event_top.unbind("<Key>")  # Normally this generates error
+            v0_print(_who, "self.event_top still exists after window closed")
+        except AttributeError:
+            pass
+        #_pi.terminate()
+        #DisplayCommonInst.close()  # 2025-06-26. Stale window still open??
+
+    def watchYouTube(self):
+        """ Monitor Pulse Audio for new sinks.
+
+            2025-07-09 TODO: Can be more than one YouTube tab in browser. Track
+                    each browser video independently.
+                Random sounds can appear from ffplay or Telegram messenger. Do
+                    not display these random new sink input indices.
+                Replace Ad Start / Video Start labels with Status / Duration labels.
+                Startup check for Ad/Video/Button Skip coordinates and colors.
+
+        NOTES about fullscreen:
+            Wnck.Screen.Window doesn't work in version 3.18 as of 2025-07-08.
+            wmctrl -ir hex_win -b toggle,fullscreen doesn't remove YT menus.
+            Use 'xdotool key "f"' instead.
+
+        NOTES about Ad Skipping:
+            Limited ability because only looking for a single white dot
+            Gtk mouse click only works on GTK windows
+            Python pyautogui click only works on primary monitor
+            Browser previous history (<ALT>+<Left Arrow>) followed by forward
+                (<ALT>+<Right Arrow>) works sometimes but can sometimes take
+                5 seconds which an Ad skip Button Click would take.
+            Use:
+                `xdotool mousemove <x> <y> click 1 sleep 0.01 mousemove restore`
+
+        """
+        _who = self.who + "watchYouTube():"
+        title = "Watch YouTube Ad-mute"
+
+        scrollbox = self.DisplayCommon(_who, title, width=1200, height=700,
+                                       help="ViewBluetoothDevices")
+        if scrollbox is None:
+            return  # Window already opened and method is running
+
+        # Tabs for self.event_scrollbox created by self.DisplayCommon()
+        tabs = ("140", "right", "170", "left", "400", "left",
+                "750", "left", "1125", "right")
+        scrollbox.tag_config("hanging_indent", lmargin2=420)
+
+        def reset_tabs(event):
+            """ https://stackoverflow.com/a/46605414/6929343 """
+            event.widget.configure(tabs=tabs)
+
+        scrollbox.configure(tabs=tabs, wrap=tk.WORD)
+        scrollbox.bind("<Configure>", reset_tabs)
+
+        line = "Input\tVol.\tApplication\tVideo name\n"
+        scrollbox.insert("end", line + "\n", "hanging_indent")
+
+        ''' Display Audio. Rows 0 to 89 available in self.event_top '''
+        if not self.audio.isWorking:
+            self.showInfoMsg("Watch YouTube",
+                             "PulseAudio isn't working or software is missing.")
+            return
+
+        ''' Cannot skip Ad on YouTube using keyboard:
+                https://webapps.stackexchange.com/questions/100869/
+                    keyboard-shortcut-to-close-the-ads-on-youtube '''
+        audio_frm = ttk.Frame(self.event_frame, borderwidth=g.FRM_BRD_WID,
+                              padding=(2, 2, 2, 2), relief=tk.RIDGE)
+        audio_frm.grid(column=0, row=0, sticky=tk.NSEW)
+        audio_frm.grid_columnconfigure(1, minsize=g.MON_FONTSIZE*15, weight=1)
+        audio_frm.grid_columnconfigure(2, minsize=700, weight=1)  # Status scrollbox
+
+        # Status scroll box in third column
+        _sb = toolkit.CustomScrolledText(audio_frm, state="normal", font=g.FONT,
+                                         height=11, borderwidth=15, relief=tk.FLAT)
+        toolkit.scroll_defaults(_sb)  # Default tab stops are too wide
+
+        # Tabs for self.event_scrollbox created by self.DisplayCommon()
+        _tabs2 = ("140", "right", "160", "left")
+        _sb.tag_config("indent2", lmargin2=180)
+
+        def _reset_tabs2(event):
+            """ https://stackoverflow.com/a/46605414/6929343 """
+            event.widget.configure(tabs=_tabs2)
+
+        _sb.configure(tabs=_tabs2, wrap=tk.WORD)
+        _sb.bind("<Configure>", _reset_tabs2)
+        _sb.grid(row=0, column=2, rowspan=9, padx=3, pady=3, sticky=tk.NSEW)
+        # ScrollText with instructions third column row span 9
+        _sbt = "INSTRUCTIONS:\n\n"
+        _sbt += "1. Messages automatically scroll when videos start.\n\n"
+        _sbt += '2. Messages can be copied by highlighting text and\n'
+        _sbt += '     typing <Control> + "C".\n\n'
+        _sbt += "3. Click Help button below for more instructions.\n\n"
+        _sb.insert("end", _sbt)
+
+        self.update_idletasks()
+
+        def init_ad_or_video():
+            """ YouTube is starting up.
+                yt_started > 0, ad_started = 0 and video_started = 0.
+                Force fullscreen in order to discover progress bar color.
+                Find out if Ad or Video. Set start time for Ad or Video.
+
+                Status:  A/V check / Ad playing / Video playing /
+                         skip check /
+                Duration: 99:99:99.99
+
+            """
+
+            _who2 = _who + "init_ad_or_video"
+            try:
+                _x, _y = GLO["YT_AD_BAR_POINT"]
+            except AttributeError:
+                return  # This will repeat test forever but overhead is low.
+
+            if mon.wn_is_fullscreen is False:
+                # If not full screen, force it.
+                #os.popen("wmctrl -ir " + str(mon.wn_xid_hex) +
+                #         " -b toggle,fullscreen")
+                os.popen('xdotool key f')  # Full Screen on ACTIVE window
+                mon.wn_is_fullscreen = True
+                update_rows()
+                _line = "\t" + format_time()
+                _line += "\tWindow forced fullscreen:" + str(mon.wn_xid_hex)
+                _sb.insert("end", _line + "\n", "indent2")
+                _sb.see("end")
+
+            _tk_clr = _pi.get_colors(_x, _y)  # Get color
+            if _tk_clr == GLO["YT_AD_BAR_COLOR"]:
+                _vars["ad_start"] = time.time()
+                # Set volume to zero
+                pav.set_volume(str(asi.index), 0)  # pav =
+                update_rows()
+                _line = "\t" + format_time(_vars["ad_start"])
+                _line += "\tAd has started"
+                _sb.insert("end", _line + "\n", "indent2")
+                _sb.see("end")
+            elif _tk_clr == GLO["YT_VIDEO_BAR_COLOR"]:
+                _vars["video_start"] = time.time()
+                update_rows()
+                _line = "\t" + format_time(_vars["video_start"])
+                _line += "\tVideo has starting playing"
+                _sb.insert("end", _line + "\n", "indent2")
+                _sb.see("end")
+            else:
+                v0_print(_who2)
+                v0_print("  Color found at: [" + str(_x) + "," + str(_y) + "]",
+                         "is:", _tk_clr)
+                v0_print("  Waiting for Ad or Video color to appear...")
+                # 2025-07-08 TODO: Set limit on messages 1 per second for 10 seconds?
+                return
+
+            #_line = "\t" + format_time()
+            #_line += "\tDismissing: " + _name
+            #_sb.insert("end", _line + "\n", "indent2")
+            #_sb.see("end")
+
+        def init_ad_skip():
+            """ YouTube Ad is running.
+                ad_started > 0 and video_started = 0.
+                Wait 5 seconds.
+
+            """
+
+            _who2 = _who + "init_ad_skip"
+            if time.time() > 5.0 + _vars["ad_start"]:
+                return
+
+            try:
+                _x, _y = GLO["YT_SKIP_BTN_POINT"]
+            except AttributeError:
+                return  # This will repeat test forever but overhead is low.
+
+            _tk_clr = _pi.get_colors(_x, _y)  # Get color
+            if _tk_clr != GLO["YT_SKIP_BTN_COLOR"]:
+                v0_print(_who2)
+                v0_print("  Color found at: [" + str(_x) + "," + str(_y) + "]",
+                         "is:", _tk_clr)
+                v0_print("  Waiting for Skip Button color to appear...")
+                return  # Not skip button color
+
+            _vars["ad_start"] = 0.0  # Turn off ad running
+            update_rows()
+            _line = "\t" + format_time()
+            _line += "\tSkip Button clicked"
+            _sb.insert("end", _line + "\n", "indent2")
+            _sb.see("end")
+
+            # Send click to skip button coordinates
+            os.popen('xdotool mousemove ' + str(_x) + ' ' + str(_y) +
+                     ' click 1 sleep 0.01 mousemove restore')
+
+        def match_window(_input):
+            """ Match window to pav. _input is active sink input from PulseAudio
+                If found, display fullscreen status in column 2
+                Before calling, buildSB() has set all _vars to null.
+            """
+            _who2 = _who + " match_window():"
+            mon.make_wn_list()  # Make Windows List
+            _name = _input.name
+            _app = _input.application
+            #text_pid.set(str(_input.pid))
+            if _name == "Playback Stream" and _app.startswith("Telegram"):
+                _name = "Media viewer"  # Telegram in mon
+
+            if mon.get_wn_by_name(_name, pid=_input.pid):
+                #text_is_fullscreen.set(str(mon.wn_is_fullscreen))  # Boolean
+                pass  # Drop down to set window name in scroll box
+            else:
+                if _app != 'ffplay':
+                    v0_print(_who2, "Matching window not found:")
+                    v0_print("  Name:", _name, " | PID:", _input.pid)
+                    v0_print("  Application:", _app)
+                else:
+                    pass  # ps -ef | grep ffplay PARAMETERS.../song name
+
+                _vars["yt_start"] = 0.0
+                _vars["yt_duration"] = 0.0
+                _vars["wn_found"] = False
+                _vars["wn_xid_hex"] = "N/A"
+                _line = "\t" + format_time()
+                _line += "\tDismissing: " + _name
+                _sb.insert("end", _line + "\n", "indent2")
+                _sb.see("end")
+                return False
+
+            ''' Variables dictionary mutable for inner functions 
+                1) 99:99:99.999 New Sink Input Index: 999
+                2) 99:99:99.999 YouTube video: Start of name(25)...End of Name
+                   99:99:99.999 Dismissing: Start of name(25)...End of Name
+                   99:99:99.999 Forced fullscreen window 0x3400034
+                3) 99:99:99.999 Video color Xxxx found at [9999, 9999]
+                4) 99:99:99.999 Ad muted
+                   99:99:99.999 Waiting 5 seconds for Skip Ad Button to appear
+                   99:99:99.999 Skip Ad Button color Xxxx NOT found at [9999, 9999]
+                   99:99:99.999 Skip Ad Button color Xxxx found at [9999, 9999]
+                   99:99:99.999 Skip Ad Button took 99 seconds to appear
+                   99:99:99.999 Skip Ad Button clicked
+                5) 99:99:99.999 New Sink Input Index: 999
+                6) 99:99:99.999 Video color Xxxx found at [9999, 9999]
+                7) 99:99:99.999 Waiting for new Sink Input...
+            '''
+
+            _vars["wn_found"] = True
+            _vars["wn_xid_hex"] = mon.wn_xid_hex
+
+            if _name.endswith(" - YouTube"):
+                _vars["yt_start"] = time.time()
+                _vars["yt_duration"] = 0.0
+                _line = "\t" + format_time(_vars["yt_start"])
+                _line += "\tYouTube Video: " + _name
+                _sb.insert("end", _line + "\n", "indent2")
+                _sb.see("end")
+            else:
+                _vars["yt_start"] = 0.0
+                _vars["yt_duration"] = 0.0
+                _line = "\t" + format_time()
+                _line += "\tDismissing: " + _name
+                _sb.insert("end", _line + "\n", "indent2")
+                _sb.see("end")
+            #text_is_fullscreen.set("?")  # Boolean
+            return True
+
+        def format_time(_time=None):
+            """ Format passed time or current time if none passed. 
+            import datetime
+            """
+            if _time:
+                dt_time = dt.datetime.fromtimestamp(_time)
+            else:
+                dt_time = dt.datetime.now()
+
+            formatted_time = dt_time.strftime("%H:%M:%S.") + \
+                dt_time.strftime("%f")[:2]
+            return formatted_time
+
+        def buildSB(_sink_inputs):
+            """ Build scrollbox
+            :return: _asi (Active Sink Input tuple)
+            """
+            scrollbox.delete("3.0", "end")  # delete all but headings
+            _asi = ()  # named tuple of last active sink input
+            for _si in reversed(_sink_inputs):
+                _line = str(_si.index) + "\t" + str(_si.volume) + "\t"
+                _line += str(_si.application) + "\t" + toolkit.normalize_tcl(_si.name)
+                scrollbox.insert("end", _line + "\n", "hanging_indent")
+                # _si. 'index corked mute volume name application pid user')
+                if _si.corked is True:
+                    continue
+                # Do something for non-corked (active) sink-inputs
+                if bool(_asi):
+                    continue  # Already have last active sink input
+                _asi = _si
+
+            try:
+                _asi = _asi if bool(_asi) else last_sink_inputs[-1]  # No active inputs fallback
+            except IndexError:
+                v0_print(_who, "Catastrophic error. No Sink Inputs")
+                return ()
+
+            _vars["pav_start"] = time.time()
+            _vars["pav_index"] = _asi.index
+            _vars["pav_application"] = _asi.application
+            _vars["pav_name"] = _asi.name
+            _vars["pav_volume"] = _asi.volume
+            _vars["pav_corked"] = _asi.corked
+
+            _line = "\t" + format_time(_vars["pav_start"])
+            _line += "\tNew Sink Input #: " + str(_vars["pav_index"])
+            _sb.insert("end", _line + "\n", "indent2")
+            _sb.see("end")
+
+            _vars["wn_found"] = False
+            _vars["wn_xid_hex"] = "N/A"
+            _vars["yt_start"] = 0.0
+            _vars["yt_duration"] = 0.0
+            _vars["ad_start"] = 0.0
+            _vars["ad_duration"] = 0.0
+            _vars["video_start"] = 0.0
+            _vars["video_duration"] = 0.0
+
+            return _asi
+
+        def update_rows():
+            """ Update rows with pulse audio active sink input (asi)
+                and matching window (mon.wn) attributes. 
+
+                2025-07-07 TODO: Relocate to only call when sink or window changes.
+            """
+            text_index.set(str(asi.index))  # Long Integer
+            text_pid.set(asi.pid)
+            text_pa_app.set(asi.application)  # Could be UTF-8
+
+            def set_time(_val):
+                """ Format date if not zero. """
+                if _val == 0.0:
+                    return "N/A"
+                return format_time(_val)
+
+            text_wn_xid_hex.set(str(_vars["wn_xid_hex"]))  # May already be N/A
+            text_yt_start.set(set_time(_vars["yt_start"]))  # Set to N/A if zero
+            text_ad_start.set(set_time(_vars["ad_start"]))
+            text_video_start.set(set_time(_vars["video_start"]))
+
+            if _vars["wn_found"] is False:
+                text_is_YouTube.set("N/A")  # No matching window found so probably
+                text_is_fullscreen.set("N/A")  # ffplay or speech-dispatcher, etc.
+                return
+
+            _yt = "yes" if asi.name.endswith(" - YouTube") else "no"
+            text_is_YouTube.set(_yt)
+            _fs = "yes" if mon.wn_is_fullscreen else "no"
+            text_is_fullscreen.set(_fs)
+
+        def add_row(row_no, label, _val, _type="String", tt_text=None):
+            """ Add row to Pointer Location section
+                Column 0 contains label, Column 1 contains passed text which is
+                initialized into string variable returned to caller.
+            """
+            _who2 = _who + "add_row():"
+            label = ttk.Label(audio_frm, text=label, font=g.FONT)
+            label.grid(row=row_no, column=0, sticky=tk.NSEW, padx=15, pady=10)
+
+            if _type == "String":
+                _var = tk.StringVar()
+            elif _type == "Int":
+                _var = tk.IntVar()
+            else:
+                v0_print(_who, "Unknown tk variable type:", _type)
+                return None
+
+            _var.set(_val)
+            text = ttk.Label(audio_frm, textvariable=_var, font=g.FONT)
+            text.grid(row=row_no, column=1, sticky=tk.NSEW, padx=15)
+            if self.tt and tt_text:
+                self.tt_add(label, tt_text)
+            return _var
+
+        # ROWS: Sink Input Index, PA PID, PA Application, PA name
+        #       X11 Window Number, Full Screen?, Window App, Window Name
+        text_index = add_row(0, "Sink input #:", "N/A")  # Long Integer
+        text_pid = add_row(1, "Process ID (PID):", 0, _type="Int")
+        text_pa_app = add_row(2, "PulseAudio App:", "N/A")
+        text_is_YouTube = add_row(3, "YouTube?:", "N/A")
+        text_wn_xid_hex = add_row(4, "Window number:", "N/A")
+        text_is_fullscreen = add_row(5, "Fullscreen?:", "N/A")
+        text_yt_start = add_row(6, "YouTube Start:", "N/A")
+        text_ad_start = add_row(7, "Ad Start:", "N/A")
+        text_video_start = add_row(8, "Video Start:", "N/A")
+
+        # audio_frm freezes xorg, use self.event_top
+        _vum = toolkit.VolumeMeters(
+            'homa', self.event_top, left_col=3, right_col=4)
+
+        _vum.reset_history_size(8)  # 2025-07-01 Change 4 to 8.
+        _vum.spawn()  # Daemon to populate Amplitude in files
+        mon = monitor.Monitors()  # To get Wnck Windows
+        _pi = toolkit.PointerInspector(None, mon=mon)
+
+        while not os.path.isfile(_vum.AMPLITUDE_LEFT_FNAME):
+            self.refreshApp()  # wait another 16ms to 33ms for file to appear.
+
+        ''' Variables dictionary mutable for inner functions 
+            1) 99:99:99.999 New Sink Input Index: 999
+            2) 99:99:99.999 YouTube video: Start of name(25)...End of Name
+               99:99:99.999 Dismissing: Start of name(25)...End of Name
+               99:99:99.999 Forced fullscreen window 0x3400034
+            3) 99:99:99.999 Video color Xxxx found at [9999, 9999]
+            4) 99:99:99.999 Ad muted
+               99:99:99.999 Waiting 5 seconds for Skip Ad Button to appear
+               99:99:99.999 Skip Ad Button color Xxxx NOT found at [9999, 9999]
+               99:99:99.999 Skip Ad Button color Xxxx found at [9999, 9999]
+               99:99:99.999 Skip Ad Button took 99 seconds to appear
+               99:99:99.999 Skip Ad Button clicked
+            5) 99:99:99.999 New Sink Input Index: 999
+            6) 99:99:99.999 Video color Xxxx found at [9999, 9999]
+            7) 99:99:99.999 Waiting for new Sink Input...
+
+                Status:  A/V check / Ad playing / Video playing /
+                         skip check /
+                Duration: 99:99:99.99
+        '''
+        _vars = {  # pav_ = Pulse audio volume, wn_ = Wnck Window (GNOME)
+            "pav_start": 0.0, "pav_index": "", "pav_volume": 0.0,
+            "pav_corked": False, "pav_application": "", "pav_name": "",
+            "yt_start": 0.0, "yt_index": "", "yt_duration": 0.0, 
+            "av_check": 0.0, "skip_check": 0.0,
+            "ad_start": 0.0, "ad_index": "", "ad_duration": 0.0,
+            "video_start": 0.0, "video_index": "", "video_duration": 0.0,
+            "wn_name": "", "wn_xid_hex": ""
+        }
+
+        # Loop forever until window closed
+        last_sink_inputs = []  # Force reread
+        while self.event_top and self.event_top.winfo_exists():
+            # 2025-06-25 TODO: Time slice for LED breathing, or create LED daemon
+            if not self.refreshApp(tk_after=False) or self.suspending:
+                break
+            try:
+                self.after(5)  # tk_after=False is too FAST
+                _vum.update_display()  # paint LED meters reflecting amplitude
+            except (tk.TclError, AttributeError):
+                break  # Break in order to terminate vu_meter.py below
+            self.last_rediscover_time = time.time()  # Prevent Rediscover
+            self.last_refresh_time = self.last_rediscover_time  # Prevent Resume
+
+            sink_inputs = pav.get_all_inputs()
+
+            ''' YouTube started but Ad or Video status unknown? '''
+            if _vars["yt_start"] and \
+                    not _vars["ad_start"] and not _vars["video_start"]:
+                init_ad_or_video()  # Setup if Ad or Video is running
+
+            ''' Is YouTube Ad intercept active? '''
+            if _vars["ad_start"] and not _vars["video_start"]:
+                init_ad_skip()  # Setup if Ad or Video is running
+
+            ''' Have sink_input(s) changed? '''
+            if sink_inputs == last_sink_inputs:
+                continue  # input_sinks didn't change
+
+            asi = buildSB(sink_inputs)  # asi = Active Sink Input named tuple
+
+            ''' Get matching window attributes '''
+            mon.make_wn_list()
+            if match_window(asi):
+                v1_print("Matching window:", mon.wn_dict)
+            else:
+                v1_print("Matching window NOT FOUND!")
+                # 2025-07-02 TODO: Update PulseAudio half of audio_frm
+
+            update_rows()  # 2025-07-03 - Handles mon.wn_dict is blank.
+
+            ''' If YouTube Video, check if Ad playing.
+                If Ad playing, turn down volume to zero. (Mute doesn't save much)
+                Set intercept for ending ad at top of loop.
+                An Ad might end after exactly 5 seconds without skip button.
+                Then a new ad starts running which has a skip button at 5 seconds. 
+            '''
+
+            last_sink_inputs = sink_inputs  # deepcopy NOT required
+
+        _vum.terminate()
+        #DisplayCommonInst.close()  # 2025-06-26. Stale window still open??
 
     def DisplayErrors(self):
         """ Loop through ni.instances and display cmdEvents errors
@@ -7008,30 +7928,32 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
     def DisplayBreathing(self):
         """ Display Breathing Colors parameters and statistics in real time.
+
             Called about 3 times per second during self.refreshApp() cycle.
             self.refreshApp() in turn is called by bleSaveInst.breatheColors().
             bleSaveInst.monitorBreatheColors() returns formatted text lines.
 
-            Calls DisplayCommon to create Window, Frame and Scrollbox.
+            First time, calls DisplayCommon to create Window, Frame and Scrollbox.
         """
         _who = self.who + "DisplayBreathing():"
         title = "Bluetooth LED Breathing Colors Statistics"
         if self.bleSaveInst is None:
-            print(_who, "self.bleSaveInst is None")
+            v0_print(_who, "self.bleSaveInst is None")
             return  # Should not happen
 
         def close():
             """ Close callback """
             self.bleScrollbox = None
+
         if self.bleSaveInst.already_breathing_colors is False:
-            print(_who, "self.bleSaveInst.already_breathing_colors is False")
+            v0_print(_who, "'self.bleSaveInst.already_breathing_colors' is <False>")
             close()
             return  # 2025-02-09 calling "Nighttime" when DisplayBreathing() is running
             
         if self.bleScrollbox is None:
             self.bleScrollbox = self.DisplayCommon(_who, title, close_cb=close,
                                                    help="ViewBreathingStats")
-            # Tabs for static header parameters and dynamic body statistics
+            # Tabs for self.event_scrollbox created by self.DisplayCommon()
             tabs = ("400", "right", "550", "right", "700", "right",
                     "750", "left", "1125", "right")  # Note "numeric" aligns on commas when no decimals!
 
@@ -7073,16 +7995,16 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.bleScrollbox.delete(6.0, "end")
 
         all_lines = self.bleSaveInst.monitorBreatheColors()
-        try:
-            scrollbox.insert("end", all_lines)
-        except TclError as err:
-            v0_print(_who, "Tkinter error:")
-            v0_print(err)
         if all_lines is None:
+            v0_print(_who, "'all_lines' is <None>. Exiting.")
             close()
             return
-        
-        self.bleScrollbox.insert("end", all_lines)
+
+        try:
+            self.bleScrollbox.insert("end", all_lines)  # 2025-06-19 sudden error
+        except tk.TclError as err:
+            v0_print(_who, "Tkinter error:")
+            v0_print(err)
 
         self.bleScrollbox.highlight_pattern("Blue:", "blue")
         self.bleScrollbox.highlight_pattern("Green:", "green")
@@ -7100,30 +8022,24 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
     def DisplaySony(self, cr):
         """ Display Sony KDL/Bravia TV controls in real time.
-            Slider for setting volume.
-            Slider buttons for Night and Day Volume.
-            Picture On/Off checkbox.
-            Subwoofer On/Off checkbox. (Not sure if this will work)
-            Subwoofer level slider.
-            Scrollbox for all current Sony TV settings.
 
             Calls DisplayCommon to create Window, Frame and Scrollbox.
-
-            TODO: create DisplayArps(), DisplayHosts(), DisplayDevices()
         """
         _who = self.who + "DisplaySony():"
-        sony = cr.inst_dict['instance']
+        sony = cr.inst_dict['instance']  # saveSony
         title = "Sony TV Settings"
 
-        x, y = hc.GetMouseLocation()  # 2025-05-30 TODO move into DisplayCommon()
-        scrollbox = self.DisplayCommon(_who, title, x=x, y=y, width=1200,
+        #x, y = hc.GetMouseLocation()  # 2025-05-30 TODO move into DisplayCommon()
+        #scrollbox = self.DisplayCommon(_who, title, x=x, y=y, width=1200,
+        #                               help="ViewBluetoothDevices")
+        scrollbox = self.DisplayCommon(_who, title, width=1200,
                                        help="ViewBluetoothDevices")
         if scrollbox is None:
             return  # Window already opened and method is running
 
         sony.getAllSettings()  # defaults to no_log=True
 
-        # Tabs for static header parameters and dynamic body statistics
+        # Tabs for self.event_scrollbox created by self.DisplayCommon()
         tabs = ("400", "right", "550", "right", "700", "right",
                 "750", "left", "1125", "right")  # Note "numeric" aligns on commas when no decimals!
 
@@ -7136,12 +8052,14 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         def in4(name1, value1, name2=None, value2=None):
             """ Insert 2 parameter variable pairs into custom scrollbox """
-            line = name1 + ":\t" + str(value1) + "\t\t|\t"
-            if name2 and value2:
-                line += name2 + ":\t" + str(value2) + "\n"
+            line = name1 + ":\t" + str(value1)
+            if name2 is not None and value2 is not None:
+                line += "\t\t|\t" + name2 + ":\t" + str(value2)
+            line += "\n"
             scrollbox.insert("end", line)
 
         ''' Single column mode with TV Position shown
+        ''' 
         in4("Power Status", sony.powerStatus)
         in4("Power Saving Mode", sony.powerSavingMode)
         in4("TV Position", sony.tvPosition)
@@ -7152,51 +8070,142 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         in4("Subwoofer Phase", sony.subwooferPhase)
         in4("Subwoofer Power", sony.subwooferPower)
         scrollbox.insert("end", "\n\n")
-        '''
+
         ''' Double column mode with TV Position hidden
-        '''
         in4("Power Status", sony.powerStatus,
-            "Subwoofer Power", sony.subwooferPower)
+             "Subwoofer Power", sony.subwooferPower)
         in4("Power Saving Mode", sony.powerSavingMode,
-            "Subwoofer Phase", sony.subwooferPhase)
+             "Subwoofer Phase", sony.subwooferPhase)
         in4("Speaker Volume", sony.volumeSpeaker,
-            "Subwoofer Level", sony.subwooferLevel)
+             "Subwoofer Level", sony.subwooferLevel)
         in4("Headphones Volume", sony.volumeHeadphones,
-            "Subwoofer Freq", sony.subwooferFreq)
+             "Subwoofer Freq", sony.subwooferFreq)
         scrollbox.insert("end", "\n\n")
+        '''
 
-        self.last_red = self.last_green = self.last_blue = 0
+        ''' Display Audio. Rows 0 to 89 available in self.event_top '''
+        if not self.audio.isWorking:
+            v0_print(_who, "not self.audio.isWorking")
+            return  # Cannot display VU meters
+        v2_print(_who, "self.audio.isWorking", self.audio.isWorking)
 
-        # Body is only updated when red, green or blue change
-        if self.last_red == self.bleSaveInst.red and \
-                self.last_green == self.bleSaveInst.green and \
-                self.last_blue == self.bleSaveInst.blue:
-            return
+        '''
+        Skip Ad on YouTube using keyboard?
+        https://webapps.stackexchange.com/questions/100869/
+            keyboard-shortcut-to-close-the-ads-on-youtube
+        '''
+        audio_frm = ttk.Frame(self.event_frame, borderwidth=g.FRM_BRD_WID,
+                              padding=(2, 2, 2, 2), relief=tk.RIDGE)
+        audio_frm.grid(column=0, row=0, sticky=tk.NSEW)
+        audio_frm.grid_columnconfigure(1, weight=1)
 
-        self.last_red = self.bleSaveInst.red
-        self.last_green = self.bleSaveInst.green
-        self.last_blue = self.bleSaveInst.blue
+        def add_row(row_no, label, txt, tt_text=None):
+            """ Add row to PulseAudio section
+                Column 0 contains label, Column 1 contains passed text which is
+                initialized into string variable returned to caller.
+            """
+            _who2 = _who + "add_row():"
+            label = ttk.Label(audio_frm, text=label, font=g.FONT)
+            label.grid(row=row_no, column=0, sticky=tk.NSEW, padx=15, pady=10)
+            string_var = tk.StringVar()
+            string_var.set(txt)
+            text = ttk.Label(audio_frm, textvariable=string_var, font=g.FONT)
+            text.grid(row=row_no, column=1, sticky=tk.NSEW, padx=15, pady=10)
+            if self.tt and tt_text:
+                self.tt_add(label, tt_text)
+            return string_var
 
-        # Delete dynamic lines in custom scrollbox
-        scrollbox.delete(6.0, "end")
+        def match_window(_input):
+            """ Match window to pav. _input is active sink input from PulseAudio
+                If found, display fullscreen status in column 2
+            """
+            _who2 = _who + " match_window():"
+            mon.make_wn_list()  # Make Windows List
+            _name = _input.name
+            _app = _input.application
+            if _name == "Playback Stream" and _app.startswith("Telegram"):
+                _name = "Media viewer"  # Telegram in mon
+            if mon.get_wn_by_name(_name, pid=_input.pid):
+                text_fullscreen.set(str(mon.wn_is_fullscreen))  # Boolean
+                text_pid.set(str(_input.pid))
 
-        all_lines = self.bleSaveInst.monitorBreatheColors()
+                return True
+            else:
+                v0_print(_who2, "Window name not found:")
+                v0_print("  Name:", _name, " | PID:", _input.pid)
+                v0_print("  Application:", _app)
+
+            text_fullscreen.set("?")  # Boolean
+            return False
+
+        mon = monitor.Monitors()
+        mon.make_wn_list()  # Make Windows List
+        last_sink_inputs = pav.get_all_inputs()
+        asi = pav.active_input_tuple
+        asi = asi if bool(asi) else last_sink_inputs[-1]  # No active inputs
+        text_fullscreen = add_row(0, "Full screen?:", "?")  # asi is <None>
+        text_pid = add_row(3, "Binary PID:", "?")  # that are inactive (corked).
+
+        # 5 rows to display in window
         try:
-            scrollbox.insert("end", all_lines)
-        except TclError as err:
-            v0_print(_who, "Tkinter error:")
-            v0_print(err)
+            v1_print(_who, "Displaying PulseAudio sink input index:", asi.index)  # 191
+            v1_print(" ", "len(last_sink_inputs):", len(last_sink_inputs))  # 4
+            v1_print(" ", asi)
+            match_window(asi)  # Sets text_fullscreen & text_pid tkinter variables
+            text_index = add_row(1, "Sink number:", str(asi.index))  # Long Integer
+            text_app = add_row(2, "Application:", asi.application)
+            text_video = add_row(4, "Video:", toolkit.normalize_tcl(asi.name))
+        except AttributeError:
+            text_index = add_row(1, "Sink number:", "?")  # Not a single sink_input
+            text_app = add_row(2, "Application:", "?")  # exists including those
+            text_video = add_row(4, "Video:", "?")
 
-        scrollbox.highlight_pattern("Blue:", "blue")
-        scrollbox.highlight_pattern("Green:", "green")
-        scrollbox.highlight_pattern("Red:", "red")
+        # Volume Meters in third and fourth columns
+        _vum = toolkit.VolumeMeters(
+            'homa', self.event_top, left_col=2, right_col=3, rowspan=5)
+        _vum.reset_history_size(10)  # Default is 2. Try 10 decay to slow
+        _vum.reset_history_size(5)  # 2025-06-29 value 5 "feels" natural
 
-        scrollbox.highlight_pattern("Function", "yellow")
-        scrollbox.highlight_pattern("Milliseconds", "yellow")
-        scrollbox.highlight_pattern("Count", "yellow", upper_and_lower=False)
-        scrollbox.highlight_pattern("Average", "yellow")
-        scrollbox.highlight_pattern("Lowest", "yellow")
-        scrollbox.highlight_pattern("Highest", "yellow")
+        _vum.spawn()  # Monitor VU meters
+        while not os.path.isfile(_vum.AMPLITUDE_LEFT_FNAME):
+            self.refreshApp()  # wait 16ms to 33ms for file to be created.
+
+        # Loop forever until window closed
+        while self.isActive:
+            # 2025-06-25 TODO: Time slice for LED breathing, or create LED daemon
+            if not self.refreshApp(tk_after=False) or self.suspending:
+                break
+            try:
+                self.after(5)  # tk_after=False is too FAST
+                _vum.update_display()  # paint LED meters reflecting amplitude
+            except (tk.TclError, AttributeError):
+                break  # Break in order to terminate vu_meter.py below
+            self.last_rediscover_time = time.time()  # Prevent Rediscover
+            self.last_refresh_time = self.last_rediscover_time  # Prevent Resume
+
+            ''' Have Pippim flavor sink_input(s) changed? '''
+            sink_inputs = pav.get_all_inputs()
+            if sink_inputs == last_sink_inputs:
+                continue  # input_sinks didn't change
+
+            ''' Get last active sink into new_sink. May be more than one found. '''
+            active = pav.active_input_tuple  # last uncorked sink_input
+            text_index.set(str(active.index))  # Could be 3 second alarm sound
+            text_app.set(active.application)  #
+            text_video.set(toolkit.normalize_tcl(active.name))
+            v0_print("New Active Sink Input:", active)
+
+            ''' Get matching window attributes '''
+            mon.make_wn_list()
+            if match_window(active):
+                v0_print("Matching window:", mon.wn_dict)
+            else:
+                v0_print("Matching window NOT FOUND!")
+
+            last_sink_inputs = sink_inputs  # deepcopy NOT required
+
+        _vum.terminate()
+        #DisplayCommonInst.close()  # 2025-06-26. Stale window still open??
 
     def DisplayCommon(self, _who, title, x=None, y=None, width=1200, height=500,
                       close_cb=None, help=None):
@@ -7213,8 +8222,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.event_top.lift()
             return
 
-        self.event_top = self.event_frame = scrollbox = self.event_scroll_active = None
-        self.event_btn_frm = None
+        # 2026-06-29 DRY: Next two lines repeated 3 times
+        self.event_top = self.event_frame = self.event_scroll_active = None
+        self.event_scrollbox = self.event_btn_frm = None
 
         def close(*_args):
             """ Close window painted by this DisplayCommon() method """
@@ -7227,6 +8237,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.event_top = None
             if close_cb:
                 close_cb()
+            self.event_top = self.event_frame = self.event_scroll_active = None
+            self.event_scrollbox = self.event_btn_frm = None
             self.updateDropdown()
 
         self.event_top = tk.Toplevel()
@@ -7258,11 +8270,11 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.event_frame.grid(column=0, row=0, sticky=tk.NSEW)
         ha_font = (None, g.MON_FONT)  # ms_font = mserve, ha_font = HomA
 
-        scrollbox = toolkit.CustomScrolledText(
+        self.event_scrollbox = toolkit.CustomScrolledText(
             self.event_frame, state="normal", font=ha_font, borderwidth=15, relief=tk.FLAT)
-        toolkit.scroll_defaults(scrollbox)  # Default tab stops are too wide
-        scrollbox.config(tabs=("50", "100", "150"))
-        scrollbox.grid(row=90, column=0, columnspan=10, padx=3, pady=3, sticky=tk.NSEW)
+        toolkit.scroll_defaults(self.event_scrollbox)  # Default tab stops are too wide
+        self.event_scrollbox.config(tabs=("50", "100", "150"))
+        self.event_scrollbox.grid(row=90, column=0, columnspan=10, padx=3, pady=3, sticky=tk.NSEW)
         # 90 rows available for headings, 10 rows available for footers
         self.event_frame.rowconfigure(90, weight=1)
         self.event_frame.columnconfigure(0, weight=1)
@@ -7294,18 +8306,18 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         button_func(0, 1, "Close", close, "Close this window.", "ne", self.img_close)
 
         # Foreground colors
-        scrollbox.tag_config('red', foreground='red')
-        scrollbox.tag_config('blue', foreground='blue')
-        scrollbox.tag_config('green', foreground='green')
-        scrollbox.tag_config('black', foreground='black')
-        scrollbox.tag_config('gray', foreground='gray')
+        self.event_scrollbox.tag_config('red', foreground='red')
+        self.event_scrollbox.tag_config('blue', foreground='blue')
+        self.event_scrollbox.tag_config('green', foreground='green')
+        self.event_scrollbox.tag_config('black', foreground='black')
+        self.event_scrollbox.tag_config('gray', foreground='gray')
 
         # Highlighting background colors
-        scrollbox.tag_config('yellow', background='yellow')
-        scrollbox.tag_config('cyan', background='cyan')
-        scrollbox.tag_config('magenta', background='magenta')
+        self.event_scrollbox.tag_config('yellow', background='yellow')
+        self.event_scrollbox.tag_config('cyan', background='cyan')
+        self.event_scrollbox.tag_config('magenta', background='magenta')
         self.updateDropdown()
-        return scrollbox
+        return self.event_scrollbox
 
     def GATTToolJobs(self, found_inst=None):
         """ Check quantity and percentage of gatttool process ID's.
@@ -7314,10 +8326,10 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         """
         _who = self.who + "GATTToolJobs():"
         v1_print("\n" + _who, "Check GATTTool percentage")
-        if not self.CheckInstalled("ps"):
+        if not self.checkInstalled("ps"):
             v0_print(_who, "Command 'ps' not installed. Exiting.")
             return
-        if not self.CheckInstalled("grep"):
+        if not self.checkInstalled("grep"):
             v0_print(_who, "Command 'grep' not installed. Exiting.")
             return
 
@@ -7501,11 +8513,15 @@ v1_print(sys.argv[0], "- Home Automation", " | verbose1:", p_args.verbose1,
 
 ''' Global class instances accessed by various other classes '''
 root = None  # Tkinter toplevel
-app = None  # Application GUI
+app = None  # Application() GUI heart of HomA allowing other instances to reference
+# 2025-06-19 Why does every class have "self.app" when they could use "app" instead?
 cfg = sql.Config()  # Colors configuration SQL records
 glo = Globals()  # Global variables instance used everywhere
 GLO = glo.dictGlobals  # Default global dictionary. Live read in glo.open_file()
 ble = BluetoothLedLightStrip()  # Must follow GLO dictionary and before ni instance
+#vum = toolkit.VolumeMeters('homa', master_frm)  # Display Stereo LED Volume Meters
+pav = None  # PulseAudio sinks. Initialize in Application() -> AudioControl()
+
 cp = Computer()  # cp = Computer Platform instance used everywhere
 ni = NetworkInfo()  # ni = global class instance used everywhere
 ni.adb_reset(background=True)  # Sometimes necessary when TCL TV isn't communicating
@@ -7656,20 +8672,23 @@ def main():
 
     ''' Is another copy of homa running? '''
     # result = os.popen("ps aux | grep -v grep | grep python").read().splitlines()
-    apps_running = ext.get_running_apps(PYTHON_VER)
+    programs_running = ext.get_running_apps(PYTHON_VER)
     this_pid = os.getpid()  # Don't commit suicide!
-    h_pid = homa_pid = 0  # Running PIDs found later
+    h_pid = homa_pid = vu_meter_pid = 0  # Running PIDs found later
 
-    ''' Loop through all running apps with 'python' in name '''
-    for pid, app in apps_running:
-        if app == "h" and pid != this_pid:
+    ''' Loop through all running programs with 'python' in name '''
+    for pid, prg, parameters in programs_running:
+        if prg == "h" and pid != this_pid:
             h_pid = pid  # 'm' splash screen found
-        if app == "homa.py" and pid != this_pid:
+        if prg == "homa.py" and pid != this_pid:
             homa_pid = pid  # 'homa.py' found
+        if prg == "vu_meter.py" and parameters[1] == "homa":
+            # VU meter instance from HomA and not mserve
+            vu_meter_pid = pid  # command was 'vu_meter.py stereo homa'
 
     ''' One or more fingerprints indicating another copy running? '''
     if h_pid or homa_pid:
-        title = "Another copy of homa is running!"
+        title = "Another copy of HomA is running!"
         text = "Cannot start two copies of homa. Switch to the other version."
         text += "\n\nIf the other version crashed, the process(es) still running"
         text += " can be killed:\n\n"
@@ -7678,9 +8697,12 @@ def main():
         if homa_pid:
             text += "\t'homa.py' (" + str(homa_pid) + \
                     ") - homa without splash screen\n"
+        if vu_meter_pid:
+            text += "\t'vu_meter.py' (" + str(vu_meter_pid) + \
+                    ") - VU Meter speaker to microphone\n"
         text += "\nDo you want to kill previous crashed version?"
 
-        print(title + "\n\n" + text)
+        v0_print(title + "\n\n" + text)
         answer = message.AskQuestion(
             root, title=title, text=text, align='left', confirm='no',
             icon='error', thread=dummy_thread)
@@ -7689,16 +8711,19 @@ def main():
             exit()
 
         if h_pid:
-            # print("killing h_pid:", h_pid)
+            # v0_print("killing h_pid:", h_pid)
             if not ext.kill_pid_running(h_pid):
-                print("killing h_pid FAILED!:", h_pid)
+                v0_print("killing h_pid FAILED!:", h_pid)
         if homa_pid:
-            # print("killing homa_pid:", homa_pid)
+            # v0_print("killing homa_pid:", homa_pid)
             if not ext.kill_pid_running(homa_pid):
-                print("killing homa_pid FAILED!:", homa_pid)
+                v0_print("killing homa_pid FAILED!:", homa_pid)
+        if vu_meter_pid:
+            # v0_print("killing vu_meter_pid:", vu_meter_pid)
+            if not ext.kill_pid_running(vu_meter_pid):
+                v0_print("killing vu_meter_pid FAILED!:", vu_meter_pid)
 
-
-    ''' Open Main Application Window '''
+    ''' Open Main Application GUI Window '''
     app = Application(root)  # Treeview of ni.discovered[{}, {}...{}]
 
     app.mainloop()
