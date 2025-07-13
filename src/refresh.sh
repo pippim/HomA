@@ -63,7 +63,7 @@ echo
 echo "=== UPDATING: $PWD"
 
 cp -r ~/HomA/Alarm_01.wav .
-cp -f ~/python/audio/ .  # Subdirectory with files and subdirectories
+cp -r ~/python/audio/ .  # Subdirectory with files and subdirectories
 cp -r ~/HomA/bias.jpg .
 cp -r ~/HomA/breathing.jpeg .
 cp -L ~/HomA/calc.py .  # symlink
