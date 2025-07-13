@@ -4988,6 +4988,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.last_rediscover_time = time.time()
         # self.exitRediscover() resets self.last_rediscover_time & self.rediscovering
         self.last_minute = "0"  # Check sunlight percentage every minute
+        self.last_second = "0"  # Update YouTube progress every second
         self.force_refresh_power_time = time.time() + 90.0  # 1 minute after treeview done
 
         if p_args.fast:
@@ -6907,13 +6908,13 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         geom = monitor.get_window_geom('calculator')
         self.calc_top = tk.Toplevel()
 
-        ''' Set Calculator program icon in taskbar '''
+        # Set Calculator program icon in taskbar
         cfg_key = ['cfg_calculator', 'toplevel', 'taskbar_icon', 'height & colors']
         ti = cfg.get_cfg(cfg_key)
         img.taskbar_icon(self.calc_top, ti['height'], ti['outline'],
                          ti['fill'], ti['text'], char=ti['char'])
 
-        ''' Create calculator class instance '''
+        # Create calculator class instance
         self.calculator = Calculator(self.calc_top, g.BIG_FONT, geom,
                                      btn_fg=ti['text'], btn_bg=ti['fill'])
         self.win_grp.register_child('Calculator', self.calc_top)
@@ -6929,12 +6930,12 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.calc_top = None  # Prevent lifting window
             self.calculator = None  # Prevent lifting window
 
-        ''' Trap <Escape> key and  '✘' Window Close Button '''
+        # Trap <Escape> key and  '✘' Window Close Button
         self.calc_top.bind("<Escape>", calculator_close)
         self.calc_top.protocol("WM_DELETE_WINDOW", calculator_close)
         self.calc_top.update_idletasks()
 
-        ''' Move Calculator to cursor position '''
+        # Move Calculator to cursor position
         hc.MoveHere("Big Number Calculator", 'top_left')
 
     def configureYouTube(self):
@@ -6948,6 +6949,10 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             - YouTube video playback progress bar location and color
             - YouTube Ad first few seconds of progress bar location and color
             - YouTube Ad skip button location and dominant color within button
+
+            2025-07-12 - coordinates changed by 8 pixels less on y-axis for
+                YouTube Ad and Video progress bars. Skip button also changed
+                coordinates.
 
             NOTE: Alternate Ad Skip can be <ALT>+<Left Arrow> followed by
                 <ALT>+<Right Arrow> sent to browser window. Much faster but
@@ -6998,7 +7003,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         scrollbox.highlight_pattern("Y-offset", "yellow")
         scrollbox.highlight_pattern("Window name", "blue")
 
-        ''' Display x, y pointer coordinates in self.event_top '''
+        # Display x, y pointer coordinates in self.event_top
 
         '''
         Skip Ad on YouTube using keyboard?
@@ -7016,7 +7021,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 Column 0 contains label, Column 1 contains passed text which is
                 initialized into string variable returned to caller.
             """
-            _who2 = _who + "add_row():"
+            _who2 = _who[:-1] + " add_row():"
             label = ttk.Label(pointer_frm, text=label, font=g.FONT)
             label.grid(row=row_no, column=0, sticky=tk.NSEW, padx=15, pady=10)
             if _type == "String":
@@ -7076,71 +7081,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 v0_print(_who[:-1] + " update_pointer(): ERROR:", _y)
             return _x, _y
 
-        # PyCharm Python 2 Error using Python 3 command: _RGBA.append(chr(_r))
-        # noinspection PyTypeChecker
-        def _update_colors():
-            """
-            2025-07-04 DEPRECATED.
-            Use toolkit.py PointerInspector().get_color() instead
-            Get colors at mouse position and Update Display
-            """
-            # Screen grab takes longer so only do it once .1 second into hover
-            ext.t_init(_who + "screen colors grab")
-            # create named tuple class with names x, y, w, h
-            Geom = namedtuple('Geom', ['x', 'y', 'w', 'h'])
-
-            # noinspection PyArgumentList
-            _geom = Geom(var_x.get(), var_y.get(), 1, 1)
-            _colors, _row_stride = mon.get_colors_at_geom(_geom)
-            v1_print(_who, "_colors: '" + _colors + "'  | type:", type(_colors),
-                     " | len:", len(_colors))
-            _r = _colors[0]
-            _g = _colors[1]
-            _b = _colors[2]
-            if len(_colors) > 3:
-                _a = _colors[3]
-            else:
-                _a = b"?"
-            _RGBA = bytearray()
-
-            # BELOW 3: Expected type 'int' (matched generic type '_T'), got 'str' instead
-            # Python 3 error: TypeError: an integer is required
-            try:
-                _RGBA.append(chr(_r))  # Python 3
-                _RGBA.append(chr(_g))
-                _RGBA.append(chr(_b))
-                _RGBA.append(chr(_a))
-            except TypeError:
-                _RGBA.append(_r)  # Python 2
-                _RGBA.append(_g)
-                _RGBA.append(_b)
-                _RGBA.append(_a)
-
-            integer_values = list(_RGBA)
-            v1_print("string values of _r, _g, _b, _a:", _r, _g, _b, _a)
-            v1_print("integer_values:", integer_values, "_RGBA:", _RGBA)
-            var_r.set(_RGBA[0])
-            var_g.set(_RGBA[1])
-            var_b.set(_RGBA[2])
-
-            #hex_strings = [hex(i)[2:] for i in integer_values[:3]]  # makes #e1621
-            hex_strings = []  # Fix 1 character makes #e1621
-            for i in integer_values[:3]:
-                hex_string = hex(i)[2:]
-                # hex_string: e | hex_string: 16 | hex_string: 20 | yields e1620
-                v2_print("hex_string:", hex_string)
-                hex_string = "0" + hex_string if len(hex_string) == 1 else hex_string
-                hex_strings.append(hex_string)
-
-            # Join the individual hexadecimal strings into a single string
-            result_string = "".join(hex_strings)
-            ext.t_end('no_print')  # average 0.0651 seconds
-            return "#" + result_string
-
-        pointer_color = ""  # string containing "#d1e2f3" Tkinter color code
-        pointer_x = None  # mouse pointer coordinates
-        pointer_y = None  # mouse pointer coordinates
-
         def on_key_press(event):
             """ Key press event """
             #v0_print(_who, "on_key_press() event_char: '" + event.char + "'.")
@@ -7191,7 +7131,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         # Loop forever until window closed
         self.event_top.bind("<Key>", on_key_press)
         while self.event_top and self.event_top.winfo_exists():
-            # 2025-06-25 TODO: Time slice for LED breathing, or create LED daemon
             if not self.refreshApp(tk_after=False) or self.suspending:
                 break
             try:
@@ -7246,19 +7185,56 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                     not display these random new sink input indices.
                 Replace Ad Start / Video Start labels with Status / Duration labels.
                 Startup check for Ad/Video/Button Skip coordinates and colors.
+                Verify scrolling down to make comment and then scrolling back up
+                    again doesn't impair operation.
+                        2025-07-10 `xprop -id 0x03c00028` testing CONFIRMS OK:
+                            _NET_WM_STATE(ATOM) = _NET_WM_STATE_FULLSCREEN
+
+            2025-07-10 TODO: Make separate application pimtube.py.
+                    Called from homa-indicator.py menu.
+                    Requires GLO dictionary saved whenever changed in homa.py.
+                    Configure YouTube will remain in homa.py
+                New variable GLO['YT_SKIP_BTN_WAIT'] = 5.6
+                Sinks that appear when video or ad is paused may not have a
+                    window. E.G. `ffplay` so don't put into scroll box. If the
+                    next sink after that is same video, don't repeat video
+                    name. Also double space new video names.
+                Figure out how links to ~/python's /audio/* and /pulsectl/*
+                    can be updated in github.
+                When video ends, YouTube is no longer fullscreen. Otherwise,
+                    when video paused the sink ends but YouTube is still fullscreen.
+                    Use this rule to cleanup spamming scrollbox with new sink
+                    messages from pause/play. Also use to recalculate video
+                    start time for closely accurate duration.
+
+            2025-07-11 TODO: Alarm from Firefox Browser Tab causes "A/V Check"
+                    status until video paused / resumed.
+                If video already playing when watchYouTube starts up there is
+                    no red video progress bar to see so "A/V check" status
+                    stays until an Ad starts up.
+
+            2025-07-12 NOTE: y-axis coordinates changed 8 pixels less for Ad
+                    and Video progress bars and for Skip Ad Button. The
+                    "A/V check" status stays up forever.
+                If Ad has white background a false positive for "Skip check"
+                    is recorded about 4 seconds into the Ad. The left mouse
+                    button click causes Ad to pause.
 
         NOTES about fullscreen:
-            Wnck.Screen.Window doesn't work in version 3.18 as of 2025-07-08.
+            Wnck.Screen.Window.fullscreen() isn't supported in version 3.18.
             wmctrl -ir hex_win -b toggle,fullscreen doesn't remove YT menus.
             Use 'xdotool key "f"' instead.
 
         NOTES about Ad Skipping:
-            Limited ability because only looking for a single white dot
+            False positives when only looking for a single white dot because
+                looking too soon < 5.6 seconds will see white dot in ad
+                and not in the ad skip button resulting in ad pause on click.
             Gtk mouse click only works on GTK windows
             Python pyautogui click only works on primary monitor
             Browser previous history (<ALT>+<Left Arrow>) followed by forward
                 (<ALT>+<Right Arrow>) works sometimes but can sometimes take
-                5 seconds which an Ad skip Button Click would take.
+                5.6 seconds which an Ad skip Button Click would take. Sometimes
+                YouTube restarts video at beginning which totally breaks flow.
             Use:
                 `xdotool mousemove <x> <y> click 1 sleep 0.01 mousemove restore`
 
@@ -7286,7 +7262,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         line = "Input\tVol.\tApplication\tVideo name\n"
         scrollbox.insert("end", line + "\n", "hanging_indent")
 
-        ''' Display Audio. Rows 0 to 89 available in self.event_top '''
+        # Display Audio. Rows 0 to 89 available in self.event_top
         if not self.audio.isWorking:
             self.showInfoMsg("Watch YouTube",
                              "PulseAudio isn't working or software is missing.")
@@ -7306,7 +7282,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                                          height=11, borderwidth=15, relief=tk.FLAT)
         toolkit.scroll_defaults(_sb)  # Default tab stops are too wide
 
-        # Tabs for self.event_scrollbox created by self.DisplayCommon()
+        # Tabs for _sb (scrollbox) created by watchYouTube
         _tabs2 = ("140", "right", "160", "left")
         _sb.tag_config("indent2", lmargin2=180)
 
@@ -7339,7 +7315,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
             """
 
-            _who2 = _who + "init_ad_or_video"
+            _who2 = _who[:-1] + " init_ad_or_video():"
             try:
                 _x, _y = GLO["YT_AD_BAR_POINT"]
             except AttributeError:
@@ -7362,40 +7338,35 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 _vars["ad_start"] = time.time()
                 # Set volume to zero
                 pav.set_volume(str(asi.index), 0)  # pav =
-                update_rows()
+                #update_rows()  # Ad start no longer displayed
                 _line = "\t" + format_time(_vars["ad_start"])
                 _line += "\tAd has started"
                 _sb.insert("end", _line + "\n", "indent2")
                 _sb.see("end")
             elif _tk_clr == GLO["YT_VIDEO_BAR_COLOR"]:
                 _vars["video_start"] = time.time()
-                update_rows()
+                #update_rows()  # Video start no longer displayed
                 _line = "\t" + format_time(_vars["video_start"])
                 _line += "\tVideo has starting playing"
                 _sb.insert("end", _line + "\n", "indent2")
                 _sb.see("end")
             else:
-                v0_print(_who2)
-                v0_print("  Color found at: [" + str(_x) + "," + str(_y) + "]",
+                v3_print(_who2)
+                v3_print("  Color found at: [" + str(_x) + "," + str(_y) + "]",
                          "is:", _tk_clr)
-                v0_print("  Waiting for Ad or Video color to appear...")
+                v3_print("  Waiting for Ad or Video color to appear...")
                 # 2025-07-08 TODO: Set limit on messages 1 per second for 10 seconds?
                 return
-
-            #_line = "\t" + format_time()
-            #_line += "\tDismissing: " + _name
-            #_sb.insert("end", _line + "\n", "indent2")
-            #_sb.see("end")
 
         def init_ad_skip():
             """ YouTube Ad is running.
                 ad_started > 0 and video_started = 0.
-                Wait 5 seconds.
+                Wait 5.6 seconds.
 
             """
 
-            _who2 = _who + "init_ad_skip"
-            if time.time() > 5.0 + _vars["ad_start"]:
+            _who2 = _who[:-1] + " init_ad_skip():"
+            if time.time() > 5.6 + _vars["ad_start"]:
                 return
 
             try:
@@ -7405,14 +7376,14 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
             _tk_clr = _pi.get_colors(_x, _y)  # Get color
             if _tk_clr != GLO["YT_SKIP_BTN_COLOR"]:
-                v0_print(_who2)
-                v0_print("  Color found at: [" + str(_x) + "," + str(_y) + "]",
+                v3_print(_who2)
+                v3_print("  Color found at: [" + str(_x) + "," + str(_y) + "]",
                          "is:", _tk_clr)
-                v0_print("  Waiting for Skip Button color to appear...")
+                v3_print("  Waiting for Skip Button color to appear...")
                 return  # Not skip button color
 
             _vars["ad_start"] = 0.0  # Turn off ad running
-            update_rows()
+            #update_rows()  # Ad start no longer displayed
             _line = "\t" + format_time()
             _line += "\tSkip Button clicked"
             _sb.insert("end", _line + "\n", "indent2")
@@ -7422,12 +7393,71 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             os.popen('xdotool mousemove ' + str(_x) + ' ' + str(_y) +
                      ' click 1 sleep 0.01 mousemove restore')
 
+        def update_duration():
+            """ Update Status and Duration in 8th & 9th rows.
+                Called every second.
+
+                Status:   A/V check / Ad playing / Video playing /
+                          Skip check / NOT YouTube
+
+                Duration: 99:99:99.99
+            """
+            _who2 = _who[:-1] + " update_duration():"
+            ''' _vars available for creating status
+            "pav_start": 0.0, "pav_index": "", "pav_volume": 0.0,
+            "pav_corked": False, "pav_application": "", "pav_name": "",
+            "yt_start": 0.0, "yt_index": "", "yt_duration": 0.0, 
+            "av_check": 0.0, "skip_check": 0.0,
+            "ad_start": 0.0, "ad_index": "", "ad_duration": 0.0,
+            "video_start": 0.0, "video_index": "", "video_duration": 0.0,
+            "wn_name": "", "wn_xid_hex": ""  # Could be YT or not YT
+            '''
+            _now = time.time()
+            _status = ""
+            old_status = text_status.get()
+            _dur = 0.0
+            if _vars["ad_start"] > 0.0 and _now > 5.6 + _vars["ad_start"]:
+                _dur = _now - _vars["ad_start"] - 5.6
+                _status = "Skip check"
+                if old_status != _status:
+                    pass  # Update _sb with message
+            elif _vars["ad_start"] > 0.0:
+                _dur = _now - _vars["ad_start"]
+                _status = "Ad playing"
+            elif _vars["video_start"] > 0.0:
+                _dur = _now - _vars["video_start"]
+                _status = "Video playing"
+            elif _vars["yt_start"] > 0.0:
+                _dur = _now - _vars["yt_start"]
+                _status = "A/V check"
+                if old_status != _status:
+                    pass  # Update _sb with message
+            elif _vars["wn_name"] != "":
+                _dur = _now - _vars["pav_start"]
+                _status = "NOT YouTube"
+
+            text_status.set(_status)
+            text_duration.set(tmf.mm_ss(_dur))
+
         def match_window(_input):
             """ Match window to pav. _input is active sink input from PulseAudio
                 If found, display fullscreen status in column 2
                 Before calling, buildSB() has set all _vars to null.
+
+                    WRONG WRONG
+
+                When a new sink appears it can happen when Video switches to an
+                Ad or when user pauses video. If YouTube is still fullscreen and
+                video name matches what was playing, don't toss out all variables.
+
+                If new sink is for a stale window or for a windowless sound input
+                then keep the old pulse audio info and _vars[] lists in memory.
+
+                Once a YouTube is in memory it should stay in video status scrolled
+                Text widget. The lower pulse audio scrolled Text widget will have
+                each active sink input.
             """
-            _who2 = _who + " match_window():"
+            _who2 = _who[:-1] + " match_window():"
             mon.make_wn_list()  # Make Windows List
             _name = _input.name
             _app = _input.application
@@ -7463,7 +7493,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                    99:99:99.999 Forced fullscreen window 0x3400034
                 3) 99:99:99.999 Video color Xxxx found at [9999, 9999]
                 4) 99:99:99.999 Ad muted
-                   99:99:99.999 Waiting 5 seconds for Skip Ad Button to appear
+                   99:99:99.999 Waiting 5.6 seconds for Skip Ad Button to appear
                    99:99:99.999 Skip Ad Button color Xxxx NOT found at [9999, 9999]
                    99:99:99.999 Skip Ad Button color Xxxx found at [9999, 9999]
                    99:99:99.999 Skip Ad Button took 99 seconds to appear
@@ -7518,7 +7548,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 scrollbox.insert("end", _line + "\n", "hanging_indent")
                 # _si. 'index corked mute volume name application pid user')
                 if _si.corked is True:
-                    continue
+                    continue  # Corked will not count as the last active
                 # Do something for non-corked (active) sink-inputs
                 if bool(_asi):
                     continue  # Already have last active sink input
@@ -7571,8 +7601,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
             text_wn_xid_hex.set(str(_vars["wn_xid_hex"]))  # May already be N/A
             text_yt_start.set(set_time(_vars["yt_start"]))  # Set to N/A if zero
-            text_ad_start.set(set_time(_vars["ad_start"]))
-            text_video_start.set(set_time(_vars["video_start"]))
+            #text_status.set(set_time(_vars["ad_start"]))
+            #text_duration.set(set_time(_vars["video_start"]))
 
             if _vars["wn_found"] is False:
                 text_is_YouTube.set("N/A")  # No matching window found so probably
@@ -7589,7 +7619,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 Column 0 contains label, Column 1 contains passed text which is
                 initialized into string variable returned to caller.
             """
-            _who2 = _who + "add_row():"
+            _who2 = _who[:-1] + " add_row():"
             label = ttk.Label(audio_frm, text=label, font=g.FONT)
             label.grid(row=row_no, column=0, sticky=tk.NSEW, padx=15, pady=10)
 
@@ -7617,8 +7647,18 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         text_wn_xid_hex = add_row(4, "Window number:", "N/A")
         text_is_fullscreen = add_row(5, "Fullscreen?:", "N/A")
         text_yt_start = add_row(6, "YouTube Start:", "N/A")
-        text_ad_start = add_row(7, "Ad Start:", "N/A")
-        text_video_start = add_row(8, "Video Start:", "N/A")
+        text_status = add_row(7, "Status:", "N/A")
+        text_duration = add_row(8, "Duration:", "N/A")
+
+        _vars = {  # pav_ = Pulse audio volume, wn_ = Wnck Window (GNOME)
+            "pav_start": 0.0, "pav_index": "", "pav_volume": 0.0,
+            "pav_corked": False, "pav_application": "", "pav_name": "",
+            "yt_start": 0.0, "yt_index": "", "yt_duration": 0.0,
+            "av_check": 0.0, "skip_check": 0.0,
+            "ad_start": 0.0, "ad_index": "", "ad_duration": 0.0,
+            "video_start": 0.0, "video_index": "", "video_duration": 0.0,
+            "wn_name": "", "wn_xid_hex": ""  # Could be YT or not YT
+        }
 
         # audio_frm freezes xorg, use self.event_top
         _vum = toolkit.VolumeMeters(
@@ -7632,40 +7672,10 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         while not os.path.isfile(_vum.AMPLITUDE_LEFT_FNAME):
             self.refreshApp()  # wait another 16ms to 33ms for file to appear.
 
-        ''' Variables dictionary mutable for inner functions 
-            1) 99:99:99.999 New Sink Input Index: 999
-            2) 99:99:99.999 YouTube video: Start of name(25)...End of Name
-               99:99:99.999 Dismissing: Start of name(25)...End of Name
-               99:99:99.999 Forced fullscreen window 0x3400034
-            3) 99:99:99.999 Video color Xxxx found at [9999, 9999]
-            4) 99:99:99.999 Ad muted
-               99:99:99.999 Waiting 5 seconds for Skip Ad Button to appear
-               99:99:99.999 Skip Ad Button color Xxxx NOT found at [9999, 9999]
-               99:99:99.999 Skip Ad Button color Xxxx found at [9999, 9999]
-               99:99:99.999 Skip Ad Button took 99 seconds to appear
-               99:99:99.999 Skip Ad Button clicked
-            5) 99:99:99.999 New Sink Input Index: 999
-            6) 99:99:99.999 Video color Xxxx found at [9999, 9999]
-            7) 99:99:99.999 Waiting for new Sink Input...
-
-                Status:  A/V check / Ad playing / Video playing /
-                         skip check /
-                Duration: 99:99:99.99
-        '''
-        _vars = {  # pav_ = Pulse audio volume, wn_ = Wnck Window (GNOME)
-            "pav_start": 0.0, "pav_index": "", "pav_volume": 0.0,
-            "pav_corked": False, "pav_application": "", "pav_name": "",
-            "yt_start": 0.0, "yt_index": "", "yt_duration": 0.0, 
-            "av_check": 0.0, "skip_check": 0.0,
-            "ad_start": 0.0, "ad_index": "", "ad_duration": 0.0,
-            "video_start": 0.0, "video_index": "", "video_duration": 0.0,
-            "wn_name": "", "wn_xid_hex": ""
-        }
-
-        # Loop forever until window closed
         last_sink_inputs = []  # Force reread
+        yt_asi = ()  # Active sink input for YouTube video playing
+        # Loop forever until DisplayCommon() window closed
         while self.event_top and self.event_top.winfo_exists():
-            # 2025-06-25 TODO: Time slice for LED breathing, or create LED daemon
             if not self.refreshApp(tk_after=False) or self.suspending:
                 break
             try:
@@ -7673,44 +7683,44 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 _vum.update_display()  # paint LED meters reflecting amplitude
             except (tk.TclError, AttributeError):
                 break  # Break in order to terminate vu_meter.py below
+
+            sink_inputs = pav.get_all_inputs()
             self.last_rediscover_time = time.time()  # Prevent Rediscover
             self.last_refresh_time = self.last_rediscover_time  # Prevent Resume
 
-            sink_inputs = pav.get_all_inputs()
-
-            ''' YouTube started but Ad or Video status unknown? '''
+            # YouTube started but Ad or Video status unknown?
             if _vars["yt_start"] and \
                     not _vars["ad_start"] and not _vars["video_start"]:
                 init_ad_or_video()  # Setup if Ad or Video is running
 
-            ''' Is YouTube Ad intercept active? '''
+            # Is YouTube Ad intercept active?
             if _vars["ad_start"] and not _vars["video_start"]:
                 init_ad_skip()  # Setup if Ad or Video is running
 
-            ''' Have sink_input(s) changed? '''
+            # Update YouTube progress every second
+            second = ext.h(time.time()).split(":")[2].split(".")[0]
+            # Current second of "HH:MM:SS.ff"
+            if second != self.last_second:
+                update_duration()  # Update status and duration
+                self.last_second = second  # Wait for second change to check again
+
+            # Have sink_input(s) changed?
             if sink_inputs == last_sink_inputs:
                 continue  # input_sinks didn't change
 
             asi = buildSB(sink_inputs)  # asi = Active Sink Input named tuple
 
-            ''' Get matching window attributes '''
+            # Get matching window attributes
             mon.make_wn_list()
             if match_window(asi):
-                v1_print("Matching window:", mon.wn_dict)
+                v1_print(_who, "Matching window:", mon.wn_dict['xid_hex'])
             else:
-                v1_print("Matching window NOT FOUND!")
-                # 2025-07-02 TODO: Update PulseAudio half of audio_frm
+                v1_print(_who, "Matching window NOT FOUND!")
 
             update_rows()  # 2025-07-03 - Handles mon.wn_dict is blank.
 
-            ''' If YouTube Video, check if Ad playing.
-                If Ad playing, turn down volume to zero. (Mute doesn't save much)
-                Set intercept for ending ad at top of loop.
-                An Ad might end after exactly 5 seconds without skip button.
-                Then a new ad starts running which has a skip button at 5 seconds. 
-            '''
-
             last_sink_inputs = sink_inputs  # deepcopy NOT required
+            yt_asi = asi  # 2025-07-12 TEMPORARY: global variables vs parameters
 
         _vum.terminate()
         #DisplayCommonInst.close()  # 2025-06-26. Stale window still open??
@@ -8104,7 +8114,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 Column 0 contains label, Column 1 contains passed text which is
                 initialized into string variable returned to caller.
             """
-            _who2 = _who + "add_row():"
+            _who2 = _who[:-1] + " add_row():"
             label = ttk.Label(audio_frm, text=label, font=g.FONT)
             label.grid(row=row_no, column=0, sticky=tk.NSEW, padx=15, pady=10)
             string_var = tk.StringVar()
@@ -8119,7 +8129,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             """ Match window to pav. _input is active sink input from PulseAudio
                 If found, display fullscreen status in column 2
             """
-            _who2 = _who + " match_window():"
+            _who2 = _who[:-1] + " match_window():"
             mon.make_wn_list()  # Make Windows List
             _name = _input.name
             _app = _input.application
