@@ -7054,7 +7054,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         _sbt += "    - Press 'v' or 'V' to log red Video progress bar start.\n"
         _sbt += "    - Press 'a' or 'A' to log yellow Ad progress bar start.\n"
         _sbt += "    - Press 's' or 'S' to log Skip Ad button white triangle.\n\n"
-        _sbt += "4. Click Help button below for more instructions."
+        _sbt += "4. After successful logging, confirmation is displayed."
 
         _sb = toolkit.CustomScrolledText(pointer_frm, state="normal", font=g.FONT,
                                          height=11, borderwidth=15, relief=tk.FLAT)
@@ -7194,7 +7194,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                     Called from homa-indicator.py menu.
                     Requires GLO dictionary saved whenever changed in homa.py.
                     Configure YouTube will remain in homa.py
-                New variable GLO['YT_SKIP_BTN_WAIT'] = 5.6
+                New variable GLO['YT_SKIP_BTN_WAIT'] = 4.7
                 Sinks that appear when video or ad is paused may not have a
                     window. E.G. `ffplay` so don't put into scroll box. If the
                     next sink after that is same video, don't repeat video
@@ -7227,13 +7227,13 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         NOTES about Ad Skipping:
             False positives when only looking for a single white dot because
-                looking too soon < 5.6 seconds will see white dot in ad
+                looking too soon < 4.7 seconds will see white dot in ad
                 and not in the ad skip button resulting in ad pause on click.
             Gtk mouse click only works on GTK windows
             Python pyautogui click only works on primary monitor
             Browser previous history (<ALT>+<Left Arrow>) followed by forward
                 (<ALT>+<Right Arrow>) works sometimes but can sometimes take
-                5.6 seconds which an Ad skip Button Click would take. Sometimes
+                4.7 seconds which an Ad skip Button Click would take. Sometimes
                 YouTube restarts video at beginning which totally breaks flow.
             Use:
                 `xdotool mousemove <x> <y> click 1 sleep 0.01 mousemove restore`
@@ -7361,17 +7361,18 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         def init_ad_skip():
             """ YouTube Ad is running.
                 ad_started > 0 and video_started = 0.
-                Wait 5.6 seconds.
+                Wait 4.7 seconds.
 
             """
 
             _who2 = _who[:-1] + " init_ad_skip():"
-            if time.time() > 5.6 + _vars["ad_start"]:
-                return
+            if time.time() < 4.7 + _vars["ad_start"]:
+                # 2025-07-13 FIX: test was '> 4.7' causing false positives
+                return  # Too soon to check because ad can be white
 
             try:
                 _x, _y = GLO["YT_SKIP_BTN_POINT"]
-            except AttributeError:
+            except AttributeError:  # Coordinates for skip button unknown
                 return  # This will repeat test forever but overhead is low.
 
             _tk_clr = _pi.get_colors(_x, _y)  # Get color
@@ -7382,16 +7383,18 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 v3_print("  Waiting for Skip Button color to appear...")
                 return  # Not skip button color
 
+            # Send click to skip button coordinates
+            os.popen('xdotool mousemove ' + str(_x) + ' ' + str(_y) +
+                     ' click 1 sleep 0.01 mousemove restore')
+
+            ''' 2025-07-13 TODO: Separate wait for Skip button to disappear. 
+                    If it doesn't disappear in a second, repeat the click. 
+            '''
             _vars["ad_start"] = 0.0  # Turn off ad running
-            #update_rows()  # Ad start no longer displayed
             _line = "\t" + format_time()
             _line += "\tSkip Button clicked"
             _sb.insert("end", _line + "\n", "indent2")
             _sb.see("end")
-
-            # Send click to skip button coordinates
-            os.popen('xdotool mousemove ' + str(_x) + ' ' + str(_y) +
-                     ' click 1 sleep 0.01 mousemove restore')
 
         def update_duration():
             """ Update Status and Duration in 8th & 9th rows.
@@ -7416,8 +7419,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             _status = ""
             old_status = text_status.get()
             _dur = 0.0
-            if _vars["ad_start"] > 0.0 and _now > 5.6 + _vars["ad_start"]:
-                _dur = _now - _vars["ad_start"] - 5.6
+            if _vars["ad_start"] > 0.0 and _now > 4.7 + _vars["ad_start"]:
+                _dur = _now - _vars["ad_start"] - 4.7
                 _status = "Skip check"
                 if old_status != _status:
                     pass  # Update _sb with message
@@ -7493,7 +7496,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                    99:99:99.999 Forced fullscreen window 0x3400034
                 3) 99:99:99.999 Video color Xxxx found at [9999, 9999]
                 4) 99:99:99.999 Ad muted
-                   99:99:99.999 Waiting 5.6 seconds for Skip Ad Button to appear
+                   99:99:99.999 Waiting 4.7 seconds for Skip Ad Button to appear
                    99:99:99.999 Skip Ad Button color Xxxx NOT found at [9999, 9999]
                    99:99:99.999 Skip Ad Button color Xxxx found at [9999, 9999]
                    99:99:99.999 Skip Ad Button took 99 seconds to appear
@@ -8513,9 +8516,12 @@ def discover(update=False, start=None, end=None):
     return discovered, instances, view_order
 
 
+# Display subdirectory main file being available
 v1_print("homa.py - trionesControl.trionesControl:", tc.__file__)
 v1_print("homa.py - pygatt:", pygatt.__file__)
 v1_print("homa.py - pygatt.exceptions:", pygatt.exceptions.__file__)
+#v1_print("homa.py - audio:", amplitude.__file__)  # imported by vu_meter.py
+#v1_print("homa.py - pulsectl:", pulsectl.__file__)  # by vu_pulse_audio.py
 
 v1_print(sys.argv[0], "- Home Automation", " | verbose1:", p_args.verbose1,
          " | verbose2:", p_args.verbose2, " | verbose3:", p_args.verbose3,
