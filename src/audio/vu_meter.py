@@ -1,0 +1,61 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+"""
+https://github.com/kmein/vu-meter
+
+
+.gitignore          NOT INSTALLED
+LICENSE             NOT INSTALLED
+README.md           NOT INSTALLED
+amplitude.py
+record.py           NOT INSTALLED
+vu_constants.py
+vu_meter.py                         THIS MODULE
+"""
+
+import pyaudio
+from amplitude import Amplitude
+from vu_constants import RATE, INPUT_FRAMES_PER_BLOCK
+
+def main():
+    audio = pyaudio.PyAudio()
+    reset_baseline_count = 0
+    try:
+        stream = audio.open(format=pyaudio.paInt16,
+                            channels=2,
+                            rate=RATE,
+                            input=True,
+                            frames_per_buffer=INPUT_FRAMES_PER_BLOCK
+                           )
+
+        maximal = Amplitude()
+        # print('mamximal starting value:',maximal.value)
+        while True:
+            data = stream.read(INPUT_FRAMES_PER_BLOCK)
+            amp = Amplitude.from_data(data)
+            if amp > maximal:
+                maximal = amp
+                # print('mamximal new value:',maximal.value)
+
+            # New code January 23, to reset next song's maximual
+            if amp.value == 0.0:
+                reset_baseline_count += 1
+                # print('amp is zero for:', reset_baseline_count)
+                if reset_baseline_count == 10:
+                    maximal = Amplitude()
+                    # print('maximual reset', maximal.value)
+            else:
+                reset_baseline_count = 0
+                # print('amp:',amp.value)
+
+            amp.display(scale=200, mark=maximal)
+
+    finally:
+        stream.stop_stream()
+        stream.close()
+        audio.terminate()
+
+if __name__ == "__main__":
+    main()
+
