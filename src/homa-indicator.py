@@ -20,7 +20,8 @@ warnings.filterwarnings("ignore", "ResourceWarning")  # PIL python 3 unclosed fi
 #       2024-12-08 - Use monitor.Monitors() for monitor aware window positions.
 #       2025-02-10 - Support Python 3 shebang.
 #       2025-06-01 - Change #!/usr/bin/env python to #!/usr/bin/python for top.
-#       2025-06-13 - CheckRunning() convert from wmctrl to Wnck methods. 
+#       2025-06-13 - CheckRunning() convert from wmctrl to Wnck methods.
+#       2025-07-19 - Add "YT Ad Skip" (yt-skip.py) to menu. 
 #
 # ==============================================================================
 
@@ -68,6 +69,7 @@ APP_ID = "homa-indicator"  # Unique application name used for app indicator id
 APP_ICON = "/usr/share/icons/gnome/32x32/devices/display.png"
 SAVE_CWD = ""  # Saved current working directory. Will change to program directory
 HOMA_TITLE = "HomA - Home Automation"  # Window title must match program's title bar
+SKIP_TITLE = "YouTube Ad Mute and Skip"  # Window title must match program's title bar
 EYESOME_TITLE = "eyesome setup"  # Move by window title under application indicator
 SUDO_PASSWORD = None  # Sudo required for running eyesome
 MOVE_WINDOW_RIGHT_ADJUST = -40  # Move Window Top Right Adjustment
@@ -100,6 +102,9 @@ def BuildMenu():
     item_homa = Gtk.MenuItem('HomA')
     item_homa.connect('activate', HomA)
     menu.append(item_homa)
+    item_skip = Gtk.MenuItem('YT Ad Skip')
+    item_skip.connect('activate', Skip)
+    menu.append(item_skip)
 
     text = os.popen("which eyesome-cfg.sh").read()
     if len(text) > 15 and "/eyesome-cfg.sh" in text:
@@ -124,17 +129,6 @@ def HomA(_):
         Move HomeA Window to current monitor at mouse location.
     """
 
-    # If not already running, start up homa.py
-    #window = hc.CheckRunning(HOMA_TITLE)
-    # window: 0x05c0000a  0 4354 72   1200 700    N/A HomA - Home Automation
-    #if len(window) < 4:  # Not running yet
-    #    #print("homa-indicator.py HomA(): Starting HomA with '-f -s &'")
-    #    _out = os.popen("./homa.py -f -s &")
-    #    time.sleep(1.0)
-    #    new_window = True
-    #else:
-    #    new_window = False
-
     new_window = False if hc.CheckRunning(HOMA_TITLE) else True
     if new_window:
         _out = os.popen("./homa.py -f -s &")
@@ -142,6 +136,21 @@ def HomA(_):
 
     # Move opened window to current mouse location
     hc.MoveHere(HOMA_TITLE, new_window=new_window, adjust=MOVE_WINDOW_RIGHT_ADJUST)
+
+
+def Skip(_):
+    """ Call yt-skip.py ("YouTube Ad Mute and Skip")
+        Start yt-skip if it's not running.
+        If running, move window to current monitor at mouse location.
+    """
+
+    new_window = False if hc.CheckRunning(SKIP_TITLE) else True
+    if new_window:
+        _out = os.popen("./yt-skip.py -f -s &")
+        time.sleep(1.0)
+
+    # Move opened window to current mouse location
+    hc.MoveHere(SKIP_TITLE, new_window=new_window, adjust=MOVE_WINDOW_RIGHT_ADJUST)
 
 
 def Eyesome(_):

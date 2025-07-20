@@ -108,6 +108,7 @@ cp -L ~/HomA/vu_meter.py .  # Pippim volume meter
 cp -L ~/HomA/vu_pulse_audio.py .  # Pippim PulseAudio controller
 cp -r ~/HomA/wifi.png .
 cp -L ~/HomA/x11.py .  # symlink
+cp -r ~/HomA/yt-skip.py .
 
 # Remove all .pyc files from commit
 find . -name "*.pyc" -exec rm -f "{}" \;
@@ -159,6 +160,7 @@ git add vu_meter.py
 git add vu_pulse_audio.py
 git add wifi.png
 git add x11.py
+git add yt-skip.py
 
 retVal=$?
 if [ $retVal -ne 0 ]; then

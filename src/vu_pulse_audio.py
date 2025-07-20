@@ -372,12 +372,13 @@ AttributeError: 'module' object has no attribute 'pulsectl'
             else:
                 scan_dict['finish_cb']()  # Call function name without arg.
 
-    def get_volume(self, sink_no_str, refresh=True, is_first=True):
+    def get_volume(self, sink_no_str, refresh=True, is_first=True, print_error=True):
         """ Get current volume of sink.
         :param sink_no_str: Pulse Audio sink number converted to string
         :param refresh: When False, reuse self.sinks_now from last time
         :param is_first: First time perform recursive second attempt
-        :returns float: volume found or 24.2424 for invalid sink no.
+        :param print_error: Print error messages if sink not found
+        :returns float: volume found or 24.2424 for invalid sink-input index
         """
         who = who_am_i + "get_volume():"
         vol = self.get_callback(sink_no_str)
@@ -406,6 +407,8 @@ AttributeError: 'module' object has no attribute 'pulsectl'
         # .140205735977040.140205735977256.140205735977472.140205516979664.140205517321136
         # 51:24.3509 _close_cb() - tt_dict not found for: 1136
         # 06:51:24.8 Reversing self.youAssumeAd
+        if print_error is False:
+            return 24.2424
         print(who, "\n\tUnable to find 'sink_no_str': " + sink_no_str,
               "Type:", type(sink_no_str), "'refresh':", refresh)
         print("AVAILABLE SINKS:")

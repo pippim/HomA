@@ -27,6 +27,7 @@ warnings.filterwarnings("ignore", "ResourceWarning")  # PIL python 3 unclosed fi
 #       2025-04-18 - Spam Sony TV Remote. Refresh from 16ms to 33ms for CPU %.
 #       2025-05-28 - Enhanced error checking and reporting.
 #       2025-06-13 - Convert wmctrl to Wnck used in monitor.py - mon.wn_list[].
+#       2025-07-18 - Move DeviceCommonSelf and Globals classes to homa-common.py
 #
 # ==============================================================================
 
@@ -176,9 +177,10 @@ import vu_pulse_audio  # Volume Pulse Audio class pulsectl.Pulse()
 import external as ext  # Call external functions, programs, etc.
 import homa_common as hc  # hc.ValidateSudoPassword()
 from calc import Calculator  # Big Number calculator
+from homa_common import DeviceCommonSelf, Globals, AudioControl
 
 
-class DeviceCommonSelf:
+class DeviceCommonSelf2:
     """ Common Variables used by NetworkInfo, SmartPlugHS100, SonyBraviaKdlTV,
         and TclGoogleTV device classes. Also used by Application() class.
     """
@@ -588,7 +590,7 @@ SHAW-8298B0-5G      bfce8167-18fc-4646-bec3-868c097a3f4a  802-11-wireless  -- ''
         self.powerStatus = status
 
 
-class Globals(DeviceCommonSelf):
+class Globals2(DeviceCommonSelf):
     """ Globals
 
         What could be in sql.py too complicated to document due to mserve.py
@@ -751,7 +753,7 @@ class Globals(DeviceCommonSelf):
             v0_print("Create GLO['YT_AD_BAR_COLOR']:", GLO['YT_AD_BAR_COLOR'])
         '''
 
-        ''' Decrypt SUDO PASSWORD '''
+        ''' Decrypt SUDO PASSWORD 
         with warnings.catch_warnings():
             # Deprecation Warning:
             # /usr/lib/python2.7/dist-packages/cryptography/x509/__init__.py:32:
@@ -765,16 +767,20 @@ class Globals(DeviceCommonSelf):
                 self.dictGlobals['SUDO_PASSWORD'] = \
                     f.decrypt(self.dictGlobals['SUDO_PASSWORD'].encode())
                 #v0_print(self.dictGlobals['SUDO_PASSWORD'])
-
+        '''
         # 2025-01-27 override REFRESH_MS for breatheColors() testing.
         #GLO['REFRESH_MS'] = 10  # Override 16ms to 10ms
 
     def saveFile(self):
         """ Save dictConfig to CONFIG_FNAME = "config.json"
             cp = Computer() instance must be created for cp.crypto_key.
+            
+            Called when exiting and after editing preferences for YT Ad Skip
+            to get new coordinates right away.
         """
         _who = self.who + "saveFile():"
 
+        """ 2025-07-17 Move out for support for yt-skip.py
         if GLO['SUDO_PASSWORD'] is not None:
             f = Fernet(cp.crypto_key)  # Encrypt sudo password when storing
             try:
@@ -798,13 +804,18 @@ class Globals(DeviceCommonSelf):
                 GLO['SUDO_PASSWORD'] = enc.decode('utf8').replace("'", '"')
             else:  # In Python 2 a string is a string, not bytes
                 GLO['SUDO_PASSWORD'] = enc
-
+       """
         # Override global dictionary values for saving
+        hold_log = GLO['LOG_EVENTS']
+        hold_error = GLO['EVENT_ERROR_COUNT'] 
         GLO['LOG_EVENTS'] = True  # Don't want to store False value
         GLO['EVENT_ERROR_COUNT'] = 0  # Don't want to store last error count
 
         with open(g.USER_DATA_DIR + os.sep + GLO['CONFIG_FNAME'], "w") as fcb:
             fcb.write(json.dumps(self.dictGlobals))
+
+        GLO['LOG_EVENTS'] = hold_log  # Restore after Save Preferences. Not
+        GLO['EVENT_ERROR_COUNT'] = hold_error  # required when exiting.
 
     def defineNotebook(self):
         """ defineNotebook models global data variables in dictionary. Used by
@@ -2140,47 +2151,6 @@ class TreeviewRow(DeviceCommonSelf):
                 self.tree.after(10)  # 10 milliseconds
             except tk.TclError:
                 return  # Changed tree during fade out
-
-
-class AudioControl(DeviceCommonSelf):
-    """ AudioControl() utilizes:
-
-            - vu_meter.py daemon to log PulseAudio left & right amplitudes
-            - toolkit.py VolumeMeters() class to display real-time LED VU meters
-            - pav = vu_pulse_audio.PulseAudio()  # PulseAudio Instance for sinks
-
-        Called by Application()
-
-    """
-
-    def __init__(self):
-        """ DeviceCommonSelf(): Variables used by all classes
-        USAGE: aud = AudioControl()
-               Application() self.audio = AudioControl()
-        """
-        DeviceCommonSelf.__init__(self, "AudioControl().")  # Define self.who
-        _who = self.who + "__init()__:"
-
-        self.requires = ['vu_meter.py', 'pyaudio.py', 'numpy.py', 'pulsectl.py']
-        self.installed = []
-        self.checkDependencies(self.requires, self.installed)
-        v2_print(self.who, "Dependencies:", self.requires)
-        v2_print(self.who, "Installed?  :", self.installed)
-
-        self.vum = None  # self.vum = toolkit.VolumeMeters(...)
-        self.pulse_working_on_start = False
-        self.isWorking = False  # Callers must check before doing anything
-        if not self.dependencies_installed:
-            return  # Cannot initialize anything
-
-        ''' dependency pulsectl.py is installed so check if pulseaudio running '''
-        global pav
-        pav = vu_pulse_audio.PulseAudio()
-        if not pav.pulse_is_working:
-            pav = None
-            return  # Cannot display VU meters if PulseAudio isn't working
-        self.pulse_working_on_start = True
-        self.isWorking = True  # All methods in AudioControl() should work now
 
 
 class SystemMonitor(DeviceCommonSelf):
@@ -4949,7 +4919,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         ''' LED VU Meters, pulseaudio sinks and volume levels '''
         self.audio = AudioControl()  # VU Meter Class instance
-        # 2025-06-17 new self.audio consider global declaration aud = AudioControl()
+        global pav
+        pav = self.audio.pav
 
         ''' Bluetooth Low Energy LED Light Strip Breathing Colors '''
         global ble  # Inside global ble, assign app = Application() which points here
@@ -5103,7 +5074,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 self.sonySaveInst = inst  # Sony TV volume change display
 
         ble.app = self  # For View Dropdown menu -> Display Bluetooth Devices
-        self.audio.app = self  # Volume meters and PulseAudio Control
 
         ''' If bluetooth LED Light Strips used, resetBluetooth() always required '''
         if self.bleSaveInst:
@@ -6117,6 +6087,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         ''' 1 minute after restart, refresh lagging power statuses '''
         if self.force_refresh_power_time and now > self.force_refresh_power_time:
             self.force_refresh_power_time = 0.0  # Don't do it again
+            self.GATTToolJobs(found_inst=self.bleSaveInst)
             self.refreshAllPowerStatuses()  # Display "ON", "OFF" or "?"
 
         if not self.winfo_exists():  # Application window destroyed?
@@ -6584,6 +6555,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         """
 
         _who = self.who + "Rediscover():"
+        if self.rediscovering:
+            v0_print(_who, "Already running!")
+            return
         self.rediscovering = True
         self.updateDropdown()  # Disable menu options
 
@@ -6769,9 +6743,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         cr.Update(iid)  # Update row with new ['text']
         cr.fadeOut(iid)
 
-    @staticmethod
-    def MouseWheel(event):
+    def MouseWheel(self, event):
         """ Mousewheel scroll defaults to 5 units, but tree has 3 images """
+        _who = self.who + "MouseWheel():"
         if event.num == 4:  # Override mousewheel scroll up
             event.widget.yview_scroll(-1, "units")  # tree = event.widget
             return "break"  # Don't let regular event handler do scroll of 5
@@ -6866,6 +6840,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                          "\n  |", atts)
 
                 _success = glo.updateGlobalVar(key, all_notebook.newData[key])
+
+            # Save changes after edit so YT Ad Skip can use right away
+            # glo.saveFile()
 
             self.notebook.destroy()
             self.notebook = None
@@ -7302,12 +7279,20 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         _sb.insert("end", _sbt)
 
         self.update_idletasks()
+        asi = ()
 
         def init_ad_or_video():
             """ YouTube is starting up.
-                yt_started > 0, ad_started = 0 and video_started = 0.
+                yt_start > 0, ad_start = 0 and video_start = 0.
                 Force fullscreen in order to discover progress bar color.
                 Find out if Ad or Video. Set start time for Ad or Video.
+
+                2025-07-14 TODO: Stuck in "A/V Check" loop because video
+                    already playing when watchYouTube() is started so no
+                    red progress bar will appear. Also if Tim-ta sounds
+                    an alarm in Firefox then video is self-positive for new
+                    sink-input index. VU Meters are lagging .1 seconds every
+                    16 ms.
 
                 Status:  A/V check / Ad playing / Video playing /
                          skip check /
@@ -7320,6 +7305,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 _x, _y = GLO["YT_AD_BAR_POINT"]
             except AttributeError:
                 return  # This will repeat test forever but overhead is low.
+
+            if not bool(asi):
+                return  # Too early in the game
 
             if mon.wn_is_fullscreen is False:
                 # If not full screen, force it.
@@ -7334,20 +7322,24 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 _sb.see("end")
 
             _tk_clr = _pi.get_colors(_x, _y)  # Get color
-            if _tk_clr == GLO["YT_AD_BAR_COLOR"]:
-                _vars["ad_start"] = time.time()
-                # Set volume to zero
-                pav.set_volume(str(asi.index), 0)  # pav =
-                #update_rows()  # Ad start no longer displayed
+            if _tk_clr == GLO["YT_AD_BAR_COLOR"] and _vars["ad_start"] == 0.0:
+                # 	17:13:09.46	Ad has started on index: 1231
+                # 	17:13:09.87	Ad has started on index: 1231
+                _vars["ad_start"] = _vars["pav_start"]
+                _vars["video_start"] = 0.0  # 2025-07-15 Extra insurance
+                pav.set_volume(str(asi.index), 0)  # Set volume to zero
+                update_rows()
                 _line = "\t" + format_time(_vars["ad_start"])
-                _line += "\tAd has started"
+                _line += "\tAd muted on index: " + str(_vars["pav_index"])
                 _sb.insert("end", _line + "\n", "indent2")
                 _sb.see("end")
-            elif _tk_clr == GLO["YT_VIDEO_BAR_COLOR"]:
-                _vars["video_start"] = time.time()
-                #update_rows()  # Video start no longer displayed
+            elif _tk_clr == GLO["YT_VIDEO_BAR_COLOR"] and _vars["video_start"] == 0.0:
+                #_vars["video_start"] = time.time()
+                _vars["video_start"] = _vars["pav_start"]
+                _vars["ad_start"] = 0.0  # 2025-07-14 Extra insurance
+                update_rows()
                 _line = "\t" + format_time(_vars["video_start"])
-                _line += "\tVideo has starting playing"
+                _line += "\tVideo has started on index: " + str(_vars["pav_index"])
                 _sb.insert("end", _line + "\n", "indent2")
                 _sb.see("end")
             else:
@@ -7362,6 +7354,37 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             """ YouTube Ad is running.
                 ad_started > 0 and video_started = 0.
                 Wait 4.7 seconds.
+
+2025-07-16 Next video after the Duran - Ad skip didn't work.
+
+19:32:04.53	Window forced fullscreen:0x3c00028
+19:32:04.90	YouTube Video: (1) Ukraine War Update: Russia DOESN'T Stop, Heavy Assault Towards Rodynske - YouTube
+19:32:05.06	Window forced fullscreen:0x3c00028
+19:32:05.17	A/V check
+19:32:04.90	Ad has started on index: 1252
+19:32:08.89	Ad has started on index: 1252
+19:32:13.70	Skip Button clicked
+19:32:08.89	Ad has started on index: 1252
+19:32:13.91	Skip Button clicked
+19:32:08.89	Ad has started on index: 1252
+19:32:14.13	Skip Button clicked
+19:32:14.13	A/V check
+19:32:08.89	Ad has started on index: 1252
+19:32:14.33	Skip Button clicked
+19:32:08.89	Ad has started on index: 1252
+19:32:14.54	Skip Button clicked
+19:32:08.89	Ad has started on index: 1252
+19:32:14.74	Skip Button clicked
+19:32:08.89	Ad has started on index: 1252
+19:32:14.97	Skip Button clicked
+19:32:08.89	Ad has started on index: 1252
+19:32:15.17	Skip Button clicked
+19:32:08.89	Ad has started on index: 1252
+19:32:15.36	Skip Button clicked
+19:32:08.89	Ad has started on index: 1252
+19:32:15.70	Skip Button clicked
+19:32:16.39	Window forced fullscreen:0x3c00028
+19:32:16.22	Video has started on index: 1253
 
             """
 
@@ -7419,11 +7442,20 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             _status = ""
             old_status = text_status.get()
             _dur = 0.0
+
+            def update_sb(msg):
+                """ Shared local function """
+                _line = "\t" + format_time()
+                _line += "\t" + msg
+                _sb.insert("end", _line + "\n", "indent2")
+                _sb.see("end")
+
+
             if _vars["ad_start"] > 0.0 and _now > 4.7 + _vars["ad_start"]:
                 _dur = _now - _vars["ad_start"] - 4.7
                 _status = "Skip check"
                 if old_status != _status:
-                    pass  # Update _sb with message
+                    update_sb(_status)
             elif _vars["ad_start"] > 0.0:
                 _dur = _now - _vars["ad_start"]
                 _status = "Ad playing"
@@ -7431,13 +7463,15 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 _dur = _now - _vars["video_start"]
                 _status = "Video playing"
             elif _vars["yt_start"] > 0.0:
-                _dur = _now - _vars["yt_start"]
+                _dur = _now - _vars["pav_start"]
                 _status = "A/V check"
                 if old_status != _status:
-                    pass  # Update _sb with message
+                    update_sb(_status)
             elif _vars["wn_name"] != "":
                 _dur = _now - _vars["pav_start"]
                 _status = "NOT YouTube"
+                if old_status != _status:
+                    update_sb(_status)
 
             text_status.set(_status)
             text_duration.set(tmf.mm_ss(_dur))
@@ -7473,26 +7507,30 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 pass  # Drop down to set window name in scroll box
             else:
                 if _app != 'ffplay':
-                    v0_print(_who2, "Matching window not found:")
-                    v0_print("  Name:", _name, " | PID:", _input.pid)
-                    v0_print("  Application:", _app)
+                    #v0_print(_who2, "Matching window not found:")
+                    #v0_print("  Name:", _name, " | PID:", _input.pid)
+                    #v0_print("  Application:", _app)
+                    # Rewind last scrollbox text entry?
+                    pass
                 else:
                     pass  # ps -ef | grep ffplay PARAMETERS.../song name
 
-                _vars["yt_start"] = 0.0
-                _vars["yt_duration"] = 0.0
+                #_vars["yt_start"] = 0.0  # 2025-07-15 comment out
+                #_vars["yt_duration"] = 0.0  # 2025-07-15 comment out
                 _vars["wn_found"] = False
                 _vars["wn_xid_hex"] = "N/A"
-                _line = "\t" + format_time()
-                _line += "\tDismissing: " + _name
-                _sb.insert("end", _line + "\n", "indent2")
-                _sb.see("end")
+                #_line = "\t" + format_time()
+                #_line += "\tDismissing: " + _name
+                #_sb.insert("end", _line + "\n", "indent2")
+                #_sb.see("end")
+                # 2025-07-15 TODO: Log to _sb_pav
+                #   Create list of all pav logged.
                 return False
 
-            ''' Variables dictionary mutable for inner functions 
+            ''' _sb (scrollbox Text) processing 
                 1) 99:99:99.999 New Sink Input Index: 999
-                2) 99:99:99.999 YouTube video: Start of name(25)...End of Name
-                   99:99:99.999 Dismissing: Start of name(25)...End of Name
+                2) 99:99:99.999 YouTube video: Start of name(25)...
+                                  ...End of Name
                    99:99:99.999 Forced fullscreen window 0x3400034
                 3) 99:99:99.999 Video color Xxxx found at [9999, 9999]
                 4) 99:99:99.999 Ad muted
@@ -7510,20 +7548,31 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             _vars["wn_xid_hex"] = mon.wn_xid_hex
 
             if _name.endswith(" - YouTube"):
-                _vars["yt_start"] = time.time()
-                _vars["yt_duration"] = 0.0
-                _line = "\t" + format_time(_vars["yt_start"])
-                _line += "\tYouTube Video: " + _name
-                _sb.insert("end", _line + "\n", "indent2")
-                _sb.see("end")
+                if _name != _vars['last_name']:
+                    _vars["yt_start"] = _vars["pav_start"]
+                    _vars["yt_duration"] = 0.0
+                    _line = "\t" + format_time(_vars["yt_start"])
+                    _line += "\tYouTube Video: " + _name
+                    _sb.insert("end", _line + "\n", "indent2")
+                    _sb.see("end")
+                    _vars['last_name'] = _name
+                    _vars['last_start'] = _vars["yt_start"]
+                else:
+                    _vars['yt_start'] = _vars["last_start"]
+
+                # Ad has started or video is playing, find out which one
+                _vars["ad_start"] = 0.0
+                _vars["video_start"] = 0.0
             else:
-                _vars["yt_start"] = 0.0
-                _vars["yt_duration"] = 0.0
-                _line = "\t" + format_time()
-                _line += "\tDismissing: " + _name
-                _sb.insert("end", _line + "\n", "indent2")
-                _sb.see("end")
-            #text_is_fullscreen.set("?")  # Boolean
+                # Can be a Firefox sound (Tim-Ta) or a non-YouTube video playing
+                #_vars["yt_start"] = 0.0  # shows YT running even if it's not
+                #_vars["yt_duration"] = 0.0
+                #_line = "\t" + format_time()
+                #_line += "\tDismissing: " + _name
+                #_sb.insert("end", _line + "\n", "indent2")
+                #_sb.see("end")
+                pass
+
             return True
 
         def format_time(_time=None):
@@ -7570,19 +7619,19 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             _vars["pav_volume"] = _asi.volume
             _vars["pav_corked"] = _asi.corked
 
-            _line = "\t" + format_time(_vars["pav_start"])
-            _line += "\tNew Sink Input #: " + str(_vars["pav_index"])
-            _sb.insert("end", _line + "\n", "indent2")
-            _sb.see("end")
+            #_line = "\t" + format_time(_vars["pav_start"])
+            #_line += "\tNew Sink Input #: " + str(_vars["pav_index"])
+            #_sb.insert("end", _line + "\n", "indent2")
+            #_sb.see("end")
 
             _vars["wn_found"] = False
             _vars["wn_xid_hex"] = "N/A"
-            _vars["yt_start"] = 0.0
-            _vars["yt_duration"] = 0.0
-            _vars["ad_start"] = 0.0
-            _vars["ad_duration"] = 0.0
-            _vars["video_start"] = 0.0
-            _vars["video_duration"] = 0.0
+            #_vars["yt_start"] = 0.0
+            #_vars["yt_duration"] = 0.0
+            #_vars["ad_start"] = 0.0
+            #_vars["ad_duration"] = 0.0
+            #_vars["video_start"] = 0.0
+            #_vars["video_duration"] = 0.0
 
             return _asi
 
@@ -7657,7 +7706,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             "pav_start": 0.0, "pav_index": "", "pav_volume": 0.0,
             "pav_corked": False, "pav_application": "", "pav_name": "",
             "yt_start": 0.0, "yt_index": "", "yt_duration": 0.0,
-            "av_check": 0.0, "skip_check": 0.0,
+            "av_check": 0.0, "skip_check": 0.0, "last_name": "",
             "ad_start": 0.0, "ad_index": "", "ad_duration": 0.0,
             "video_start": 0.0, "video_index": "", "video_duration": 0.0,
             "wn_name": "", "wn_xid_hex": ""  # Could be YT or not YT
@@ -7676,7 +7725,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.refreshApp()  # wait another 16ms to 33ms for file to appear.
 
         last_sink_inputs = []  # Force reread
-        yt_asi = ()  # Active sink input for YouTube video playing
         # Loop forever until DisplayCommon() window closed
         while self.event_top and self.event_top.winfo_exists():
             if not self.refreshApp(tk_after=False) or self.suspending:
@@ -7692,12 +7740,12 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.last_refresh_time = self.last_rediscover_time  # Prevent Resume
 
             # YouTube started but Ad or Video status unknown?
-            if _vars["yt_start"] and \
-                    not _vars["ad_start"] and not _vars["video_start"]:
+            if _vars["yt_start"] != 0.0 and _vars["ad_start"] == 0.0 and \
+                    _vars["video_start"] == 0.0:
                 init_ad_or_video()  # Setup if Ad or Video is running
 
             # Is YouTube Ad intercept active?
-            if _vars["ad_start"] and not _vars["video_start"]:
+            if _vars["ad_start"] != 0.0 and _vars["video_start"] == 0.0:
                 init_ad_skip()  # Setup if Ad or Video is running
 
             # Update YouTube progress every second
@@ -7723,7 +7771,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             update_rows()  # 2025-07-03 - Handles mon.wn_dict is blank.
 
             last_sink_inputs = sink_inputs  # deepcopy NOT required
-            yt_asi = asi  # 2025-07-12 TEMPORARY: global variables vs parameters
 
         _vum.terminate()
         #DisplayCommonInst.close()  # 2025-06-26. Stale window still open??
@@ -8638,6 +8685,31 @@ def save_files():
 
     # Close SQL History Table for color configurations
     sql.close_homa_db()
+
+    if GLO['SUDO_PASSWORD'] is not None:
+        f = Fernet(cp.crypto_key)  # Encrypt sudo password when storing
+        try:
+            enc = f.encrypt(GLO['SUDO_PASSWORD'].encode())  # convert to bytes
+            # Works first time in Python 3, but second time (after save & restart)
+            # it generates attribute error below.
+        except AttributeError:
+            # AttributeError: 'bytes' object has no attribute 'encode'
+            # v0_print(_who, "AttributeError: 'bytes' object has no attribute 'encode'")
+            enc = f.encrypt(GLO['SUDO_PASSWORD'])  # already in bytes
+        if PYTHON_VER == "3":
+            # noinspection SpellCheckingInspection
+            '''
+            Fix issue with `bytes` being used in encryption under python 3:
+                TypeError: b'gAAAAABnqjSvXmfPODPXGfmBcnRnas4oI22xMbKxTP-JZGA-6
+                -819AmJoV7kEh59d-RnKLK2HZVGwb3YppZsvgzOZcUZDsZmAg==' 
+                is not JSON serializable
+
+            See: https://stackoverflow.com/a/40060181/6929343
+            '''
+            GLO['SUDO_PASSWORD'] = enc.decode('utf8').replace("'", '"')
+        else:  # In Python 2 a string is a string, not bytes
+            GLO['SUDO_PASSWORD'] = enc
+
     glo.saveFile()
 
 
@@ -8663,6 +8735,22 @@ def main():
         os.chdir(g.PROGRAM_DIR)
 
     glo.openFile()
+
+    ''' Decrypt SUDO PASSWORD '''
+    with warnings.catch_warnings():
+        # Deprecation Warning:
+        # /usr/lib/python2.7/dist-packages/cryptography/x509/__init__.py:32:
+        #   PendingDeprecationWarning: CRLExtensionOID has been renamed to
+        #                              CRLEntryExtensionOID
+        #   from cryptography.x509.oid import (
+        warnings.simplefilter("ignore", category=PendingDeprecationWarning)
+        f = Fernet(cp.crypto_key)  # Encrypt sudo password when storing
+
+        if glo.dictGlobals['SUDO_PASSWORD'] is not None:
+            glo.dictGlobals['SUDO_PASSWORD'] = \
+                f.decrypt(glo.dictGlobals['SUDO_PASSWORD'].encode())
+            # v0_print(self.dictGlobals['SUDO_PASSWORD'])
+
     GLO = glo.dictGlobals
     GLO['APP_RESTART_TIME'] = time.time()
 

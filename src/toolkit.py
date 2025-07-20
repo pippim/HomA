@@ -4618,7 +4618,7 @@ class PointerInspector:
 class VolumeMeters:
     """ LED Volume Meters (stereo, left & right channels).
         Spawns `/usr/bin/python vu_meter.py stereo XXX` daemon.
-        Where 'XXX' is 'mserve' or 'homa'
+        Where 'XXX' is 'mserve', 'homa' or, 'yt-skip'
 
         USAGE:
 
@@ -4638,7 +4638,7 @@ class VolumeMeters:
                  left_col=0, right_col=1, padx=8, pady=12, theme_bg='Black', tt=None):
 
         """ Parameters """
-        self.appname = appname  # 'mserve' or 'homa'
+        self.appname = appname  # 'mserve' or 'homa' or 'yt-skip'
         self.master_frm = master_frm  # Shared tk frame for vu meters
         self.width = width  # Width of one VU Meter, never resized
         self.height = height  # Will be resized on master_frm expand/shrink
@@ -4801,22 +4801,11 @@ class VolumeMeters:
                 A rectangle must be at least 2 pixels high
                 Space between rectangles must be at least 1 pixel
 
-            100 possible steps but there can be scaling down. Reserve
-            space for bars based on weight:
-
-                Lower part of bar (10%) is blue
-                Major part of bar (60%) is green
-                Upper part of bar (15%) is orange
-                Top part of bar (15%) is red
-
             Assuming 30 rectangles and height = 400:
 
                 400/30 = 13 pixels per rectangle and padding
                 10 pixels for rectangle, 3 pixels for padding
-                3 blue rectangles
-                5 orange rectangles
-                5 red rectangles
-                17 green rectangles (the remainder of 30 - others) """
+                 """
         num_rect = height / 13  # How many rectangles will fit in height?
         if num_rect < 1:
             num_rect = 1  # Not enough height for rectangles

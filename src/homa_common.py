@@ -19,8 +19,30 @@ warnings.filterwarnings("ignore", "ResourceWarning")  # PIL python 3 unclosed fi
 #       2024-11-24 - Creation date.
 #       2024-12-08 - Port GetMouseLocation() to monitor.py get_mouse_location().
 #       2025-02-10 - Support Python 3 shebang in parent.
+#       2025-07-17 - DeviceCommonSelf and Globals from homa.py for yt-skip.py.
 #
 # ==============================================================================
+
+''' check configuration. '''
+import inspect
+import os
+os.environ["SUDO_PROMPT"] = ""  # Remove prompt "[sudo] password for <USER>:"
+import global_variables as g
+
+try:
+    filename = inspect.stack()[1][1]  # If there is a parent, it must be 'h'
+    parent = os.path.basename(filename)
+    #if parent != 'h':
+    #    print("homa.py called by unrecognized:", parent)
+    #    exit()
+except IndexError:  # list index out of range
+    ''' 'h' hasn't been run to get global variables or verify configuration '''
+    #import mserve_config as m_cfg  # Differentiate from sql.Config as cfg
+
+    caller = "homa.py"
+    import global_variables as g
+    g.init(appname="homa")
+    g.HELP_URL = "https://www.pippim.com/programs/homa.html#"
 
 #warnings.simplefilter('default')  # in future Python versions.
 import monitor
@@ -53,7 +75,770 @@ except ImportError:  # No module named subprocess32
     import subprocess as sp  # For advance calls to subprocess.Popen([LIST])
     SUBPROCESS_VER = 'native'
 
+import time  # For now = time.time()
+import datetime as dt  # For dt.datetime.now().strftime('%I:%M %p')
+import json  # For dictionary storage in external file
+import copy  # For deepcopy of lists of dictionaries
+import random  # Temporary filenames
+import string  # Temporary filenames
+from collections import OrderedDict, namedtuple
+
 SUDO_PASSWORD = None  # Parent can see as 'homa_common.SUDO_PASSWORD'
+
+
+class DeviceCommonSelf:
+    """ Common Variables used by NetworkInfo, SmartPlugHS100, SonyBraviaKdlTV,
+        and TclGoogleTV device classes. Also used by Application() class.
+    """
+
+    def __init__(self, who):
+        """ Variables used by all classes """
+
+        self.who = who  # For debugging, print class name
+
+        self.dependencies_installed = True  # Parent will call self.checkDependencies()
+        self.passed_dependencies = []
+        self.passed_installed = []
+
+        self.app = None  # Every instance has reference to Application() instance
+
+        self.powerStatus = "?"  # "ON" or "OFF" after discovery
+        self.suspendPowerOff = 0  # Did suspend power off the device?
+        # 2024-12-17 REVIEW: Use inst.suspendPowerOff instead of self.suspendPowerOff
+        self.resumePowerOn = 0  # Did resume power on the device?
+        self.menuPowerOff = 0  # Did user power off the device via menu option?
+        self.menuPowerOn = 0  # Did user power on the device via menu option?
+        self.manualPowerOff = 0  # Was device physically powered off?
+        self.manualPowerOn = 0  # Was device physically powered on?
+        self.dayPowerOff = 0  # Did daylight power off the device?
+        self.nightPowerOn = 0  # Did nighttime power on the device?
+
+        # Separate self.cmdEvents for every instance.
+        self.cmdEvents = []  # Command events log
+        self.cmdEvent = {}  # Single command event
+        self.cmdCaller = ""  # Command caller (self.who) {caller: ""}
+        self.cmdCommand = []  # Command list to execute. {command: []}
+        self.cmdString = ""  # Command list as string. {command_string: ""}
+        self.cmdStart = 0.0  # When command started {start_time: 9.99}
+        self.cmdDuration = 0.0  # Command duration {duration: 9.99}
+        self.cmdOutput = ""  # stdout.strip() from command {output: Xxx}
+        self.cmdError = ""  # stderr.strip() from command {error: Xxx}
+        self.cmdReturncode = 0  # return code from command {returncode: 9}
+        # time: 999.99 duration: 9.999 who: <_who> command: <command str>
+        # text: <text> err: <text> return: <return code>
+
+    def checkDependencies(self, dependencies, installed):
+        """ :param dependencies: list of required dependencies.
+            :param installed: empty list to be updated with installed flags.
+            Sets self.dependencies_installed True ONLY if all are installed.
+        """
+        self.dependencies_installed = True
+        self.passed_dependencies = dependencies  # shallow copy of dependencies
+        self.passed_installed = installed  # copy of mutable installed flags
+        for required in dependencies:
+            if self.Which(required):
+                installed.append(True)
+            elif self.checkImport(required):
+                installed.append(True)
+            else:
+                v0_print("Program:", required, "is required but is not installed")
+                installed.append(False)
+                self.dependencies_installed = False
+
+    def checkInstalled(self, name):
+        """ Check if external program is installed. Could use `self.Which` but this
+            method is faster and allows for future help text. Requires previous call
+            to `self.checkDependencies(dep_list, inst_list)`.
+
+            :param name: name of external program to check.
+            :returns: False if external program is missing. Otherwise return True
+        """
+        try:
+            ndx = self.passed_dependencies.index(name)
+        except IndexError:
+            v1_print(self.who, "checkInstalled(): Invalid name passed:", name)
+            return False
+        return self.passed_installed[ndx]
+
+    def Which(self, program):
+        """ From: https://stackoverflow.com/a/377028/6929343 """
+        _who = self.who + "which():"
+
+        def is_exe(f_path):
+            """ Check if filename in path and is executable """
+            return os.path.isfile(f_path) and os.access(f_path, os.X_OK)
+
+        fpath, fname = os.path.split(program)
+        if fpath:
+            if is_exe(program):
+                return program
+        else:
+            for path in os.environ.get("PATH", "").split(os.pathsep):
+                exe_file = os.path.join(path, program)
+                if is_exe(exe_file):
+                    return exe_file
+
+        return None
+
+    def checkImport(self, name):
+        """ Check if variable name can be imported """
+        _who = self.who + "checkImport():"
+        try:
+            if name[-3:] == ".py":
+                name = name[:-3]
+                v3_print("new name:", name)
+        except IndexError:
+            pass  # not .py extension to strip
+
+        try:
+            _module = __import__(name)
+            v3_print("module can be imported:", name, _module)
+            return True
+        except ImportError:
+            v3_print("module not found!", name)
+            return False
+
+    def makePercentBar(self, percent):
+        """ Make percentage bar of UTF-8 characters 0 to 100%
+            Initial purpose is to spam volume level with `notify-send` as the TV
+                remote control changes volume with + / - keys.
+            Although Sony TV shows the volume percentage that doesn't help if
+                TV picture is turned off and audio only is active.
+
+            Copied from /mnt/e/bin/tvpowered bash script VolumeBar() function.
+        """
+        _who = self.who + "makePercentBar():"
+
+        Arr = ["█", "▏", "▎", "▍", "▌", "▋", "▊", "█"]
+        FullBlock = percent // len(Arr)
+        Bar = Arr[0] * FullBlock
+
+        PartBlock = percent % len(Arr)  # Size of partial block (array index)
+        if PartBlock > 0:  # Add partial blocks Arr[1-7] (▏▎▍▌▋▊█)
+            Bar += Arr[PartBlock]
+
+        if FullBlock < 12:  # Add padding utf-8 (▒) when < 96% (12 full blocks)
+            cnt = 12 - FullBlock if PartBlock else 13 - FullBlock
+            Bar += "▒" * cnt
+
+        return Bar
+
+    def runCommand(self, command_line_list, who=None, forgive=False, log=True):
+        """ Run command and return dictionary of results. Print to console
+            when -vvv (verbose3) debug printing is used.
+
+            During automatic rediscovery, logging is turned off (log=False) to
+            reduce size of cmdEvents[list].
+        """
+
+        self.cmdCaller = who if who is not None else self.who
+        _who = self.cmdCaller + " runCommand():"
+        self.cmdCommand = command_line_list
+        self.cmdString = ' '.join(command_line_list)
+        self.cmdStart = time.time()
+
+        # Python 3 error: https://stackoverflow.com/a/58696973/6929343
+        pipe = sp.Popen(self.cmdCommand, stdout=sp.PIPE, stderr=sp.PIPE)
+        text, err = pipe.communicate()  # This performs .wait() too
+        # pipe.stdout.close()  # Added 2025-02-09 for python3 error
+        # pipe.stderr.close()
+
+        # self.cmdOutput = text.strip()  # Python 2 uses strings
+        # self.cmdError = err.strip()
+        self.cmdOutput = text.decode().strip()  # Python 3 uses bytes
+        self.cmdError = err.decode().strip()
+        self.cmdReturncode = pipe.returncode
+        self.cmdDuration = time.time() - self.cmdStart
+        return self.logEvent(_who, forgive=forgive, log=log)
+
+    def logEvent(self, who, forgive=False, log=True):
+        """
+            who = self.cmdCaller + "runCommand():"
+            Build self.cmdEvent{} dictionary from self.cmdXxx variables.
+            During automatic rediscovery, logging is turned off (log=False) to
+            reduce size of cmdEvents[list].
+        """
+
+        # GLO['LOG_EVENTS'] global variable is set during auto rediscovery
+        try:
+            if GLO['LOG_EVENTS'] is False:
+                log = False  # Auto rediscovery has turned off logging
+        except NameError:
+            pass  # Early on, GLO is not defined so assume logging is on
+
+        if log:
+            v3_print("\n" + who, "'" + self.cmdString + "'")
+            o = self.cmdOutput if isinstance(self.cmdOutput, str) else '\n'.join(self.cmdOutput)
+            v3_print("  cmdOutput: '" + o + "'")
+            o = self.cmdError if isinstance(self.cmdError, str) else '\n'.join(self.cmdError)
+            v3_print("  cmdError : '" + o + "'  | cmdReturncode: ",
+                     self.cmdReturncode, "  | cmdDuration:", self.cmdDuration)
+
+        if self.cmdReturncode != 0:
+            if forgive is False:
+                v1_print(who, "cmdReturncode:", self.cmdReturncode)
+                v1_print(" ", self.cmdString)
+
+            # 2024-12-21 `timeout` never returns error message
+            if self.cmdReturncode == 124 and self.cmdCommand[0] == "timeout":
+                self.cmdError = "Command timed out without replying after " + \
+                                self.cmdCommand[1] + " seconds."
+
+        # Log event
+        self.cmdEvent = {
+            'caller': self.cmdCaller,  # Command caller (self.who)
+            'command': self.cmdCommand,  # Command list to executed
+            'command_string': self.cmdString,  # Command list as string
+            'start_time': self.cmdStart,  # When command started
+            'duration': self.cmdDuration,  # Command duration
+            'output': self.cmdOutput,  # stdout.strip() from command
+            'error': self.cmdError,  # stderr.strip() from command
+            'returncode': self.cmdReturncode  # return code from command
+        }
+
+        if log:
+            self.cmdEvents.append(self.cmdEvent)
+            if self.cmdError or self.cmdReturncode:
+                # When one or more errors, menu is enabled.
+                GLO['EVENT_ERROR_COUNT'] += 1
+        return self.cmdEvent
+
+
+class Globals(DeviceCommonSelf):
+    """ Globals
+
+        What could be in sql.py too complicated to document due to mserve.py
+
+        - timeouts for adb, REST, resume, rediscover
+        - colors for toplevel, taskbar icon, treeview, scrollbars
+
+    """
+
+    def __init__(self):
+        """ Globals(): Global variables for HomA. Traditional "GLOBAL_VALUE = 1"
+            is mapped to "self.dictGlobals['GLOBAL_VALUE'] = 1".
+
+            Stored in ~/.local/share/homa/config.json
+
+            After adding new dictionary field, remove the config.json file and
+            restart HomA. Then a new default config.json file will created.
+
+        """
+        DeviceCommonSelf.__init__(self, "Globals().")  # Define self.who
+
+        self.requires = ['ls']
+
+        # Next four lines can be defined in DeviceCommonSelf.__init__()
+        self.installed = []
+        self.checkDependencies(self.requires, self.installed)
+        v2_print(self.who, "Dependencies:", self.requires)
+        v2_print(self.who, "Installed?  :", self.installed)
+
+        command_line_list = ["ls", "/sys/class/backlight"]
+        event = self.runCommand(command_line_list, self.who)
+
+        if event['returncode'] != 0:
+            backlight_name = ""  # Empty string for now
+        else:
+            backlight_name = event['output'].strip()
+        # popen("")
+
+        # Usage: glo = Globals()
+        #        GLO = glo.dictGlobals
+        #        GLO['APP_RESTART_TIME'] = time.time()
+        self.dictGlobals = {
+            "SONY_PWD": "123",  # Sony TV REST API password
+            "CONFIG_FNAME": "config.json",  # Future configuration file.
+            "DEVICES_FNAME": "devices.json",  # mirrors ni.mac_dicts[{}, {}, ... {}]
+            "VIEW_ORDER_FNAME": "view_order.json",  # Read into ni.view_order[mac1, mac2, ... mac9]
+
+            # Timeouts improve device interface performance
+            "PLUG_TIME": "2.0",  # Smart plug timeout to turn power on/off
+            "CURL_TIME": "0.2",  # Anything longer means not a Sony TV or disconnected
+            "ADB_CON_TIME": "0.3",  # Android TV Test if connected timeout
+            "ADB_PWR_TIME": "2.0",  # Android TV Test power state timeout
+            "ADB_KEY_TIME": "5.0",  # Android keyevent KEYCODE_SLEEP or KEYCODE_WAKEUP timeout
+            "ADB_MAGIC_TIME": "0.2",  # Android TV Wake on Lan Magic Packet wait time.
+
+            # Application timings and global working variables
+            "APP_RESTART_TIME": time.time(),  # Time started or resumed. Use for elapsed time print
+            "REFRESH_MS": 33,  # Refresh tooltip fades 30 frames per second
+            "REDISCOVER_SECONDS": 60,  # Check for device changes every x seconds
+            "RESUME_TEST_SECONDS": 30,  # > x seconds disappeared means system resumed
+            "RESUME_DELAY_RESTART": 10,  # Allow x seconds for network to come up
+            # Sony TV error # 1792. Initial 3 sec. March 2025 6 sec. April 2025 7 sec.
+            # April 2025 new router slower try 10 sec.
+            "SUNLIGHT_PERCENT": "/usr/local/bin/.eyesome-percent",  # file contains 0% to 100%
+
+            "LED_LIGHTS_MAC": "",  # Bluetooth LED Light Strip MAC address
+            "LED_LIGHTS_STARTUP": True,  # "0" turn off, "1" turn on.
+            "LED_LIGHTS_COLOR": None,  # Last colorchooser ((r, g, b), #000000)
+            "LED_RED+GREEN_ADJ": False,  # "1" override red+green mix with less green.
+            "BLUETOOTH_SCAN_TIME": 10,  # Number of seconds to scan bluetooth devices
+
+            "TIMER_SEC": 600,  # Tools Dropdown Menubar - Countdown Timer default
+            "TIMER_ALARM": "Alarm_01.wav",  # From: https://www.pippim.com/programs/tim-ta.html
+            "LOG_EVENTS": True,  # Override runCommand event logging / --verbose3 printing
+            "EVENT_ERROR_COUNT": 0,  # To enable/disable View Dropdown menu "Discovery errors"
+            "SENSOR_CHECK": 1.0,  # Check `sensors` (CPU/GPU temp & fan speeds) every x seconds
+            "SENSOR_LOG": 3600.0,  # Log `sensors` every x seconds. Log more if fan speed changes
+            "FAN_GRANULAR": 200,  # Skip logging when fan changes <= FAN_GRANULAR
+
+            # Device type global identifier hard-coded in "inst.type_code"
+            "HS1_SP": 10,  # TP-Link Kasa WiFi Smart Plug HS100, HS103 or HS110 using hs100.sh
+            "KDL_TV": 20,  # Sony Bravia KDL Android TV using REST API (curl)
+            "TCL_TV": 30,  # TCL Google Android TV using adb (after wakeonlan)
+            "BLE_LS": 40,  # Bluetooth Low Energy LED Light Strip
+            "DESKTOP": 100,  # Desktop Computer, Tower, NUC, Raspberry Pi, etc.
+            "LAPTOP_B": 110,  # Laptop base (CPU, GPU, Keyboard, Fans, Ports, etc.)
+            "LAPTOP_D": 120,  # Laptop display (Can be turned on/off separate from base)
+            "ROUTER_M": 200,  # Router Modem
+
+            "SUDO_PASSWORD": None,  # Sudo password required for laptop backlight
+            "BACKLIGHT_NAME": backlight_name,  # intel_backlight
+            "BACKLIGHT_ON": "0",  # Sudo echo to "/sys/class/backlight/intel_backlight/bl_power"
+            "BACKLIGHT_OFF": "4",  # ... will control laptop display backlight power On/Off.
+            # Power all On/Off controls
+            "POWER_OFF_CMD_LIST": ["systemctl", "suspend"],  # Run "Turn Off" for Computer()
+            "POWER_ALL_EXCL_LIST": [100, 110, 120, 200],  # Exclude when powering "All"
+            # to "ON" / "OFF" 100=DESKTOP, 110=LAPTOP_B, 120=LAPTOP_D, 200=ROUTER_M
+
+            "TREEVIEW_COLOR": "WhiteSmoke",  # Treeview main color
+            "TREE_EDGE_COLOR": "White",  # Treeview edge color 5 pixels wide
+            "ALLOW_REMOTE_TO_SUSPEND": True,  # Sony getPower()
+            "ALLOW_VOLUME_CONTROL": True,  # Sony getVolume() and setVolume()
+            "QUIET_VOLUME": 20,  # 10pm - 9am
+            "NORMAL_VOLUME": 36,  # Normal volume (9am - 10pm)
+
+            "YT_AD_BAR_COLOR": "",  # YouTube Ad progress bar color
+            "YT_AD_BAR_POINT": [],  # YouTube Ad progress bar start coordinates
+            "YT_VIDEO_BAR_COLOR": "",  # YouTube Video progress bar color
+            "YT_VIDEO_BAR_POINT": [],  # YouTube Ad progress bar start coordinates
+            "YT_SKIP_BTN_COLOR": "",  # YouTube Skip Ad button dominant color (white)
+            "YT_SKIP_BTN_POINT": []  # YouTube Skip Ad button coordinates (triangle tip)
+        }
+
+    def openFile(self):
+        """ Read dictConfig from CONFIG_FNAME = "config.json"
+            cp = Computer() instance must be created for cp.crypto_key.
+        """
+        _who = self.who + "openFile():"
+
+        fname = g.USER_DATA_DIR + os.sep + GLO['CONFIG_FNAME']
+        if not os.path.isfile(fname):
+            return  # config.json doesn't exist
+
+        with open(fname, "r") as fcb:
+            v2_print("Opening configuration file:", fname)
+            self.dictGlobals = json.loads(fcb.read())
+
+        # print("GLO['LED_LIGHTS_COLOR']:", GLO['LED_LIGHTS_COLOR'])
+        # Starts as a tuple json converts to list: [[44, 28, 27], u'#2c1c1b']
+        try:
+            s = self.dictGlobals['LED_LIGHTS_COLOR']
+            self.dictGlobals['LED_LIGHTS_COLOR'] = \
+                ((s[0][0], s[0][1], s[0][2]), s[1])
+        except (TypeError, IndexError):  # No color saved
+            self.dictGlobals['LED_LIGHTS_COLOR'] = None
+
+        '''
+        try:  # Delete bad key
+            s = self.dictGlobals['YT_SKIP_BAR_COLOR']
+            del self.dictGlobals['YT_SKIP_BAR_COLOR']
+            del self.dictGlobals['YT_SKIP_BAR_POINT']
+            self.dictGlobals["YT_SKIP_BTN_COLOR"] = ""
+            self.dictGlobals["YT_SKIP_BTN_POINT"] = []
+            v0_print("Deleted two bad keys YT_SKIP_BAR_COLOR / POINT")
+        except (TypeError, IndexError, KeyError):  # No bad key
+            pass
+        '''
+        ''' TEMPLATE TO ADD A NEW FIELD TO DICTIONARY  
+        try:
+            _s = self.dictGlobals['YT_AD_BAR_COLOR']
+            v0_print("Found GLO['YT_AD_BAR_COLOR']:", _s)
+        except KeyError:
+            self.dictGlobals["YT_AD_BAR_COLOR"] = ""
+            self.dictGlobals["YT_AD_BAR_POINT"] = []
+            self.dictGlobals["YT_VIDEO_BAR_COLOR"] = ""
+            self.dictGlobals["YT_VIDEO_BAR_POINT"] = []
+            self.dictGlobals["YT_SKIP_BTN_COLOR"] = ""
+            self.dictGlobals["YT_SKIP_BTN_POINT"] = []
+
+            v0_print("Create GLO['YT_AD_BAR_COLOR']:", GLO['YT_AD_BAR_COLOR'])
+        '''
+
+        ''' Decrypt SUDO PASSWORD 
+        with warnings.catch_warnings():
+            # Deprecation Warning:
+            # /usr/lib/python2.7/dist-packages/cryptography/x509/__init__.py:32:
+            #   PendingDeprecationWarning: CRLExtensionOID has been renamed to
+            #                              CRLEntryExtensionOID
+            #   from cryptography.x509.oid import (
+            warnings.simplefilter("ignore", category=PendingDeprecationWarning)
+            f = Fernet(cp.crypto_key)  # Encrypt sudo password when storing
+
+            if self.dictGlobals['SUDO_PASSWORD'] is not None:
+                self.dictGlobals['SUDO_PASSWORD'] = \
+                    f.decrypt(self.dictGlobals['SUDO_PASSWORD'].encode())
+                #v0_print(self.dictGlobals['SUDO_PASSWORD'])
+        '''
+        # 2025-01-27 override REFRESH_MS for breatheColors() testing.
+        # GLO['REFRESH_MS'] = 10  # Override 16ms to 10ms
+
+    def saveFile(self):
+        """ Save dictConfig to CONFIG_FNAME = "config.json"
+            cp = Computer() instance must be created for cp.crypto_key.
+
+            Called when exiting and after editing preferences for YT Ad Skip
+            to get new coordinates right away.
+        """
+        _who = self.who + "saveFile():"
+
+        """ 2025-07-17 Move out for support for yt-skip.py
+        if GLO['SUDO_PASSWORD'] is not None:
+            f = Fernet(cp.crypto_key)  # Encrypt sudo password when storing
+            try:
+                enc = f.encrypt(GLO['SUDO_PASSWORD'].encode())  # convert to bytes
+                # Works first time in Python 3, but second time (after save & restart)
+                # it generates attribute error below.
+            except AttributeError:
+                # AttributeError: 'bytes' object has no attribute 'encode'
+                #v0_print(_who, "AttributeError: 'bytes' object has no attribute 'encode'")
+                enc = f.encrypt(GLO['SUDO_PASSWORD'])  # already in bytes
+            if PYTHON_VER == "3":
+                # noinspection SpellCheckingInspection
+                '''
+                Fix issue with `bytes` being used in encryption under python 3:
+                    TypeError: b'gAAAAABnqjSvXmfPODPXGfmBcnRnas4oI22xMbKxTP-JZGA-6
+                    -819AmJoV7kEh59d-RnKLK2HZVGwb3YppZsvgzOZcUZDsZmAg==' 
+                    is not JSON serializable
+
+                See: https://stackoverflow.com/a/40060181/6929343
+                '''
+                GLO['SUDO_PASSWORD'] = enc.decode('utf8').replace("'", '"')
+            else:  # In Python 2 a string is a string, not bytes
+                GLO['SUDO_PASSWORD'] = enc
+       """
+        # Override global dictionary values for saving
+        hold_log = GLO['LOG_EVENTS']
+        hold_error = GLO['EVENT_ERROR_COUNT']
+        GLO['LOG_EVENTS'] = True  # Don't want to store False value
+        GLO['EVENT_ERROR_COUNT'] = 0  # Don't want to store last error count
+
+        with open(g.USER_DATA_DIR + os.sep + GLO['CONFIG_FNAME'], "w") as fcb:
+            fcb.write(json.dumps(self.dictGlobals))
+
+        GLO['LOG_EVENTS'] = hold_log  # Restore after Save Preferences. Not
+        GLO['EVENT_ERROR_COUNT'] = hold_error  # required when exiting.
+
+    def defineNotebook(self):
+        """ defineNotebook models global data variables in dictionary. Used by
+            Edit Preferences in HomA and makeNotebook() in toolkit.py.
+
+            2025-01-01 TODO: Don't allow Suspend when Edit Preferences is active
+                because the Devices Treeview may show as active when it really
+                isn't. Plus any changes will be lost.
+
+            https://stackoverflow.com/questions/284234/notebook-widget-in-tkinter
+        """
+        _who = self.who + "defineNotebook():"
+
+        listTabs = [
+            ("Sony TV",
+             "Variables improving performance of HomA\n"
+             "communicating with Sony Televisions on LAN."),
+            ("Google TV",
+             "Variables improving performance of HomA\n"
+             "communicating with Google Televisions on LAN."),
+            ("Smart Plug",
+             "Variables improving performance of HomA\n"
+             "communicating with TP-Link Smart Plugs."),
+            ("LED Lights",
+             "Variables for Bluetooth Low Energy (BLE)\n"
+             "LED Light Strips from Happy Lighting."),
+            ("Miscellaneous",
+             "Variables for 'sensors' temperature and\n"
+             "fan speed monitor plus Countdown Timer."),
+            ("Refresh",
+             "Define how the often HomA checks mouse clicks\n"
+             "and runs automatic network device rediscovery."),
+            ("Computer",
+             "Laptop backlight display control codes.\n"
+             "Define how the computer is suspended and\n"
+             "device code types excluded on resume."),
+            ("YouTube",
+             "YouTube Ad Mute and Skip controls.\n"
+             "Colors and coordinates for the Ad and Video\n"
+             "progress bars and the Skip Ad button in YouTube.")
+        ]
+
+        HD = "hidden"
+        RO = "read-only"
+        RW = "read-write"
+        STR = "string"
+        INT = "integer"
+        FLOAT = "float"
+        TM = "time"
+        BOOL = "boolean"
+        LIST = "list"
+        FNAME = "filename"
+        MAC = "MAC-address"
+        WID = 15  # Default Width
+        DEC = MIN = MAX = CB = None  # Decimal places, Minimum, Maximum, Callback
+        # 0=Hidden, 1=Sony, 2=TCL, 3=SmartPlug, 4=LED, 5=Misc, 6=Refresh, 7=Computer
+        listFields = [
+            # name, tab#, ro/rw, input as, stored as, width, decimals, min, max,
+            #   edit callback, tooltip text
+            ("SONY_PWD", 1, RW, STR, STR, 10, DEC, MIN, MAX, CB,
+             "Password for Sony REST API"),
+            ("ALLOW_REMOTE_TO_SUSPEND", 1, RW, BOOL, BOOL, 2, DEC, MIN, MAX, CB,
+             "When Sony TV is powered off with the TV\n"
+             "remote control, the system is suspended."),
+            ("ALLOW_VOLUME_CONTROL", 1, RW, BOOL, BOOL, 2, DEC, MIN, MAX, CB,
+             "Monitor Sony TV volume levels and set to\n"
+             "quiet volume or normal volume on restart."),
+            ("QUIET_VOLUME", 1, RW, INT, INT, 3, DEC, 5, 80, CB,
+             "Audio System volume level between\n10pm and 9am (20:00 and 9:00)"),
+            ("NORMAL_VOLUME", 1, RW, INT, INT, 3, DEC, 5, 80, CB,
+             "Audio System volume level between\n9am and 10:00pm (9:00 and 20:00)"),
+            # Timeouts improve incorrect device communication performance
+            ("PLUG_TIME", 3, RW, FLOAT, STR, 6, DEC, MIN, MAX, CB,
+             "Smart plug timeout to turn power on/off"),
+            ("CURL_TIME", 1, RW, FLOAT, STR, 6, DEC, MIN, MAX, CB,
+             "A longer time means this is not\na Sony TV or Sony TV disconnected"),
+            ("ADB_CON_TIME", 2, RW, FLOAT, STR, 6, DEC, MIN, MAX, CB,
+             "Android TV test if connected timeout"),
+            ("ADB_PWR_TIME", 2, RW, FLOAT, STR, 6, DEC, MIN, MAX, CB,
+             "Android TV test power state timeout"),
+            ("ADB_KEY_TIME", 2, RW, FLOAT, STR, 6, DEC, MIN, MAX, CB,
+             "Android keyevent KEYCODE_SLEEP\nor KEYCODE_WAKEUP timeout"),
+            ("ADB_MAGIC_TIME", 2, RW, FLOAT, STR, 6, DEC, MIN, MAX, CB,
+             "Android TV Wake on Lan Magic Packet wait time."),
+            # Application timings and global working variables
+            ("APP_RESTART_TIME", 0, HD, TM, TM, 18, DEC, MIN, MAX, CB,
+             "Time HomA was started or resumed.\nUsed for elapsed time printing."),
+            ("REFRESH_MS", 6, RW, INT, INT, 3, DEC, MIN, MAX, CB,
+             "Refresh tooltip fades 60 frames per second"),
+            ("REDISCOVER_SECONDS", 6, RW, INT, INT, 5, DEC, MIN, MAX, CB,
+             "Check devices changes every x seconds"),
+            ("RESUME_TEST_SECONDS", 6, RW, INT, INT, 3, DEC, MIN, MAX, CB,
+             "> x seconds disappeared means system resumed"),
+            ("RESUME_DELAY_RESTART", 6, RW, INT, INT, 3, DEC, MIN, MAX, CB,
+             "Pause x seconds after resuming from suspend"),
+            ("LED_LIGHTS_MAC", 4, RW, MAC, STR, 17, DEC, MIN, MAX, CB,
+             "Bluetooth Low Energy LED Light Strip address"),
+            ("LED_LIGHTS_STARTUP", 4, RW, BOOL, BOOL, 2, DEC, MIN, MAX, CB,
+             "LED Lights Turn On at startup? True/False"),
+            ("LED_LIGHTS_COLOR", 4, RO, STR, STR, 20, DEC, MIN, MAX, CB,
+             'LED Lights last used color.\nFormat: (red, green, blue) #9f9f9f"]'),
+            ("LED_RED+GREEN_ADJ", 4, RW, BOOL, BOOL, 2, DEC, MIN, MAX, CB,
+             "When LED Red and Green are mixed together,\n"
+             "boost Red by 50% and reduce Green by 50%."),
+            ("BLUETOOTH_SCAN_TIME", 4, RW, INT, INT, 3, DEC, MIN, MAX, CB,
+             'Number of seconds to perform bluetooth scan.\n'
+             'A longer time may discover more devices.'),
+            ("SUNLIGHT_PERCENT", 4, RW, FNAME, STR, 32, DEC, MIN, MAX, CB,
+             'Pippim Eyesome sunlight percentage filename.\n'
+             'Or any filename containing "0%" to "100%",\n'
+             '(without the quotes) on the first line.'),
+            ("TIMER_SEC", 5, RW, INT, INT, 6, DEC, MIN, MAX, CB,
+             "Tools Dropdown Menubar - Countdown Timer default"),
+            ("TIMER_ALARM", 5, RW, FNAME, STR, 30, DEC, MIN, MAX, CB,
+             ".wav sound file to play when timer ends."),
+            ("LOG_EVENTS", 0, HD, BOOL, BOOL, 2, DEC, MIN, MAX, CB,
+             "Override runCommand events'\nlogging and --verbose3 printing"),
+            ("EVENT_ERROR_COUNT", 0, HD, INT, INT, 9, 0, MIN, MAX, CB,
+             "To enable/disable View Dropdown menu 'Discovery errors'"),
+            ("SENSOR_CHECK", 5, RW, FLOAT, FLOAT, 7, DEC, MIN, MAX, CB,
+             "Check `sensors`, CPU/GPU temperature\nand Fan speeds every x seconds."
+             "\nTo skip sensor checks, set value to 0."),
+            ("SENSOR_LOG", 5, RW, FLOAT, FLOAT, 9, DEC, MIN, MAX, CB,
+             "Log `sensors` every x seconds.\nLog more if Fan RPM speed changes"),
+            ("FAN_GRANULAR", 5, RW, INT, INT, 6, DEC, MIN, MAX, CB,
+             "Only log when Fan RPM speed changes > 'FAN_GRANULAR'.\n"
+             "Avoids excessive up/down minor fan speed logging."),
+            # Device type global identifier hard-coded in "inst.type_code"
+            ("HS1_SP", 3, RO, INT, INT, 2, DEC, MIN, MAX, CB,
+             "TP-Link Kasa WiFi Smart Plug HS100,\nHS103 or HS110 using hs100.sh"),  #
+            ("KDL_TV", 1, RO, INT, INT, 2, DEC, MIN, MAX, CB,
+             "Sony Bravia KDL Android TV using REST API `curl`"),
+            ("TCL_TV", 2, RO, INT, INT, 2, DEC, MIN, MAX, CB,
+             "TCL Google Android TV using adb after `wakeonlan`"),
+            ("BLE_LS", 4, RO, INT, INT, 2, DEC, MIN, MAX, CB,
+             "Bluetooth LED Light Strip"),
+            ("CONFIG_FNAME", 6, RO, STR, STR, WID, DEC, MIN, MAX, CB,
+             "Configuration filename"),
+            ("DEVICES_FNAME", 6, RO, STR, STR, WID, DEC, MIN, MAX, CB,
+             "discovered network devices filename"),
+            ("VIEW_ORDER_FNAME", 6, RO, STR, STR, WID, DEC, MIN, MAX, CB,
+             "Network Devices Treeview display order filename"),
+            ("BACKLIGHT_NAME", 7, RW, STR, STR, 30, DEC, MIN, MAX, CB,
+             "E.G. 'intel_backlight', 'nvidia_backlight', etc."),
+            ("BACKLIGHT_ON", 7, RW, STR, STR, 2, DEC, MIN, MAX, CB,
+             "Sudo tee echo 'x' to\n'/sys/class/backlight/intel_backlight/bl_power'"),
+            ("BACKLIGHT_OFF", 7, RW, STR, STR, 2, DEC, MIN, MAX, CB,
+             "Sudo tee echo 'x' to\n'/sys/class/backlight/intel_backlight/bl_power'"),
+            # Power all On/Off controls
+            ("POWER_OFF_CMD_LIST", 7, RW, STR, LIST, 30, DEC, MIN, MAX, CB,
+             'Run "Turn Off" for Computer'),
+            ("POWER_ALL_EXCL_LIST", 7, RW, STR, LIST, 20, DEC, MIN, MAX, CB,
+             'Exclude devices when powering all "ON" / "OFF"'),
+            # Once entered, sudo password stored encrypted on disk until "forget" is run.
+            # ("SUDO_PASSWORD", 7, HD, STR, STR, WID, DEC, MIN, MAX, CB,
+            # "Sudo password required for laptop backlight"),  # HD Hidden NOT working yet.
+            ("DESKTOP", 7, RO, INT, INT, 3, DEC, MIN, MAX, CB,
+             "Desktop Computer, Tower, NUC, Raspberry Pi, etc."),
+            ("LAPTOP_B", 7, RO, INT, INT, 3, DEC, MIN, MAX, CB,
+             "Laptop base (CPU, GPU, Keyboard, Fans, Ports, etc.)"),
+            ("LAPTOP_D", 7, RO, INT, INT, 3, DEC, MIN, MAX, CB,
+             'Laptop display (backlight can be turned\n'
+             'on/off separately from laptop base)'),
+            ("ROUTER_M", 7, RO, INT, INT, 3, DEC, MIN, MAX, CB,
+             "Router connecting local network to global internet"),
+            ("YT_AD_BAR_COLOR", 8, RW, STR, STR, 9, DEC, MIN, MAX, CB,
+             "YouTube Ad progress bar color"),
+            ("YT_AD_BAR_POINT", 8, RW, STR, LIST, 30, DEC, MIN, MAX, CB,
+             "YouTube Ad progress bar start coordinates"),
+            ("YT_VIDEO_BAR_COLOR", 8, RW, STR, STR, 9, DEC, MIN, MAX, CB,
+             "YouTube video progress bar color"),
+            ("YT_VIDEO_BAR_POINT", 8, RW, STR, LIST, 30, DEC, MIN, MAX, CB,
+             "YouTube video progress bar start coordinates"),
+            ("YT_SKIP_BTN_COLOR", 8, RW, STR, STR, 9, DEC, MIN, MAX, CB,
+             "YouTube Skip Ad button dominant color"),
+            ("YT_SKIP_BTN_POINT", 8, RW, STR, LIST, 30, DEC, MIN, MAX, CB,
+             "YouTube Skip Ad button coordinates (triangle right tip)")
+        ]
+
+        help_id = "https://www.pippim.com/programs/homa.html#"  # same as g.HELP_URL
+        help_tag = "EditPreferences"
+        help_text = "Open a new window in your default web browser for\n"
+        help_text += "explanations of fields in this Preferences Tab."
+        listHelp = [help_id, help_tag, help_text]
+
+        return listTabs, listFields, listHelp
+
+    def getDescription(self, key):
+        """ return description matching dictionary key """
+        listTabs, listFields, listHelp = self.defineNotebook()
+        for field in listFields:
+            if field[0] == key:
+                return field[10]
+
+        v0_print("Catastrophic error. Key doesn't exist:", key)
+
+    def updateGlobalVar(self, key, new_value):
+        """ Validate a new dictionary field. """
+        _who = self.who + "updateGlobalVar():"
+        _listTabs, listFields, _listHelp = self.defineNotebook()
+        for atts in listFields:
+            if atts[0] == key:
+                break
+        else:
+            v0_print(_who, "Bad key passed:", key, new_value)
+            return False
+
+        # atts = (name, tab#, ro/rw, input as, stored as, width, decimals, min, max,
+        #         edit callback, tooltip text)
+        stored_type = atts[4]
+        if stored_type == "list":
+            new_value = new_value.replace("u'", '"').replace("'", '"')
+            # u 'suspend' -> "suspend"
+            try:
+                new_list = json.loads(new_value)
+            except ValueError:
+                v0_print("Bad list passed:", key, new_value, type(new_value))
+                return False
+
+            if key == "POWER_ALL_EXCL_LIST":  # List longer for future device types
+                subset_list = [10, 20, 30, 40, 50, 60, 70, 100, 110, 120, 200]
+                if not set(new_list).issubset(subset_list):
+                    v0_print(_who, "POWER_ALL bad value:", key, new_value)
+                    v0_print("Not in list:", subset_list)
+                    return False
+
+            new_value = new_list  # Passed all tests
+
+        GLO[key] = new_value
+        return True
+
+
+class AudioControl(DeviceCommonSelf):
+    """ AudioControl() utilizes:
+
+            - vu_meter.py daemon to log PulseAudio left & right amplitudes
+            - toolkit.py VolumeMeters() class to display real-time LED VU meters
+            - pav = vu_pulse_audio.PulseAudio()  # PulseAudio Instance for sinks
+
+        Called by Application()
+
+    """
+
+    def __init__(self):
+        """ DeviceCommonSelf(): Variables used by all classes
+        USAGE: aud = AudioControl()
+               Application() self.audio = AudioControl()
+        """
+        DeviceCommonSelf.__init__(self, "AudioControl().")  # Define self.who
+        _who = self.who + "__init()__:"
+
+        self.requires = ['vu_meter.py', 'pyaudio.py', 'numpy.py', 'pulsectl.py']
+        self.installed = []
+        self.checkDependencies(self.requires, self.installed)
+        v2_print(self.who, "Dependencies:", self.requires)
+        v2_print(self.who, "Installed?  :", self.installed)
+
+        self.vum = None  # self.vum = toolkit.VolumeMeters(...)
+        self.pulse_working_on_start = False
+        self.isWorking = False  # Callers must check before doing anything
+        if not self.dependencies_installed:
+            return  # Cannot initialize anything
+
+        ''' dependency pulsectl.py is installed so check if pulseaudio running '''
+        import vu_pulse_audio
+        self.pav = vu_pulse_audio.PulseAudio()
+        if not self.pav.pulse_is_working:
+            return
+        self.pulse_working_on_start = True
+        self.isWorking = True  # All methods in AudioControl() should work now
+
+
+# Dummy p_args
+import argparse  # Command line argument parser
+parser = argparse.ArgumentParser()
+parser.add_argument('-f', '--fast', action='store_true')  # Fast startup
+parser.add_argument('-s', '--silent', action='store_true')  # No info printing
+parser.add_argument('-v', '--verbose1', action='store_true')  # Print Overview
+parser.add_argument('-vv', '--verbose2', action='store_true')  # Print Functions
+parser.add_argument('-vvv', '--verbose3', action='store_true')  # Print Commands
+p_args = parser.parse_args()
+
+
+def v0_print(*args, **kwargs):
+    """ Information printing silenced by argument -s / --silent """
+    if not p_args.silent:
+        print(*args, **kwargs)
+
+
+def v1_print(*args, **kwargs):
+    """ Debug printing for argument -v (--verbose1). Overrides -s (--silent) """
+    if p_args.verbose1 or p_args.verbose2 or p_args.verbose3:
+        print(*args, **kwargs)
+
+
+def v2_print(*args, **kwargs):
+    """ Debug printing for argument -vv (--verbose2). Overrides -s (--silent) """
+    if p_args.verbose2 or p_args.verbose3:
+        print(*args, **kwargs)
+
+
+def v3_print(*args, **kwargs):
+    """ Debug printing for argument -vvv (--verbose3). Overrides -s (--silent) """
+    if p_args.verbose3:
+        print(*args, **kwargs)
+
+
+glo = Globals()  # Global variables instance used everywhere
+GLO = glo.dictGlobals  # Default global dictionary. Live read in glo.open_file()
 
 
 def GetSudoPassword():
