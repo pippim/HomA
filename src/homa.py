@@ -7242,30 +7242,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             # After 15 or 20 minutes the <defunct> start to disappear on their own.
 
 
-def v0_print2(*args, **kwargs):
-    """ Information printing silenced by argument -s / --silent """
-    if not p_args.silent:
-        print(*args, **kwargs)
-
-
-def v1_print2(*args, **kwargs):
-    """ Debug printing for argument -v (--verbose1). Overrides -s (--silent) """
-    if p_args.verbose1 or p_args.verbose2 or p_args.verbose3:
-        print(*args, **kwargs)
-
-
-def v2_print2(*args, **kwargs):
-    """ Debug printing for argument -vv (--verbose2). Overrides -s (--silent) """
-    if p_args.verbose2 or p_args.verbose3:
-        print(*args, **kwargs)
-
-
-def v3_print2(*args, **kwargs):
-    """ Debug printing for argument -vvv (--verbose3). Overrides -s (--silent) """
-    if p_args.verbose3:
-        print(*args, **kwargs)
-        
-
 def discover(update=False, start=None, end=None):
     """ Test arp devices for device type using .isDevice() by mac address.
         Called from mainline and app.Rediscover()
