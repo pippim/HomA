@@ -341,7 +341,9 @@ class Globals(DeviceCommonSelf):
             backlight_name = ""  # Empty string for now
         else:
             backlight_name = event['output'].strip()
-        # popen("")
+
+        # Configuration filename assigned during file open
+        self.config_fname = None
 
         # Usage: glo = Globals()
         #        GLO = glo.dictGlobals
@@ -420,16 +422,17 @@ class Globals(DeviceCommonSelf):
 
     def openFile(self):
         """ Read dictConfig from CONFIG_FNAME = "config.json"
-            cp = Computer() instance must be created for cp.crypto_key.
+            self.dictGlobals['SUDO_PASSWORD'] is ENCRYPTED and only
+                homa.py .open_files() will decrypt it in place.
         """
         _who = self.who + "openFile():"
 
-        fname = g.USER_DATA_DIR + os.sep + GLO['CONFIG_FNAME']
-        if not os.path.isfile(fname):
+        self.config_fname = g.USER_DATA_DIR + os.sep + GLO['CONFIG_FNAME']
+        if not os.path.isfile(self.config_fname):
             return  # config.json doesn't exist
 
-        with open(fname, "r") as fcb:
-            v2_print("Opening configuration file:", fname)
+        with open(self.config_fname, "r") as fcb:
+            v2_print("Opening configuration file:", self.config_fname)
             self.dictGlobals = json.loads(fcb.read())
 
         # print("GLO['LED_LIGHTS_COLOR']:", GLO['LED_LIGHTS_COLOR'])
@@ -467,68 +470,30 @@ class Globals(DeviceCommonSelf):
             v0_print("Create GLO['YT_AD_BAR_COLOR']:", GLO['YT_AD_BAR_COLOR'])
         '''
 
-        ''' Decrypt SUDO PASSWORD 
-        with warnings.catch_warnings():
-            # Deprecation Warning:
-            # /usr/lib/python2.7/dist-packages/cryptography/x509/__init__.py:32:
-            #   PendingDeprecationWarning: CRLExtensionOID has been renamed to
-            #                              CRLEntryExtensionOID
-            #   from cryptography.x509.oid import (
-            warnings.simplefilter("ignore", category=PendingDeprecationWarning)
-            f = Fernet(cp.crypto_key)  # Encrypt sudo password when storing
-
-            if self.dictGlobals['SUDO_PASSWORD'] is not None:
-                self.dictGlobals['SUDO_PASSWORD'] = \
-                    f.decrypt(self.dictGlobals['SUDO_PASSWORD'].encode())
-                #v0_print(self.dictGlobals['SUDO_PASSWORD'])
-        '''
-        # 2025-01-27 override REFRESH_MS for breatheColors() testing.
+        # 2025-01-27 override REFRESH_MS for breatheColors() stress testing.
         # GLO['REFRESH_MS'] = 10  # Override 16ms to 10ms
 
     def saveFile(self):
         """ Save dictConfig to CONFIG_FNAME = "config.json"
-            cp = Computer() instance must be created for cp.crypto_key.
 
-            Called when exiting and after editing preferences for YT Ad Skip
-            to get new coordinates right away.
+            Called when exiting and when setting YT Ad Skip colors and
+                coordinates. yt-skip.py will stat to see when file saved.
+
+            MUST ENCRYPT PASSWORD FIRST so this method is only called by
+                homa.py .save_files() function!!!
         """
         _who = self.who + "saveFile():"
 
-        """ 2025-07-17 Move out for support for yt-skip.py
-        if GLO['SUDO_PASSWORD'] is not None:
-            f = Fernet(cp.crypto_key)  # Encrypt sudo password when storing
-            try:
-                enc = f.encrypt(GLO['SUDO_PASSWORD'].encode())  # convert to bytes
-                # Works first time in Python 3, but second time (after save & restart)
-                # it generates attribute error below.
-            except AttributeError:
-                # AttributeError: 'bytes' object has no attribute 'encode'
-                #v0_print(_who, "AttributeError: 'bytes' object has no attribute 'encode'")
-                enc = f.encrypt(GLO['SUDO_PASSWORD'])  # already in bytes
-            if PYTHON_VER == "3":
-                # noinspection SpellCheckingInspection
-                '''
-                Fix issue with `bytes` being used in encryption under python 3:
-                    TypeError: b'gAAAAABnqjSvXmfPODPXGfmBcnRnas4oI22xMbKxTP-JZGA-6
-                    -819AmJoV7kEh59d-RnKLK2HZVGwb3YppZsvgzOZcUZDsZmAg==' 
-                    is not JSON serializable
-
-                See: https://stackoverflow.com/a/40060181/6929343
-                '''
-                GLO['SUDO_PASSWORD'] = enc.decode('utf8').replace("'", '"')
-            else:  # In Python 2 a string is a string, not bytes
-                GLO['SUDO_PASSWORD'] = enc
-       """
         # Override global dictionary values for saving
         hold_log = GLO['LOG_EVENTS']
         hold_error = GLO['EVENT_ERROR_COUNT']
         GLO['LOG_EVENTS'] = True  # Don't want to store False value
         GLO['EVENT_ERROR_COUNT'] = 0  # Don't want to store last error count
 
-        with open(g.USER_DATA_DIR + os.sep + GLO['CONFIG_FNAME'], "w") as fcb:
+        with open(self.config_fname, "w") as fcb:
             fcb.write(json.dumps(self.dictGlobals))
 
-        GLO['LOG_EVENTS'] = hold_log  # Restore after Save Preferences. Not
+        GLO['LOG_EVENTS'] = hold_log  # Restore after saving YT colors. Not
         GLO['EVENT_ERROR_COUNT'] = hold_error  # required when exiting.
 
     def defineNotebook(self):
