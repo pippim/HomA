@@ -96,7 +96,6 @@ except ImportError:  # No module named subprocess32
     SUBPROCESS_VER = 'native'
 
 import signal  # Shutdown signals
-#import logging  # Logging used in pygatt and trionesControl
 import argparse  # Command line argument parser
 parser = argparse.ArgumentParser()
 parser.add_argument('-f', '--fast', action='store_true')  # Fast startup
@@ -107,15 +106,8 @@ parser.add_argument('-vvv', '--verbose3', action='store_true')  # Print Commands
 p_args = parser.parse_args()
 
 import json  # For dictionary storage in external file
-import copy  # For deepcopy of lists of dictionaries
-import re  # For Regex searches
 import time  # For now = time.time()
 import datetime as dt  # For dt.datetime.now().strftime('%I:%M %p')
-import random  # Temporary filenames
-import string  # Temporary filenames
-#import base64  # Required for Cryptology
-#from cryptography.fernet import Fernet  # To encrypt sudo password
-from collections import OrderedDict, namedtuple
 
 try:
     reload(sys)  # June 25, 2023 - Without utf8 sys reload, os.popen() fails on OS
@@ -130,16 +122,14 @@ try:
 except ImportError:
     pprint_installed = False
 
-# Pippim libraries
+# Pippim modules
 import sql  # For color options - Lots of irrelevant mserve.py code though
 import monitor  # Center window on current monitor supports multi-head rigs
 import toolkit  # Various tkinter functions common to Pippim apps
 import message  # message.showInfo()
 import image as img  # Image processing. E.G. Create Taskbar icon
-import timefmt as tmf  # Time formatting, ago(), days(), mm_ss(), etc.
-import vu_pulse_audio  # Volume Pulse Audio class pulsectl.Pulse()
+import timefmt as tmf  # text_duration.set(tmf.mm_ss(_dur))
 import external as ext  # Call external functions, programs, etc.
-
 from homa_common import DeviceCommonSelf, Globals, AudioControl
 from homa_common import v0_print, v1_print, v2_print, v3_print
 
@@ -162,7 +152,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.checkDependencies(self.requires, self.installed)
 
         if not self.dependencies_installed:
-            v0_print(self.formatTime() ,_who, 
+            v0_print(self.formatTime(), _who,
                      "Some Application() dependencies are not installed.")
             v0_print(self.requires)
             v0_print(self.installed)
@@ -173,9 +163,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         default_font.configure(size=g.MON_FONT)
         self.text_font = font.nametofont("TkTextFont")  # tk.Entry fonts in Color Chooser
         self.text_font.configure(size=g.MON_FONT)
-        ''' TkFixedFont, TkMenuFont, TkHeadingFont, TkCaptionFont, TkSmallCaptionFont,
-            TkIconFont and TkTooltipFont - It is not advised to change these fonts.
-            https://www.tcl-lang.org/man/tcl8.6/TkCmd/font.htm '''
 
         self.last_refresh_time = time.time()  # Refresh idle loop last entered time
         self.last_minute = "0"  # Check sunlight percentage every minute
@@ -236,11 +223,11 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         toolkit.scroll_defaults(self.pav_sb)  # Default tab stops are too wide
         self.pav_sb.config(tabs=("50", "100", "150"))
         self.pav_sb.grid(row=90, column=0, padx=3, pady=3, sticky=tk.NSEW)
-        # 90 rows available before scrollbox and 10 rows available after
+        # 90 rows available before self.pav_sb and 10 rows available after
         self.main_frm.rowconfigure(90, weight=1)
         self.main_frm.columnconfigure(0, weight=1)
 
-        # Tabs for self.pav_sb created by self.DisplayCommon()
+        # Tabs for self.pav_sb PulseAudio Sink-Inputs Scrolled Text
         tabs = ("140", "right", "170", "left", "400", "left",
                 "750", "left", "1125", "right")
         self.pav_sb.tag_config("hanging_indent", lmargin2=420)
@@ -257,7 +244,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         # Display Audio. Rows 0 to 89 available in self
         if not self.audio.isWorking:
-            self.showInfoMsg("Watch YouTube",
+            self.showInfoMsg("YouTube Ad Mute and Skip",
                              "PulseAudio isn't working or software is missing.")
             return
 
@@ -266,25 +253,23 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                                    padding=(2, 2, 2, 2), relief=tk.RIDGE)
         self.audio_frm.grid(column=0, row=0, sticky=tk.NSEW)
         self.audio_frm.grid_columnconfigure(1, minsize=g.MON_FONTSIZE*15, weight=1)
-        self.audio_frm.grid_columnconfigure(2, minsize=700, weight=1)  # Status self.pav_sb
+        self.audio_frm.grid_columnconfigure(2, minsize=600, weight=1)  # scrollbox
 
-        # Status scroll box in third column
+        # Status scrollbox Text widget in third column, spanning 9 rows
         self.sb2 = toolkit.CustomScrolledText(self.audio_frm, state="normal", font=g.FONT,
                                               height=11, borderwidth=15, relief=tk.FLAT)
+        self.sb2.grid(row=0, column=2, rowspan=9, padx=3, pady=3, sticky=tk.NSEW)
         toolkit.scroll_defaults(self.sb2)  # Default tab stops are too wide
-
-        # Tabs for self.sb2 (scrollbox) created by monitorVideos
-        _tabs2 = ("140", "right", "160", "left")
-        self.sb2.tag_config("indent2", lmargin2=180)
+        _tabs2 = ("140", "right", "160", "left")  # Time right just, message left just
+        self.sb2.configure(tabs=_tabs2, wrap=tk.WORD)  # Wrap long messages on word
+        self.sb2.tag_config("indent2", lmargin2=180)  # wrapped lines hanging indent
 
         def _reset_tabs2(event):
             """ https://stackoverflow.com/a/46605414/6929343 """
             event.widget.configure(tabs=_tabs2)
 
-        self.sb2.configure(tabs=_tabs2, wrap=tk.WORD)
         self.sb2.bind("<Configure>", _reset_tabs2)
-        self.sb2.grid(row=0, column=2, rowspan=9, padx=3, pady=3, sticky=tk.NSEW)
-        # ScrollText with instructions third column row span 9
+
         _sb2_text = "INSTRUCTIONS:\n\n"
         _sb2_text += "1. Messages automatically scroll when videos start.\n\n"
         _sb2_text += '2. Messages can be copied by highlighting text and\n'
@@ -295,8 +280,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         self.update_idletasks()
 
-        # ROWS: Sink Input Index, PA PID, PA Application, PA name
-        #       X11 Window Number, Full Screen?, Window App, Window Name
+        # Label / Value pairs in first and second column spanning 9 rows.
         self.text_index = self.addRow(0, "Sink input #:", "N/A")  # Long Integer
         self.text_pid = self.addRow(1, "Process ID (PID):", 0, _type="Int")
         self.text_pa_app = self.addRow(2, "PulseAudio App:", "N/A")
@@ -307,26 +291,26 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.text_status = self.addRow(7, "Status:", "N/A")
         self.text_duration = self.addRow(8, "Duration:", "N/A")
 
-        ''' Create vum_frm for columns 1, 2, 3: labels, values, scrollbox '''
+        ''' Create vum_frm for vu meters in fourth and fifth columns '''
         self.vum_frm = ttk.Frame(self.main_frm, borderwidth=g.FRM_BRD_WID,
                                  padding=(2, 2, 2, 2), relief=tk.RIDGE)
         self.vum_frm.grid(column=3, row=0, rowspan=99, sticky=tk.NSEW)
         self.vum_frm.grid_rowconfigure(0, weight=1)
-        #self.vum_frm.grid_columnconfigure(0, minsize=g.MON_FONTSIZE*15, weight=1)
-        #self.vum_frm.grid_columnconfigure(1, minsize=700, weight=1)
         self.vum = toolkit.VolumeMeters('yt-skip', self.vum_frm)
-        self.update()  # paint meters
-
         self.vum.reset_history_size(12)  # 2025-07-20 Change 8 to 12.
-        self.vum.spawn()  # Daemon to populate Amplitude in files
-        self.vum.set_height()
-        global pav
-        pav = self.audio.pav
+        self.vum.spawn()  # Daemon records Amplitude in temporary files
+        self.update()  # paint meters for set_height() to calculate rectangles
+        self.vum.set_height()  # Set initial height for VU meters
 
+        _start = time.time()  # Wait up to 3 seconds for vu_meter.py startup
         while not os.path.isfile(self.vum.AMPLITUDE_LEFT_FNAME):
             self.refreshApp()  # wait another 16ms to 33ms for file to appear.
+            if time.time() > _start + 3.0:
+                self.showInfoMsg("YouTube Ad Mute and Skip",
+                                 "Daemon vu_meter.py did not start.")
+                return
 
-        # self.vars {} dictionary to reduce class attributes
+        # self.vars {} dictionary reduces number of class attributes
         self.vars = {  # pav_ = Pulse audio volume, wn_ = Wnck Window (GNOME)
             "pav_start": 0.0, "pav_index": "", "pav_volume": 0.0,
             "pav_corked": False, "pav_application": "", "pav_name": "",
@@ -337,9 +321,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             "wn_name": "", "wn_xid_hex": ""  # Could be YT or not YT
         }
 
-        self.this_stat = os.stat(glo.config_fname)
-        self.last_stat = self.this_stat
-        self.skip_clicked = 0.0  # Sometimes one click doesn't work
+        self.this_stat = os.stat(glo.config_fname)  # Monitor homa.py saving
+        self.last_stat = self.this_stat  # changes to configuration file
+        self.skip_clicked = 0.0  # Sometimes one Skip Button click doesn't work
 
         self.monitorVideos()
 
@@ -422,18 +406,14 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         return _asi
 
     def matchWindow(self):
-        """ Match window to pav. _input is active sink input from PulseAudio
-            If found, display fullscreen status in column 2
-            Before calling, self.buildPavSB() has set all self.vars to null.
-
-                WRONG WRONG
+        """ Find matching window for self.asi(named tuple) active sink-input.
 
             When a new sink appears it can happen when Video switches to an
             Ad or when user pauses video. If YouTube is still fullscreen and
             video name matches what was playing, don't toss out all variables.
 
             If new sink is for a stale window or for a windowless sound input
-            then keep the old pulse audio info and self.vars[] lists in memory.
+            then keep the old self.vars[] YouTube lists in memory.
 
             Once a YouTube is in memory it should stay in video status scrolled
             Text widget. The lower pulse audio scrolled Text widget will have
@@ -446,67 +426,38 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         _pid = self.asi.pid  # When PID reappears, use last diagnosis
         #text_pid.set(str(self.asi.pid))
         if _name == "Playback Stream" and _app.startswith("Telegram"):
-            _name = "Media viewer"  # Telegram in mon
+            _name = "Media viewer"  # Telegram's name in mon.wn_name
 
-        if self.mon.get_wn_by_name(_name, pid=self.asi.pid):
-            #text_is_fullscreen.set(str(self.mon.wn_is_fullscreen))  # Boolean
-            pass  # Drop down to set window name in scroll box
-        else:
+        if not self.mon.get_wn_by_name(_name, pid=self.asi.pid):
             if _app == 'ffplay':
-                _name = self.getVideoName(_pid)
+                _name = self.getVideoName(_pid)  # 2025-07-24 TODO: Display this
             else:
-                #v0_print(self.formatTime(), _who2, "Matching window not found:")
-                #v0_print("  Name:", _name, " | PID:", self.asi.pid)
-                #v0_print("  Application:", _app)
-                # Rewind last self.pav_sb text entry?
+                v2_print(self.formatTime(), _who2, "Matching window not found:")
+                v2_print("  Name:", _name, " | PID:", self.asi.pid)
+                v2_print("  Application:", _app)
                 pass
 
-            #self.vars["yt_start"] = 0.0  # 2025-07-15 comment out
-            #self.vars["yt_duration"] = 0.0  # 2025-07-15 comment out
             self.vars["wn_found"] = False
             self.vars["wn_xid_hex"] = "N/A"
-            return False
+            return False  # Matching window not found
 
-        ''' self.sb2 (scrollbox Text) processing 
-            1) 99:99:99.999 New Sink Input Index: 999
-            2) 99:99:99.999 YouTube video: Start of name(25)...
-                              ...End of Name
-               99:99:99.999 Forced fullscreen window 0x3400034
-            3) 99:99:99.999 Video color Xxxx found at [9999, 9999]
-            4) 99:99:99.999 Ad muted
-               99:99:99.999 Waiting 4.7 seconds for Skip Ad Button to appear
-               99:99:99.999 Skip Ad Button color Xxxx NOT found at [9999, 9999]
-               99:99:99.999 Skip Ad Button color Xxxx found at [9999, 9999]
-               99:99:99.999 Skip Ad Button took 99 seconds to appear
-               99:99:99.999 Skip Ad Button clicked
-            5) 99:99:99.999 New Sink Input Index: 999
-            6) 99:99:99.999 Video color Xxxx found at [9999, 9999]
-            7) 99:99:99.999 Waiting for new Sink Input...
-        '''
-
-        self.vars["wn_found"] = True
+        self.vars["wn_found"] = True  # Matching window found
         self.vars["wn_xid_hex"] = self.mon.wn_xid_hex
 
-        if _name.endswith(" - YouTube"):
-            if _name != self.vars["last_name"]:
+        if _name.endswith(" - YouTube"):  # YouTube window found?
+            if _name != self.vars["last_name"]:  # New YouTube window?
+                self.vars["last_name"] = _name
                 self.vars["yt_start"] = self.vars["pav_start"]
                 self.vars["yt_duration"] = 0.0
                 self.sb2_time = "00:00:00.00"  # Force full time to print
                 self.insertSB2("YouTube Video: " + _name, self.vars["yt_start"])
 
-                self.vars["last_name"] = _name
-                self.vars["last_start"] = self.vars["yt_start"]
-            else:
-                self.vars["yt_start"] = self.vars["last_start"]
-
             # Ad has started or video is playing, find out which one
+            self.vars["av_start"] = 0.0  # 2025-07-24 Added A/V Check
             self.vars["ad_start"] = 0.0
             self.vars["video_start"] = 0.0
-        else:
-            # Can be a Firefox sound (Tim-Ta) or a non-YouTube video playing
-            pass
 
-        return True
+        return True  # Matching window found
 
     def getVideoName(self, _pid):
         """ If _pid = self.ffplay_pid, return self.ffplay_name and return.
@@ -563,6 +514,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         if self.vars["av_start"] == 0.0:
             self.vars["av_start"] = time.time()  # "A/V check" start time
+            #self.updateDuration()  # "A/V check" into scrollbox
+            v2_print(self.formatTime(self.vars["av_start"]), _who,
+                     'self.vars["av_start"] was 0.0.')
             # Will wait maximum of two seconds before assuming video is playing
 
         if self.mon.wn_is_fullscreen is False:
@@ -574,21 +528,33 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.updateRows()
             self.insertSB2("Window forced fullscreen:" + str(self.mon.wn_xid_hex))
 
+            '''
+2025-07-25 05:40:33.75 TODO Need to match window earlier:
+
+   40:33.75	Window forced fullscreen:0x3c00028
+      34.03	A/V check
+ 5:40:34.68	YouTube Video: Tul si three Russia gate lies. US Deep State war. 
+              Zelensky backtracks on NABU. Cambodia/Thailand clash - YouTube
+      35.52	Video playing on index: 2489
+            
+            '''
+
         _tk_clr = self.pi.get_colors(_x, _y)  # Get color
         if _tk_clr == GLO["YT_AD_BAR_COLOR"] and self.vars["ad_start"] == 0.0:
-            self.vars["ad_start"] = self.vars["pav_start"]
+            self.vars["ad_start"] = time.time()
             self.vars["av_start"] = 0.0
             self.vars["video_start"] = 0.0  # 2025-07-15 Extra insurance
             # 	17:13:09.46	Ad has started on index: 1231
             # 	17:13:09.87	Ad has started on index: 1231
             # If already muted, this is a duplicate
-            _vol = pav.get_volume(str(self.asi.index), print_error=False)
+            _vol = self.audio.pav.get_volume(str(self.asi.index), print_error=False)
             if _vol == 24.2424:
                 v0_print(self.formatTime(), _who,
                          "Sink doesn't exist: " + str(self.vars["pav_index"]))
             elif _vol != 0:
-                pav.set_volume(str(self.asi.index), 0)  # Set volume to zero
+                self.audio.pav.set_volume(str(self.asi.index), 0)  # Set volume to zero
                 self.updateRows()
+                self.sb2_time = "00:00:00.00"  # Force full time to print
                 self.insertSB2("Ad muted on index: " + str(self.vars["pav_index"]),
                                self.vars["ad_start"])
             else:
@@ -598,8 +564,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             return
 
         elif _tk_clr == GLO["YT_VIDEO_BAR_COLOR"] and self.vars["video_start"] == 0.0:
-            #self.vars["video_start"] = time.time()
-            self.vars["video_start"] = self.vars["pav_start"]
+            self.vars["video_start"] = time.time()
+            #self.vars["video_start"] = self.vars["pav_start"]  # Time rewind is weird
             self.vars["av_start"] = 0.0
             self.vars["ad_start"] = 0.0  # 2025-07-14 Extra insurance
             self.updateRows()
@@ -672,14 +638,13 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             os.popen('xdotool windowfocus ' + _active)
             os.popen('xdotool windowactivate ' + _active)
         else:
-            v0_print(self.formatTime(), _who, "Could not find active window. Result:", _active)
+            v0_print(self.formatTime(), _who,
+                     "Could not find active window. Result:", _active)
         ext.t_end("no_print")  # 4 xdotool commands: 0.0370068550 to 0.1740691662
 
     def updateRows(self):
         """ Update rows with pulse audio active sink input (asi)
             and matching window (self.mon.wn) attributes.
-
-            2025-07-07 TODO: Relocate to only call when sink or window changes.
         """
         self.text_index.set(str(self.asi.index))  # Long Integer
         self.text_pid.set(self.asi.pid)
@@ -802,16 +767,17 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         _who = self.who + "monitorVideos():"
 
         last_sink_inputs = []  # Force reread
-        # Loop forever until DisplayCommon() window closed
-        while self and self.winfo_exists():
+
+        while self and self.winfo_exists():  # Loop until window closed
             if not self.refreshApp():
-                break
+                break  # exiting app
+
             try:
                 self.vum.update_display()  # paint LED meters reflecting amplitude
             except (tk.TclError, AttributeError):
                 break  # Break in order to terminate vu_meter.py below
 
-            sink_inputs = pav.get_all_inputs()
+            sink_inputs = self.audio.pav.get_all_inputs()
             self.last_refresh_time = time.time()  # set sleep duration
 
             if sink_inputs != last_sink_inputs:
@@ -1064,7 +1030,13 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                          title=title, text=text, win_grp=self.win_grp)
 
 
-v1_print(sys.argv[0], "- YouTube Ad Mute & Skip", " | verbose1:", p_args.verbose1,
+def dummy_thread():
+    """ Needed for showInfoMsg from root window. """
+    root.update()
+    root.after(30)
+
+
+v1_print(sys.argv[0], "- YouTube Ad Mute and Skip", " | verbose1:", p_args.verbose1,
          " | verbose2:", p_args.verbose2, " | verbose3:", p_args.verbose3,
          "\n  | fast:", p_args.fast, " | silent:", p_args.silent)
 
@@ -1075,7 +1047,6 @@ app = None  # Application() GUI heart of HomA allowing other instances to refere
 cfg = sql.Config()  # Colors configuration SQL records
 glo = Globals()  # Global variables instance used everywhere
 GLO = glo.dictGlobals  # Default global dictionary. Live read in glo.open_file()
-pav = None  # PulseAudio sinks. Initialize in Application() -> AudioControl()
 
 SAVE_CWD = ""  # Save current working directory before changing to program directory
 killer = ext.GracefulKiller()  # Class instance for app.Close() or CTRL+C
@@ -1083,7 +1054,7 @@ killer = ext.GracefulKiller()  # Class instance for app.Close() or CTRL+C
 v0_print()
 v0_print(r'  ######################################################')
 v0_print(r' //////////////                            \\\\\\\\\\\\\\')
-v0_print(r'<<<<<<<<<<<<<<   yt-skip - Ad Mute & Skip   >>>>>>>>>>>>>>')
+v0_print(r'<<<<<<<<<<<<<<   YouTube Ad Mute and Skip   >>>>>>>>>>>>>>')
 v0_print(r' \\\\\\\\\\\\\\                            //////////////')
 v0_print(r'  ######################################################')
 v0_print(r'                    Started:',
@@ -1133,7 +1104,7 @@ def main():
         text += " can be killed:\n\n"
         if yt_skip_pid:
             text += "\t'yt-skip.py' (" + str(yt_skip_pid) + \
-                    ") - YouTube Ad Mute & Skip\n"
+                    ") - YouTube Ad Mute and Skip\n"
         if vu_meter_pid:
             text += "\t'vu_meter.py' (" + str(vu_meter_pid) + \
                     ") - VU Meter speaker to microphone\n"

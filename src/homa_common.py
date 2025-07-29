@@ -802,6 +802,12 @@ def v3_print(*args, **kwargs):
         print(*args, **kwargs)
 
 
+def dummy_thread():
+    """ Needed for showInfoMsg from root window. """
+    root.update()
+    root.after(30)
+
+
 glo = Globals()  # Global variables instance used everywhere
 GLO = glo.dictGlobals  # Default global dictionary. Live read in glo.open_file()
 

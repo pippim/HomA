@@ -173,7 +173,7 @@ import toolkit  # Various tkinter functions common to Pippim apps
 import message  # For dtb (Delayed Text Box)
 import image as img  # Image processing. E.G. Create Taskbar icon
 import timefmt as tmf  # Time formatting, ago(), days(), mm_ss(), etc.
-import vu_pulse_audio  # Volume Pulse Audio class pulsectl.Pulse()
+#import vu_pulse_audio  # Volume Pulse Audio class pulsectl.Pulse()
 import external as ext  # Call external functions, programs, etc.
 import homa_common as hc  # hc.ValidateSudoPassword()
 from homa_common import DeviceCommonSelf, Globals, AudioControl
@@ -3626,16 +3626,33 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         v1_print("\n" + ext.ch(), _who, "Breathing colors - Starting up.")
 
         def sendCommand():
-            """ Set colors: red, green and blue """
+            # noinspection SpellCheckingInspection
+            """ Set colors: red, green and blue
+
+                GATT failure leaves process running. Sometimes with 100% cpu:
+
+                    ps -eo pid,lstart,%cpu,cmd | grep /usr/bin/gatttool |
+                        grep -v grep | sort -k5
+
+                    Kill all except the last line:
+
+                        32556 Wed Jul 23 19:38:21 2025  0.0 /usr/bin/gatttool
+                         1266 Wed Jul 23 19:38:48 2025  0.1 /usr/bin/gatttool
+                         5003 Wed Jul 23 19:39:59 2025  0.2 /usr/bin/gatttool
+                         7387 Wed Jul 23 19:40:52 2025  0.3 /usr/bin/gatttool
+
+                    In above, self.connect_errors = 3. Delete the first 3 lines.
+            """
             if not self.app.isActive or not self.already_breathing_colors:
                 return False
             try:
                 tc.setRGB(self.red, self.green, self.blue,
                           self.device, wait_for_response=True)
-                # wait_for_response takes 10 seconds when device not connected
-                # When not waiting GATT cmd used which results in 100% CPU core
-                self.powerStatus = "ON"  # Reset "?" for previous failures
-                self.connect_errors = 0
+                # wait_for_response takes 1 second when device not connected
+                # If not waiting, the GATT cmd used results in 100% CPU core
+                self.powerStatus = "ON"  # Reset "?" if previous failures
+                self.connect_errors = 0  # 2025-07-23 get about 100 errors / hour
+                # 2025-07-24 only getting 1 error in 90 minutes after resume.
                 return self.app.isActive and self.powerStatus == "ON"
             except (pygatt.exceptions.NotConnectedError, AttributeError,
                     pygatt.exceptions.NotificationTimeout) as gatt_err:
@@ -3646,7 +3663,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
                     v1_print("{0:>8.2f}".format(delta), "|", _who, "Attempted reconnect:",
                              self.connect_errors + 1, "time(s).")
                 else:
-                    # Attempted to connect self.MAX_FAIL times.
+                    # Failed to connect self.MAX_FAIL consecutive times.
                     self.showMessage(gatt_err, count=self.connect_errors)
 
                 return False
@@ -4638,7 +4655,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         ''' Tools Menu '''
         self.tools_menu.entryconfig("Configure YouTube Ads", state=tk.NORMAL)
-        self.tools_menu.entryconfig("Watch YouTube Ad-mute", state=tk.NORMAL)
         self.tools_menu.entryconfig("Big number calculator", state=tk.NORMAL)
         if GLO['SUDO_PASSWORD'] is None:
             self.tools_menu.entryconfig("Forget sudo password", state=tk.DISABLED)
