@@ -472,6 +472,8 @@ class Globals(DeviceCommonSelf):
 
         # 2025-01-27 override REFRESH_MS for breatheColors() stress testing.
         # GLO['REFRESH_MS'] = 10  # Override 16ms to 10ms
+        global GLO
+        GLO = self.dictGlobals
 
     def saveFile(self):
         """ Save dictConfig to CONFIG_FNAME = "config.json"
@@ -489,6 +491,7 @@ class Globals(DeviceCommonSelf):
         hold_error = GLO['EVENT_ERROR_COUNT']
         GLO['LOG_EVENTS'] = True  # Don't want to store False value
         GLO['EVENT_ERROR_COUNT'] = 0  # Don't want to store last error count
+        self.dictGlobals = GLO
 
         with open(self.config_fname, "w") as fcb:
             fcb.write(json.dumps(self.dictGlobals))
@@ -767,7 +770,6 @@ class AudioControl(DeviceCommonSelf):
         self.isWorking = True  # All methods in AudioControl() should work now
 
 
-# Dummy p_args
 import argparse  # Command line argument parser
 parser = argparse.ArgumentParser()
 parser.add_argument('-f', '--fast', action='store_true')  # Fast startup
@@ -802,14 +804,42 @@ def v3_print(*args, **kwargs):
         print(*args, **kwargs)
 
 
-def dummy_thread():
-    """ Needed for showInfoMsg from root window. """
-    root.update()
-    root.after(30)
+def getWindowID(title):
+    """ Use wmctrl to get window ID in hex and convert to decimal for xdotool
+        Caller checks wmctrl and xdotool is installed before calling.
+    """
+    _who = "homa_common.py getWindowID():"
+    window_id = None
+    v2_print(_who, "search for:", title)
+
+    if not self.checkInstalled('wmctrl'):
+        v0_print(_who, "`wmctrl` is not installed.")
+        return
+    if not self.checkInstalled('xdotool'):
+        v0_print(_who, "`xdotool` is not installed.")
+        return
+
+    command_line_list = ["wmctrl", "-l"]
+    event = self.runCommand(command_line_list, _who, forgive=False)
+    for line in event['output'].splitlines():
+        ''' $ wmctrl -l
+            0x05600018  0   N/A HomA - Home Automation '''
+        parts = line.split()
+        if ' '.join(parts[3:]) != title:
+            continue
+        v2_print("Title matches:", ' '.join(parts[3:]))
+        window_id = int(parts[0], 0)  # Convert hex window ID to decimal
+
+    v2_print(_who, "window_id:", window_id)
+    if window_id is None:
+        v0_print(_who, "ERROR `wmctrl` could not find Window.")
+        v0_print("Search for title failed: '" + title + "'.\n")
+
+    return window_id
 
 
 glo = Globals()  # Global variables instance used everywhere
-GLO = glo.dictGlobals  # Default global dictionary. Live read in glo.open_file()
+GLO = glo.dictGlobals  # Default global dictionary. Live read in glo.openFile()
 
 
 def GetSudoPassword():

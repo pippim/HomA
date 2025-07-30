@@ -95,18 +95,9 @@ except ImportError:  # No module named subprocess32
     import subprocess as sp
     SUBPROCESS_VER = 'native'
 
-import signal  # Shutdown signals
-import argparse  # Command line argument parser
-parser = argparse.ArgumentParser()
-parser.add_argument('-f', '--fast', action='store_true')  # Fast startup
-parser.add_argument('-s', '--silent', action='store_true')  # No info printing
-parser.add_argument('-v', '--verbose1', action='store_true')  # Print Overview
-parser.add_argument('-vv', '--verbose2', action='store_true')  # Print Functions
-parser.add_argument('-vvv', '--verbose3', action='store_true')  # Print Commands
-p_args = parser.parse_args()
-
 import json  # For dictionary storage in external file
 import time  # For now = time.time()
+import signal  # Shutdown signals
 import datetime as dt  # For dt.datetime.now().strftime('%I:%M %p')
 
 try:
@@ -130,8 +121,8 @@ import message  # message.showInfo()
 import image as img  # Image processing. E.G. Create Taskbar icon
 import timefmt as tmf  # text_duration.set(tmf.mm_ss(_dur))
 import external as ext  # Call external functions, programs, etc.
-from homa_common import DeviceCommonSelf, Globals, AudioControl
-from homa_common import v0_print, v1_print, v2_print, v3_print
+from homa_common import DeviceCommonSelf, glo, GLO, Globals, AudioControl
+from homa_common import p_args, v0_print, v1_print, v2_print, v3_print
 
 
 class Application(DeviceCommonSelf, tk.Toplevel):
@@ -198,6 +189,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         ''' Save Toplevel OS window ID for minimizing window '''
         self.buildButtonBar()  # Must be called after Tooltips defined
         self.update_idletasks()  # Make visible for wmctrl. Verified needed 2025-02-13
+        #GLO["WINDOW_ID"] = getWindowID(app_title)  # Needs Work
         self.getWindowID(app_title)
 
         ''' When devices displayed show sensors button and vice versa. '''
@@ -812,7 +804,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
     def getWindowID(self, title):
         """ Use wmctrl to get window ID in hex and convert to decimal for xdotool
-            2025-06-13 (It's Friday 13th!) Test new self.mon.wm_xid_int
+            2025-06-13 (It's Friday 13th!) Test new mon.wm_xid_int
         """
         _who = self.who + "getWindowID():"
         GLO['WINDOW_ID'] = None  # yt-skip Window ID, must restore after reading GLO
@@ -835,12 +827,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 continue
             v2_print("Title matches:", ' '.join(parts[3:]))
             GLO['WINDOW_ID'] = int(parts[0], 0)  # Convert hex window ID to decimal
-
-        # 2025-06-13 Test new self.mon.wm_xid_int
-        self.mon = monitor.Monitors()
-        self.mon.make_wn_list()  # Make Wnck list of all windows
-        # if self.mon.get_wn_by_name(title):
-        # GLO['WINDOW_ID'] = self.mon.wn_xid_int
 
         v2_print(_who, "GLO['WINDOW_ID']:", GLO['WINDOW_ID'])
         if GLO['WINDOW_ID'] is None:
@@ -991,6 +977,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         minute = ext.h(now).split(":")[1]  # Current minute for this hour
         if minute != self.last_minute:  # Get sunlight percentage every minute
             v2_print(_who, ext.t(), "minute changed:", minute)
+            self.last_minute = minute
 
         now = time.time()  # Time changed after .Sensors() and .Rediscover()
         if self.last_refresh_time > now:
@@ -1043,10 +1030,9 @@ v1_print(sys.argv[0], "- YouTube Ad Mute and Skip", " | verbose1:", p_args.verbo
 ''' Global class instances accessed by various other classes '''
 root = None  # Tkinter toplevel
 app = None  # Application() GUI heart of HomA allowing other instances to reference
-# 2025-06-19 Why does every class have "self.app" when they could use "app" instead?
 cfg = sql.Config()  # Colors configuration SQL records
-glo = Globals()  # Global variables instance used everywhere
-GLO = glo.dictGlobals  # Default global dictionary. Live read in glo.open_file()
+#glo = Globals()  # Global variables instance used everywhere
+#GLO = glo.dictGlobals  # Default global dictionary. Live read in glo.open_file()
 
 SAVE_CWD = ""  # Save current working directory before changing to program directory
 killer = ext.GracefulKiller()  # Class instance for app.Close() or CTRL+C
@@ -1136,4 +1122,4 @@ def main():
 if __name__ == "__main__":
     main()
 
-# End of homa.py
+# End of yt-skip.py

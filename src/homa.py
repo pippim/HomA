@@ -128,14 +128,14 @@ except ImportError:  # No module named subprocess32
 
 import signal  # Shutdown signals
 import logging  # Logging used in pygatt and trionesControl
-import argparse  # Command line argument parser
-parser = argparse.ArgumentParser()
-parser.add_argument('-f', '--fast', action='store_true')  # Fast startup
-parser.add_argument('-s', '--silent', action='store_true')  # No info printing
-parser.add_argument('-v', '--verbose1', action='store_true')  # Print Overview
-parser.add_argument('-vv', '--verbose2', action='store_true')  # Print Functions
-parser.add_argument('-vvv', '--verbose3', action='store_true')  # Print Commands
-p_args = parser.parse_args()
+#import argparse  # Command line argument parser
+#parser = argparse.ArgumentParser()
+#parser.add_argument('-f', '--fast', action='store_true')  # Fast startup
+#parser.add_argument('-s', '--silent', action='store_true')  # No info printing
+#parser.add_argument('-v', '--verbose1', action='store_true')  # Print Overview
+#parser.add_argument('-vv', '--verbose2', action='store_true')  # Print Functions
+#parser.add_argument('-vvv', '--verbose3', action='store_true')  # Print Commands
+#p_args = parser.parse_args()
 
 import json  # For dictionary storage in external file
 import copy  # For deepcopy of lists of dictionaries
@@ -176,8 +176,8 @@ import timefmt as tmf  # Time formatting, ago(), days(), mm_ss(), etc.
 #import vu_pulse_audio  # Volume Pulse Audio class pulsectl.Pulse()
 import external as ext  # Call external functions, programs, etc.
 import homa_common as hc  # hc.ValidateSudoPassword()
-from homa_common import DeviceCommonSelf, Globals, AudioControl
-from homa_common import v0_print, v1_print, v2_print, v3_print
+from homa_common import DeviceCommonSelf, glo, GLO, Globals, AudioControl
+from homa_common import p_args, v0_print, v1_print, v2_print, v3_print
 from calc import Calculator  # Big Number calculator
 
 
@@ -4457,8 +4457,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             GLO['WINDOW_ID'] = int(parts[0], 0)  # Convert hex window ID to decimal
 
         # 2025-06-13 Test new mon.wm_xid_int
-        mon = monitor.Monitors()
-        mon.make_wn_list()  # Make Wnck list of all windows
+        #mon = monitor.Monitors()
+        #mon.make_wn_list()  # Make Wnck list of all windows
         # if mon.get_wn_by_name(title):
         # GLO['WINDOW_ID'] = mon.wn_xid_int
 
@@ -6181,9 +6181,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
                 _success = glo.updateGlobalVar(key, all_notebook.newData[key])
 
-            # Save changes after edit so YT Ad Mute & Skip can use right away
-            # glo.saveFile()  # Must be done when training YouTube colors
-
+            save_files()  # Not necessary
             self.notebook.destroy()
             self.notebook = None
             self.updateDropdown()
@@ -6214,7 +6212,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             help_btn_image=self.img_mag_glass, close_btn_image=self.img_checkmark)
         self.edit_pref_active = True
         self.updateDropdown()
-        save_files()  # yt-skip.py will reload YT colors and coordinates
 
     def openCalculator(self):
         """ Big Number Calculator allows K, M, G, T, etc. UoM """
@@ -7320,8 +7317,8 @@ root = None  # Tkinter toplevel
 app = None  # Application() GUI heart of HomA allowing other instances to reference
 # 2025-06-19 Why does every class have "self.app" when they could use "app" instead?
 cfg = sql.Config()  # Colors configuration SQL records
-glo = Globals()  # Global variables instance used everywhere
-GLO = glo.dictGlobals  # Default global dictionary. Live read in glo.open_file()
+#glo = Globals()  # Global variables instance used everywhere
+#GLO = glo.dictGlobals  # Default global dictionary. Live read in glo.open_file()
 ble = BluetoothLedLightStrip()  # Must follow GLO dictionary and before ni instance
 #vum = toolkit.VolumeMeters('homa', master_frm)  # Display Stereo LED Volume Meters
 pav = None  # PulseAudio sinks. Initialize in Application() -> AudioControl()
@@ -7418,7 +7415,8 @@ def open_files():
 
 
 def save_files():
-    """ Called when exiting and on demand to record YT coordinates & colors. """
+    """ Called when exiting, when editing preferences and
+        on demand to record YT coordinates & colors. """
     with open(g.USER_DATA_DIR + os.sep + GLO['DEVICES_FNAME'], "w") as f:
         f.write(json.dumps(ni.mac_dicts))
     with open(g.USER_DATA_DIR + os.sep + GLO['VIEW_ORDER_FNAME'], "w") as f:
