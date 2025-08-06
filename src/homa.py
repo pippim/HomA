@@ -128,14 +128,6 @@ except ImportError:  # No module named subprocess32
 
 import signal  # Shutdown signals
 import logging  # Logging used in pygatt and trionesControl
-#import argparse  # Command line argument parser
-#parser = argparse.ArgumentParser()
-#parser.add_argument('-f', '--fast', action='store_true')  # Fast startup
-#parser.add_argument('-s', '--silent', action='store_true')  # No info printing
-#parser.add_argument('-v', '--verbose1', action='store_true')  # Print Overview
-#parser.add_argument('-vv', '--verbose2', action='store_true')  # Print Functions
-#parser.add_argument('-vvv', '--verbose3', action='store_true')  # Print Commands
-#p_args = parser.parse_args()
 
 import json  # For dictionary storage in external file
 import copy  # For deepcopy of lists of dictionaries
@@ -178,6 +170,7 @@ import external as ext  # Call external functions, programs, etc.
 import homa_common as hc  # hc.ValidateSudoPassword()
 from homa_common import DeviceCommonSelf, glo, GLO, Globals, AudioControl
 from homa_common import p_args, v0_print, v1_print, v2_print, v3_print
+from homa_common import spam_print
 from calc import Calculator  # Big Number calculator
 
 
@@ -4299,6 +4292,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.last_refresh_time = time.time()  # Refresh idle loop last entered time
         self.rediscovering = False
         self.last_rediscover_time = time.time()
+        self.spam_count = 0  # How many times self.Rediscover() called in error.
+
         # self.exitRediscover() resets self.last_rediscover_time & self.rediscovering
         self.last_minute = "0"  # Check sunlight percentage every minute
         self.last_second = "0"  # Update YouTube progress every second
@@ -5895,16 +5890,21 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         """
 
         _who = self.who + "Rediscover():"
-        if self.rediscovering:
-            v0_print(_who, "Already running!")
+
+        if self.rediscovering:  # Already running?
+            self.spam_count += 1  # How many times Rediscover called in error.
+            spam_print(ext.ch(), _who, "Already running! Count:", self.spam_count)
             return
-        self.rediscovering = True
-        self.updateDropdown()  # Disable menu options
+
+        self.rediscovering = True  # Prevent being called a second time.
+        hc.spamming = False  # spam printing hasn't been invoked yet.
+        self.spam_count = 0  # How many times Rediscover called in error.
+        self.updateDropdown()  # Disable many dropdown menu options.
 
         # If GLO['APP_RESTART_TIME'] is within 1 minute (GLO['REDISCOVER_SECONDS']) turn off
-        # auto rediscovery flags so startup commands are logged to cmdEvents
         if GLO['APP_RESTART_TIME'] > time.time() - GLO['REDISCOVER_SECONDS'] - \
                 GLO['RESUME_TEST_SECONDS'] - 10:
+            # auto rediscovery flags so startup commands are logged to cmdEvents
             auto = False  # Override auto rediscovery during startup / resuming
 
         ''' Some `arp -a` lines are DISCARDED: 
@@ -6181,7 +6181,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
                 _success = glo.updateGlobalVar(key, all_notebook.newData[key])
 
-            save_files()  # Not necessary
+            save_files()  # Not necessary but, it doesn't hurt, and it might help
             self.notebook.destroy()
             self.notebook = None
             self.updateDropdown()
@@ -7222,13 +7222,13 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         answer = message.AskQuestion(self, title, text, 'no', win_grp=self.win_grp,
                                      thread=self.refreshThreadSafe)
 
-        text += "\n\t\tAnswer was: " + answer.result
+        text += "\n\t\tAnswer was: " + str(answer.result)  # result can be None
         v3_print(title, text)
 
         v3_print(_who, "self.win_grp AFTER :")  # AskQuestion() win_grp debugging
         v3_print(self.win_grp.window_list)
 
-        if answer.result != 'yes':
+        if str(answer.result) != 'yes':
             return  # Don't delete pids
 
         if found_inst and found_inst.device is not None:
@@ -7315,7 +7315,7 @@ v1_print(sys.argv[0], "- Home Automation", " | verbose1:", p_args.verbose1,
 ''' Global class instances accessed by various other classes '''
 root = None  # Tkinter toplevel
 app = None  # Application() GUI heart of HomA allowing other instances to reference
-# 2025-06-19 Why does every class have "self.app" when they could use "app" instead?
+# 2025-06-19 TODO: Every class has "self.app". Test if they could use "app".
 cfg = sql.Config()  # Colors configuration SQL records
 #glo = Globals()  # Global variables instance used everywhere
 #GLO = glo.dictGlobals  # Default global dictionary. Live read in glo.open_file()
@@ -7415,8 +7415,9 @@ def open_files():
 
 
 def save_files():
-    """ Called when exiting, when editing preferences and
-        on demand to record YT coordinates & colors. """
+    """ Called when exiting, when editing preferences and on demand
+        to save YT coordinates & colors for yt-skip.py to use.
+    """
     with open(g.USER_DATA_DIR + os.sep + GLO['DEVICES_FNAME'], "w") as f:
         f.write(json.dumps(ni.mac_dicts))
     with open(g.USER_DATA_DIR + os.sep + GLO['VIEW_ORDER_FNAME'], "w") as f:
@@ -7451,12 +7452,6 @@ def save_files():
 
     if _unencrypted is not None:  # Restore password for continued operation
         GLO['SUDO_PASSWORD'] = _unencrypted
-
-
-def dummy_thread():
-    """ Needed for showInfoMsg from root window. """
-    root.update()
-    root.after(30)
 
 
 def main():
@@ -7545,8 +7540,13 @@ def main():
             text += "\t'vu_meter.py' (" + str(vu_meter_pid) + \
                     ") - VU Meter speaker to microphone\n"
         text += "\nDo you want to kill previous crashed version?"
-
         v0_print(title + "\n\n" + text)
+
+        def dummy_thread():
+            """ Needed for showInfoMsg from root window. """
+            root.update()
+            root.after(30)
+
         answer = message.AskQuestion(
             root, title=title, text=text, align='left', confirm='no',
             icon='error', thread=dummy_thread)

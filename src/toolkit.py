@@ -5601,12 +5601,12 @@ class ToolTips(CommonTip):
                     if self.print_error:
                         print(self.who + 'process_tip(): ' +
                               'self.tip_window does not exist')
-                        print('self.now:', self.now, 'zero_alpha_time:', zero_alpha_time,
-                              "diff:", self.now - zero_alpha_time)
+                        print('self.now:', self.now, ' | zero_alpha_time:', zero_alpha_time,
+                              " | diff:", self.now - zero_alpha_time)
                         print('self.enter_time:', self.enter_time,
-                              "self.window_visible:", self.window_visible,
-                              "self.window_fading_in:", self.window_fading_in,
-                              "self.window_fading_out:", self.window_fading_out)
+                              " | self.window_visible:", self.window_visible)
+                        print("self.window_fading_in:", self.window_fading_in,
+                              " | self.window_fading_out:", self.window_fading_out)
                         try:
                             print(ext.ch(), "widget['text']:", self.widget['text'])
                             # E.G. "Suspend" for HomA's suspend button

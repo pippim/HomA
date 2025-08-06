@@ -20,6 +20,7 @@ warnings.filterwarnings("ignore", "ResourceWarning")  # PIL python 3 unclosed fi
 #       2024-12-08 - Port GetMouseLocation() to monitor.py get_mouse_location().
 #       2025-02-10 - Support Python 3 shebang in parent.
 #       2025-07-17 - DeviceCommonSelf and Globals from homa.py for yt-skip.py.
+#       2025-08-03 - Create spam_print() for reprinting on the same line.
 #
 # ==============================================================================
 
@@ -427,6 +428,7 @@ class Globals(DeviceCommonSelf):
         """
         _who = self.who + "openFile():"
 
+        global GLO  # Required for pycharm warning, not for updating dictionary
         self.config_fname = g.USER_DATA_DIR + os.sep + GLO['CONFIG_FNAME']
         if not os.path.isfile(self.config_fname):
             return  # config.json doesn't exist
@@ -780,27 +782,62 @@ parser.add_argument('-vvv', '--verbose3', action='store_true')  # Print Commands
 p_args = parser.parse_args()
 
 
+def reset_spam():
+    """ Reset spam printing to turn it off for regular print. """
+    global spamming
+    if spamming:
+        spamming = False
+        print()
+
+
+def spam_print(*args, **kwargs):
+    """ Spam printing same line repeatedly by removing '\n' """
+    if p_args.silent:
+        return
+    global spamming
+    if not spamming:
+        print()
+        spamming = True
+
+    if args:  # Check if *args is not empty
+        first_arg = args[0]  # This code from google search AI
+        if isinstance(first_arg, str):  # Ensure the first argument is a string
+            prepended_char = '\r'  # The character to prepend
+            new_first_arg = prepended_char + first_arg
+            # Create a new tuple with the modified first argument
+            # and the rest of the original arguments
+            modified_args = (new_first_arg,) + args[1:]
+            print(*modified_args, end="", **kwargs)
+            return
+
+    print("\r", *args, end="", **kwargs)  # Cannot prepend "\r"
+
+
 def v0_print(*args, **kwargs):
     """ Information printing silenced by argument -s / --silent """
     if not p_args.silent:
+        reset_spam()
         print(*args, **kwargs)
 
 
 def v1_print(*args, **kwargs):
     """ Debug printing for argument -v (--verbose1). Overrides -s (--silent) """
     if p_args.verbose1 or p_args.verbose2 or p_args.verbose3:
+        reset_spam()
         print(*args, **kwargs)
 
 
 def v2_print(*args, **kwargs):
     """ Debug printing for argument -vv (--verbose2). Overrides -s (--silent) """
     if p_args.verbose2 or p_args.verbose3:
+        reset_spam()
         print(*args, **kwargs)
 
 
 def v3_print(*args, **kwargs):
     """ Debug printing for argument -vvv (--verbose3). Overrides -s (--silent) """
     if p_args.verbose3:
+        reset_spam()
         print(*args, **kwargs)
 
 
@@ -836,10 +873,6 @@ def getWindowID(title):
         v0_print("Search for title failed: '" + title + "'.\n")
 
     return window_id
-
-
-glo = Globals()  # Global variables instance used everywhere
-GLO = glo.dictGlobals  # Default global dictionary. Live read in glo.openFile()
 
 
 def GetSudoPassword():
@@ -1501,6 +1534,11 @@ def display_edid():
 
     """
     pass
+
+
+glo = Globals()  # Global variables instance used everywhere
+GLO = glo.dictGlobals  # Default global dictionary. Live read in glo.openFile()
+spamming = False  # Used by spam_print for new line control
 
 
 # End of homa_common.py
