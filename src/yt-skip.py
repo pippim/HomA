@@ -632,7 +632,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             return  # Not skip button color
 
         # .34 too short of time for YouTube to make button disappear. Wait .5
-        if time.time() < self.skip_clicked + 0.5:
+        if time.time() < self.skip_clicked + 0.15:
             return  # Too soon to assume last click failed
 
         ext.t_init("4 xdotool commands")
@@ -749,7 +749,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
             2025-07-10 TODO:
                 New variable GLO['YT_SKIP_BTN_WAIT'] = 3.2
-                New variable GLO['YT_SKIP_BTN_WAIT2'] = 0.3
+                New variable GLO['YT_SKIP_BTN_WAIT2'] = 0.15
 
         FULLSCREEN NOTES:
             Wnck.Screen.Window.fullscreen() isn't supported in version 3.18.
