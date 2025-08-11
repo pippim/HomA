@@ -417,8 +417,13 @@ class Globals(DeviceCommonSelf):
             "YT_AD_BAR_POINT": [],  # YouTube Ad progress bar start coordinates
             "YT_VIDEO_BAR_COLOR": "",  # YouTube Video progress bar color
             "YT_VIDEO_BAR_POINT": [],  # YouTube Ad progress bar start coordinates
-            "YT_SKIP_BTN_COLOR": "",  # YouTube Skip Ad button dominant color (white)
-            "YT_SKIP_BTN_POINT": []  # YouTube Skip Ad button coordinates (triangle tip)
+            "YT_SKIP_BTN_COLOR": "",  # YouTube Ad Skip button dominant color (white)
+            "YT_SKIP_BTN_POINT": [],  # YouTube Ad Skip button coordinates (triangle tip)
+            "YT_SKIP_BTN_COLOR2": "",  # YouTube Ad Skip button not-dominant color
+            "YT_SKIP_BTN_POINT2": [],  # YouTube Ad Skip button not-dominant coordinates
+            "YT_SKIP_BTN_WAIT": 3.2,  # YouTube Ad Skip button wait to appear
+            "YT_SKIP_BTN_WAIT2": 0.45,  # YouTube Ad Skip button wait to disappear
+            "YT_REFRESH_MS": 16  # Milliseconds to wait between Tkinter updates
         }
 
     def openFile(self):
@@ -457,19 +462,17 @@ class Globals(DeviceCommonSelf):
         except (TypeError, IndexError, KeyError):  # No bad key
             pass
         '''
-        ''' TEMPLATE TO ADD A NEW FIELD TO DICTIONARY  
-        try:
-            _s = self.dictGlobals['YT_AD_BAR_COLOR']
-            v0_print("Found GLO['YT_AD_BAR_COLOR']:", _s)
-        except KeyError:
-            self.dictGlobals["YT_AD_BAR_COLOR"] = ""
-            self.dictGlobals["YT_AD_BAR_POINT"] = []
-            self.dictGlobals["YT_VIDEO_BAR_COLOR"] = ""
-            self.dictGlobals["YT_VIDEO_BAR_POINT"] = []
-            self.dictGlobals["YT_SKIP_BTN_COLOR"] = ""
-            self.dictGlobals["YT_SKIP_BTN_POINT"] = []
 
-            v0_print("Create GLO['YT_AD_BAR_COLOR']:", GLO['YT_AD_BAR_COLOR'])
+        ''' TEMPLATE TO ADD A NEW FIELD TO DICTIONARY   
+        try:
+            _s = self.dictGlobals['YT_SKIP_BTN_COLOR2']  # 2025-08-10
+            v0_print("Found GLO['YT_SKIP_BTN_COLOR2']:", _s)
+        except KeyError:
+            self.dictGlobals["YT_SKIP_BTN_COLOR2"] = ""
+            self.dictGlobals["YT_SKIP_BTN_POINT2"] = []
+
+            v0_print("Create GLO['YT_SKIP_BTN_COLOR2']:",
+                     self.dictGlobals['YT_SKIP_BTN_COLOR2'])
         '''
 
         # 2025-01-27 override REFRESH_MS for breatheColors() stress testing.
@@ -539,7 +542,7 @@ class Globals(DeviceCommonSelf):
             ("YouTube",
              "YouTube Ad Mute and Skip controls.\n"
              "Colors and coordinates for the Ad and Video\n"
-             "progress bars and the Skip Ad button in YouTube.")
+             "progress bars and the Ad Skip button in YouTube.")
         ]
 
         HD = "hidden"
@@ -674,9 +677,21 @@ class Globals(DeviceCommonSelf):
             ("YT_VIDEO_BAR_POINT", 8, RW, STR, LIST, 30, DEC, MIN, MAX, CB,
              "YouTube video progress bar start coordinates"),
             ("YT_SKIP_BTN_COLOR", 8, RW, STR, STR, 9, DEC, MIN, MAX, CB,
-             "YouTube Skip Ad button dominant color"),
+             "YouTube Ad Skip button dominant white color"),
             ("YT_SKIP_BTN_POINT", 8, RW, STR, LIST, 30, DEC, MIN, MAX, CB,
-             "YouTube Skip Ad button coordinates (triangle right tip)")
+             "YouTube Ad Skip button white coordinates\n"
+             "for triangle right tip close to bar"),
+            ("YT_SKIP_BTN_COLOR2", 8, RW, STR, STR, 9, DEC, MIN, MAX, CB,
+             "YouTube Ad Skip button background non-white color"),
+            ("YT_SKIP_BTN_POINT2", 8, RW, STR, LIST, 30, DEC, MIN, MAX, CB,
+             "YouTube Ad Skip button non-white coordinates\n"
+             "very close to triangle right tip"),
+            ("YT_SKIP_BTN_WAIT", 8, RW, FLOAT, FLOAT, 9, DEC, MIN, MAX, CB,
+             "Seconds to wait before checking Ad Skip Button appears"),
+            ("YT_SKIP_BTN_WAIT2", 8, RW, FLOAT, FLOAT, 9, DEC, MIN, MAX, CB,
+             "Seconds to wait before checking Ad Skip Button disappears"),
+            ("YT_REFRESH_MS", 8, RW, INT, INT, 3, DEC, MIN, MAX, CB,
+             "Millisecond delay to reduce CPU usage (16 recommended)")
         ]
 
         help_id = "https://www.pippim.com/programs/homa.html#"  # same as g.HELP_URL

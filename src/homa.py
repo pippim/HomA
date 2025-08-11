@@ -28,6 +28,8 @@ warnings.filterwarnings("ignore", "ResourceWarning")  # PIL python 3 unclosed fi
 #       2025-05-28 - Enhanced error checking and reporting.
 #       2025-06-13 - Convert wmctrl to Wnck used in monitor.py - mon.wn_list[].
 #       2025-07-18 - Move DeviceCommonSelf and Globals classes to homa-common.py
+#       2025-08-08 - Disable auto-rediscovery. Too flakey.
+#       2025-08-10 - yt-skip.py coordinates outside Ad Skip Button triangle.
 #
 # ==============================================================================
 
@@ -4714,6 +4716,12 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             v0_print("sm.skipped_logs    :", "{:,d}".format(sm.skipped_logs).rjust(9))
             v0_print("sm.number_logs     :", "{:,d}".format(sm.number_logs).rjust(9))
 
+        ''' 2025-08-10 TODO:
+            At this point it takes another 47 seconds to exit after Homa 
+                was running for two hours. Likely culprit is LED breathing colors
+                recursive calls OR breathing colors abandoned GATT jobs.
+        '''
+
         ''' If bluetooth LED Light Strips used, turnOff() for next HomA startup '''
         if self.bleSaveInst:
             self.bleSaveInst.turnOff()
@@ -5446,9 +5454,11 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             v2_print(_who, ext.t(), "cp.getNightLightStatus():", night)
 
         if int(now - self.last_rediscover_time) > GLO['REDISCOVER_SECONDS']:
-            self.Rediscover(auto=True)  # Check for new network devices
+            #self.Rediscover(auto=True)  # Check for new network devices
+            # 2025-08-08 - automatic rediscovery unreliable. Disable it.
+            pass
 
-        now = time.time()  # Time changed after .Sensors() and .Rediscover()
+        now = time.time()  # Time changed after .Rediscover()
         if self.last_refresh_time > now:
             v0_print(_who, "self.last_refresh_time: ",
                      ext.h(self.last_refresh_time), " >  now: ", ext.h(now))
@@ -5895,6 +5905,35 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.spam_count += 1  # How many times Rediscover called in error.
             spam_print(ext.ch(), _who, "Already running! Count:", self.spam_count)
             return
+        ''' spam_count increasing by 14 (in real time) with each print:
+
+  574.29 |  63°C / 4000 RPM |  66°C / 3400 RPM |  4:06 PM
+  577.45 |  64°C / 4000 RPM |  66°C / 3700 RPM |  4:06 PM
+  816.62 |  64°C / 4300 RPM |  68°C / 3900 RPM |  4:10 PM
+  821.79 |  67°C / 4500 RPM |  68°C / 4200 RPM |  4:10 PM
+
+16:20:06.178759 Application().Rediscover(): Already running! Count: 5
+ 1387.50 |  72°C / 4800 RPM |  74°C / 4400 RPM |  4:20 PM
+
+16:20:09.181920 Application().Rediscover(): Already running! Count: 15
+ 1389.81 |  71°C / 5200 RPM |  74°C / 4600 RPM |  4:20 PM
+
+16:20:15.039396 Application().Rediscover(): Already running! Count: 33
+ 1395.48 |  71°C / 5200 RPM |  74°C / 4900 RPM |  4:20 PM
+
+16:43:36.201442 Application().Rediscover(): Already running! Count: 4515
+ 2797.15 |  90°C / 5600 RPM |  75°C / 5200 RPM |  4:43 PM
+
+16:43:46.800622 Application().Rediscover(): Already running! Count: 4554
+ 2809.84 |  74°C / 5300 RPM |  75°C / 5000 RPM |  4:43 PM
+
+16:47:57.074329 Application().Rediscover(): Already running! Count: 5257
+ 3057.48 |  92°C / 5600 RPM |  76°C / 5300 RPM |  4:47 PM
+
+16:47:57.805741 Application().Rediscover(): Already running! Count: 5264
+ 3059.46 |  83°C / 5900 RPM |  76°C / 5300 RPM |  4:47 PM
+
+        '''
 
         self.rediscovering = True  # Prevent being called a second time.
         hc.spamming = False  # spam printing hasn't been invoked yet.
@@ -5923,11 +5962,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         tr = TreeviewRow(self) if self.usingDevicesTreeview else None
 
         def addTreeviewRow(new_mac):
-            """ Add network devices treeview row if mounted. """
-
+            """ Add network devices treeview row if treeview visible. """
             if not tr:
                 return  # No Treeview row instance
-
             tr.New(new_mac)
             new_row = len(self.tree.get_children())
             tr.Add(new_row)
@@ -5976,13 +6013,13 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             mac = rd_mac_dict['mac']
             # TCL.LAN (192.168.0.17) at <incomplete> on enp59s0
             if mac == '<incomplete>':
-                v1_print(_who, "Skipping invalid MAC:", mac)
+                v1_print(_who, "Skipping invalid MAC: '<incomplete>'")
                 continue
 
             ip = rd_mac_dict['ip']
             # ? (20.20.20.1) at a8:4e:3f:82:98:b2 [ether] on enp59s0
             if ip == '?':
-                v1_print(_who, "Skipping invalid IP:", ip)
+                v1_print(_who, "Skipping invalid IP: '?'")
                 continue
 
             v2_print("Checking MAC:", mac, "IP:", ip)
@@ -6364,12 +6401,13 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         # ScrollText with instructions third column row span 6
         _sbt = "INSTRUCTIONS:\n\n"
         _sbt += "1. Make YouTube fullscreen. Pause video and Ad for logging.\n"
-        _sbt += "2. Click on this window to regain focus for keystrokes.\n\n"
+        _sbt += "2. Click on this window to regain focus for keystrokes.\n"
         _sbt += "3. Hover mouse pointer over YouTube window areas (don't click) and:\n"
         _sbt += "    - Press 'v' or 'V' to log red Video progress bar start.\n"
         _sbt += "    - Press 'a' or 'A' to log yellow Ad progress bar start.\n"
-        _sbt += "    - Press 's' or 'S' to log Skip Ad button white triangle.\n\n"
-        _sbt += "4. After successful logging, confirmation is displayed."
+        _sbt += "    - Press 's' or 'S' to log Ad Skip Button white triangle.\n"
+        _sbt += "    - Press 'o' or 'O' to log immediately outside of triangle.\n"
+        _sbt += "4. After each successful log, confirmation is displayed."
 
         _sb = toolkit.CustomScrolledText(pointer_frm, state="normal", font=g.FONT,
                                          height=11, borderwidth=15, relief=tk.FLAT)
@@ -6381,6 +6419,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         _sb.highlight_pattern("red", "red")
         _sb.highlight_pattern("yellow", "yellow")
         _sb.highlight_pattern("white", "white")
+        _sb.highlight_pattern("outside", "white")
 
         # showInfo to confirm logging key is ignored if YouTube window has focus
 
@@ -6398,9 +6437,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         def on_key_press(event):
             """ Key press event """
-            #v0_print(_who, "on_key_press() event_char: '" + event.char + "'.")
+            v1_print(_who, "on_key_press() event_char: '" + event.char + "'.")
             _keysym = event.keysym
-            #v0_print("  keysym: '" + str(_keysym) + "'.")
+            v2_print("  keysym: '" + str(_keysym) + "'.")
 
             if len(pointer_color) != 7:
                 v0_print(_who, "Cannot log when len(_color) != 7")
@@ -6409,17 +6448,17 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 v0_print(_who, "Cannot log when pointer_x or pointer_y is <None>")
                 return
 
-            def _update(_color_key, _color, _point_key, _pointer_x, _pointer_y):
+            def _update(_color_key, _point_key):
                 """ Show message with old and new values. Update new values. """
 
                 _msg = glo.getDescription(_color_key) + ":\n"
                 _msg += "\n  OLD color: " + str(GLO[_color_key])  # Could be <None>
-                _msg += "\n  NEW color: " + _color + "\n\n"
+                _msg += "\n  NEW color: " + pointer_color + "\n\n"
                 _msg += glo.getDescription(_point_key) + ":\n"
                 _msg += "\n  OLD [x, y] coordinates: " + str(GLO[_point_key])
                 _msg += "\n  NEW [x, y] coordinates: ["
-                _msg += str(_pointer_x) + "," + str(_pointer_y) + "]\n"
-                GLO[_color_key] = _color
+                _msg += str(pointer_x) + "," + str(pointer_y) + "]\n"
+                GLO[_color_key] = pointer_color
                 GLO[_point_key] = [pointer_x, pointer_y]
 
                 save_files()
@@ -6427,16 +6466,13 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
             # Log Ad Progress bar starting location and color
             if _keysym == "a" or _keysym == "A":
-                _update("YT_AD_BAR_COLOR", pointer_color,
-                        "YT_AD_BAR_POINT", pointer_x, pointer_y)
-
-            if _keysym == "v" or _keysym == "V":
-                _update("YT_VIDEO_BAR_COLOR", pointer_color,
-                        "YT_VIDEO_BAR_POINT", pointer_x, pointer_y)
-
-            if _keysym == "s" or _keysym == "S":
-                _update("YT_SKIP_BTN_COLOR", pointer_color,
-                        "YT_SKIP_BTN_POINT", pointer_x, pointer_y)
+                _update("YT_AD_BAR_COLOR", "YT_AD_BAR_POINT")
+            elif _keysym == "v" or _keysym == "V":
+                _update("YT_VIDEO_BAR_COLOR", "YT_VIDEO_BAR_POINT")
+            elif _keysym == "s" or _keysym == "S":
+                _update("YT_SKIP_BTN_COLOR", "YT_SKIP_BTN_POINT")
+            elif _keysym == "o" or _keysym == "O":
+                _update("YT_SKIP_BTN_COLOR2", "YT_SKIP_BTN_POINT2")
 
         # tk.Canvas rectangle representing color in third column
         _pi = toolkit.PointerInspector(pointer_frm, column=2, rowspan=6,

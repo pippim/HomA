@@ -20,6 +20,7 @@ warnings.filterwarnings("ignore", "ResourceWarning")  # PIL python 3 unclosed fi
 #       yt-skip.py - YouTube Ad Mute and Skip
 #
 #       2025-07-18 - Copy homa.py and refactor code.
+#       2025-08-10 - Test coordinates immediately outside Skip Button triangle.
 #
 # ==============================================================================
 
@@ -155,6 +156,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.text_font.configure(size=g.MON_FONT)
 
         self.last_refresh_time = time.time()  # Refresh idle loop last entered time
+        self.last_vum_update = time.time()  # Faster than 32ms causes eye fatigue
         self.last_minute = "0"  # Check sunlight percentage every minute
         self.last_second = "0"  # Update YouTube progress every second
 
@@ -315,7 +317,112 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.last_stat = self.this_stat  # changes to configuration file
         self.skip_clicked = 0.0  # Sometimes one Ad skip button click doesn't work
 
-        self.monitorVideos()
+        if not self.checkRequirements():
+            self.exitApp()
+            return  # Test by making invalid color code > hex f or coordinate > 50000
+
+        self.monitorVideos()  # Loop until exit
+
+    def checkRequirements(self):
+        """ Check GLO dictionary for colors and coordinates """
+        _who = self.who + "checkRequirements():"
+        _isHex = True  # Contains valid hex color string of "#a1b2c3"
+        _isPoint = True  # Valid coordinates > 0 and < 50,000
+        _hasAd = True
+        _hasVideo = True
+        _hasSkip = True
+        _hasSkip2 = True
+
+        def test_color(_color):
+            """ Test for # followed by 6 hex digits """
+            if not isinstance(_color, str) and not isinstance(_color, unicode):
+                v0_print("color is not string or unicode. Type is:", type(_color))
+                return False
+
+            if not _color.startswith("#"):
+                v0_print("color does not start with '#'")
+                return False
+
+            _color2 = _color.replace("#", "")
+            if len(_color2) != 6:
+                v0_print("Length of Tkinter hex color code with '#' is not 6")
+                return False
+
+            try:
+                int(_color2, 16)
+                return True
+            except ValueError:
+                v0_print("Tkinter hex color without '#' is not hexadecimal.")
+                return False
+
+        def test_point(_point):
+            """ Test for valid [x, y] coordinates list """
+            if type(_point) is not list:
+                v0_print("Coordinates is not a list of '[]'")
+                return False
+
+            if len(_point) != 2:
+                v0_print("Coordinates is not a list of [x, y]")
+                return False
+
+            try:
+                if 0 < _point[0] < 50000:
+                    if 0 < _point[1] < 50000:
+                        return True
+                    else:
+                        v0_print("Coordinates of y inside [x, y] not 1 to 50000")
+                        return False
+                else:
+                    v0_print("Coordinates of x inside [x, y] not 1 to 50000")
+                    return False
+            except ValueError:
+                return False
+
+        _hasAdColor = test_color(GLO["YT_AD_BAR_COLOR"])
+        _hasAdPoint = test_point(GLO["YT_AD_BAR_POINT"])
+        _hasVideoColor = test_color(GLO["YT_VIDEO_BAR_COLOR"])
+        _hasVideoPoint = test_point(GLO["YT_VIDEO_BAR_POINT"])
+        _hasSkipColor = test_color(GLO["YT_SKIP_BTN_COLOR"])
+        _hasSkipPoint = test_point(GLO["YT_SKIP_BTN_POINT"])
+        _hasSkipColor2 = test_color(GLO["YT_SKIP_BTN_COLOR2"])
+        _hasSkipPoint2 = test_point(GLO["YT_SKIP_BTN_POINT2"])
+
+        _hasAd = _hasAdColor and _hasAdPoint
+        _hasVideo = _hasVideoColor and _hasVideoPoint
+        _hasSkip = _hasSkipColor and _hasSkipPoint
+        _hasSkip2 = _hasSkipColor2 and _hasSkipPoint2
+        
+        if _hasAd and _hasVideo and _hasSkip and _hasSkip2:
+            return True
+
+        v0_print("_hasAd, _hasVideo, _hasSkip, _hasSkip2:",
+                 _hasAd, _hasVideo, _hasSkip, _hasSkip2)
+        v0_print("_hasAdColor, _hasVideoColor, _hasSkipColor, _hasSkip2Color:",
+                 _hasAdColor, _hasVideoColor, _hasSkipColor, _hasSkipColor2)
+        v0_print("_hasAdPoint, _hasVideoPoint, _hasSkipPoint, _hasSkip2Point:",
+                 _hasAdPoint, _hasVideoPoint, _hasSkipPoint, _hasSkipPoint2)
+
+        def buildMessage(_color_key, _point_key):
+            """ Build message liens for color and coordinates """
+            _msg = "\n" + glo.getDescription(_color_key)
+            _msg += " : " + str(GLO[_color_key]) + "\n"
+            _msg += glo.getDescription(_point_key)
+            _msg += " [x, y]: " + str(GLO[_point_key]) + "\n"
+            return _msg
+        
+        title = "YouTube Ad Mute and Skip Requirements"
+        text = "Colors and Coordinates defined in homa.py\n"
+        text += buildMessage("YT_AD_BAR_COLOR", "YT_AD_BAR_POINT")
+        text += buildMessage("YT_VIDEO_BAR_COLOR", "YT_VIDEO_BAR_POINT")
+        text += buildMessage("YT_SKIP_BTN_COLOR", "YT_SKIP_BTN_POINT")
+        text += buildMessage("YT_SKIP_BTN_COLOR2", "YT_SKIP_BTN_POINT2")
+
+        if _hasAd and _hasVideo and _hasSkip:
+            self.showInfoMsg(title, text, icon="warning")
+            return True  # Will work but white ads will cause ad pause
+        else:
+            self.showInfoMsg(title, text, icon="error")
+            return False
 
     def insertSB2(self, msg, _time=None):
         """ Shared local function """
@@ -412,11 +519,12 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             each active sink input.
         """
         _who2 = self.who + "matchWindow():"
-        self.mon.make_wn_list()  # Make Windows List
         _name = self.asi.name
         _app = self.asi.application
         _pid = self.asi.pid  # When PID reappears, use last diagnosis
-        #text_pid.set(str(self.asi.pid))
+        if _name != self.mon.wn_name:
+            self.mon.make_wn_list()  # Make Windows List
+
         if _name == "Playback Stream" and _app.startswith("Telegram"):
             _name = "Media viewer"  # Telegram's name in mon.wn_name
 
@@ -437,9 +545,10 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.vars["wn_xid_hex"] = self.mon.wn_xid_hex
 
         if _name.endswith(" - YouTube"):  # YouTube window found?
-            self.checkNewName(_name)
+            if not self.checkNewName(_name):
+                # If a new name, then av_start has been set
+                self.vars["av_start"] = 0.0
             # Due to new sink-input, an Ad or video is playing, find out which one
-            self.vars["av_start"] = 0.0  # 2025-07-24 Added A/V Check
             self.vars["ad_start"] = 0.0
             self.vars["video_start"] = 0.0
 
@@ -488,7 +597,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         """
 
         if _name == self.vars["last_name"]:  # New YouTube video name?
-            return  # Same video, nothing to do
+            return False  # Same video, nothing to do
 
         self.vars["last_name"] = _name
         self.vars["yt_start"] = self.vars["pav_start"]
@@ -502,14 +611,19 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.sb2.highlight_pattern(_time, "blue")
 
         if self.mon.wn_is_fullscreen is True:
-            return  # Already full screen, nothing to force
+            self.vars["av_start"] = time.time()
+            self.updateDuration()
+            return True  # Already full screen, nothing to force
 
         # YT fullscreen provides consistent ad/video progress bar coordinates
-        os.popen('xdotool key f')  # YT fullscreen shortcut key
+        os.popen('xdotool key f &')  # YT fullscreen shortcut key in background
         self.mon.wn_is_fullscreen = True
         self.updateRows()
         self.insertSB2("Set YouTube fullscreen")
         self.sb2.highlight_pattern("fullscreen", "yellow")
+        self.vars["av_start"] = time.time()  # Set A/V Check time after fullscreen
+        self.updateDuration()
+        return True  # A new window name hsa been discovered
 
     def waitAdOrVideo(self):
         """ YouTube PulseAudio sink-input is starting up when:
@@ -602,23 +716,35 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
     # noinspection SpellCheckingInspection
     def waitAdSkip(self):
-        """ YouTube Ad is running.
-            ad_started > 0 and video_started = 0.
-            Wait 3.2 seconds.
-            If color matches, send click to skip button coordinates.
+        """ Called when YouTube Ad is running.
+            Caller discovered ad_start != 0 and video_start == 0.
+
+            Wait 3.2 seconds before checking if ad skip button color appears:
+                If color matches, send click to skip button coordinates.
+                If color doesn't disappear after 0.45 seconds, send another click.
+
         """
 
         _who = self.who + "waitAdSkip():"
-        if time.time() < 3.2 + self.vars["ad_start"]:
-            return  # Too soon to check because ad can be white
+        if time.time() < GLO['YT_SKIP_BTN_WAIT'] + self.vars["ad_start"]:
+            return  # Delay button check because an ad can be white too
 
         self.updateDuration()  # Force "Ad skip button color check" status display
         try:
             _x, _y = GLO["YT_SKIP_BTN_POINT"]
         except AttributeError:  # Coordinates for skip button unknown
             return  # This will repeat test forever but overhead is low.
+        try:
+            _x2, _y2 = GLO["YT_SKIP_BTN_POINT2"]
+        except (AttributeError, ValueError):
+            _x2 = _y2 = None  # Optional not-while coordinates undefined
 
         _tk_clr = self.pi.get_colors(_x, _y)  # Get color
+        if _x2 and _y2:
+            _tk_clr2 = self.pi.get_colors(_x2, _y2)  # Get color
+        else:
+            _tk_clr2 = "#808080"  # Color when non-white coordinates undefined
+
         if _tk_clr != GLO["YT_SKIP_BTN_COLOR"]:
             if self.skip_clicked > 0.0:
                 # Skip button clicked last loop turn off checking.
@@ -628,12 +754,36 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 v3_print(_who)
                 v3_print("  Color found at: [" + str(_x) + "," + str(_y) + "]",
                          "is:", _tk_clr)
-                v3_print("  Waiting for Ad skip button color to appear...")
-            return  # Not skip button color
+                v3_print("  Waiting for Ad skip button white color to appear...")
+            return  # Skip button has not been clicked yet
 
-        # .34 too short of time for YouTube to make button disappear. Wait .5
-        if time.time() < self.skip_clicked + 0.15:
-            return  # Too soon to assume last click failed
+        ''' At this point right tip of Ad skip Button triangle is confirmed
+            to be white because _tk_clr == GLO["YT_SKIP_BTN_COLOR"]. 
+            
+            If near non-white color is not white it's confirmed to be an
+            Ad Skip Button mounted. If near non-white color is also white this
+            is an Ad with a white background. _tk_clr2 == GLO["YT_SKIP_BTN_COLOR"] 
+        '''
+        if _tk_clr2 == GLO["YT_SKIP_BTN_COLOR"]:
+            v3_print(_who)
+            v3_print("  Color found at: [" + str(_x2) + "," + str(_y2) + "]",
+                     "is:", _tk_clr2)
+            v3_print("  Waiting for Ad skip button non-white color to appear...")
+            return  # Skip button has not been clicked yet
+
+        # If a click was already sent, wait before sending another to give the last
+        #   click a chance to grab.
+        if time.time() < self.skip_clicked + GLO['YT_SKIP_BTN_WAIT2']:
+            # 0.15, 0.25, 0.35 too short for YouTube button to disappear.
+            #   Wait 0.45 seconds (GLO['YT_SKIP_BTN_WAIT2']) in HomA Preferences.
+            # NOTE: 0.25 works ok until ffmpeg volume analyzer is run. Then the
+            #       CPU temperature reached 94 degrees and CPU usage was 63%.
+            v3_print(_who)
+            v3_print("  Ad skip button color found:",
+                     "'" + GLO["YT_SKIP_BTN_COLOR"] + "'.")
+            v3_print("  Waiting for Ad skip button color to disappear...")
+            return  # Too soon to assume last click was too early.
+            # If last click worked the second click causes video pause.
 
         ext.t_init("4 xdotool commands")
         _active = os.popen('xdotool getactivewindow').read().strip()
@@ -645,6 +795,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.insertSB2("Ad skip button mouse click")
 
         if len(_active) > 4:
+            # Ocassionally xdotool doesn't reactivate window. Do it manually.
             os.popen('xdotool windowfocus ' + _active)
             os.popen('xdotool windowactivate ' + _active)
         else:
@@ -719,8 +870,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         old_status = self.text_status.get()
         _dur = 0.0
 
-        if self.vars["ad_start"] > 0.0 and _now > 3.2 + self.vars["ad_start"]:
-            _dur = _now - self.vars["ad_start"] - 3.2
+        if self.vars["ad_start"] > 0.0 and \
+                _now > GLO['YT_SKIP_BTN_WAIT'] + self.vars["ad_start"]:
+            _dur = _now - self.vars["ad_start"] - GLO['YT_SKIP_BTN_WAIT']
             _status = "Ad skip button color check"
             if old_status != _status:
                 self.insertSB2(_status)
@@ -747,10 +899,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
     def monitorVideos(self):
         """ Monitor Pulse Audio for new sinks.
 
-            2025-07-10 TODO:
-                New variable GLO['YT_SKIP_BTN_WAIT'] = 3.2
-                New variable GLO['YT_SKIP_BTN_WAIT2'] = 0.15
-
         FULLSCREEN NOTES:
             Wnck.Screen.Window.fullscreen() isn't supported in version 3.18.
             wmctrl -ir hex_win -b toggle,fullscreen doesn't remove YT menus.
@@ -758,14 +906,16 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         AD SKIP NOTES:
             False positives when only looking for a single white dot because
-                looking too soon < 3.2 seconds will see white dot in ad
-                and not in the ad skip button resulting in ad pause on click.
+                looking too soon < 3.2 seconds (GLO['YT_SKIP_BTN_WAIT']) will
+                see white dot in ad and not in the ad skip button resulting
+                in ad pause on click.
             Gtk mouse click only works on GTK windows
             Python pyautogui click only works on primary monitor
             Browser previous history (<ALT>+<Left Arrow>) followed by forward
                 (<ALT>+<Right Arrow>) works sometimes but can sometimes take
-                3.2 seconds which an Ad skip Button Click would take. Sometimes
-                YouTube restarts video at beginning which totally breaks flow.
+                3.2 (GLO['YT_SKIP_BTN_WAIT']) seconds which an Ad skip Button
+                Click would take. Sometimes YouTube restarts video at beginning
+                which totally breaks flow.
             Cannot skip Ad on YouTube using keyboard:
                 https://webapps.stackexchange.com/questions/100869/
                     keyboard-shortcut-to-close-the-ads-on-youtube
@@ -782,7 +932,10 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 break  # exiting app
 
             try:
-                self.vum.update_display()  # paint LED meters reflecting amplitude
+                _now = time.time()
+                if _now >= self.last_vum_update + 0.032:
+                    self.vum.update_display()  # paint LED meters reflecting amplitude
+                    self.last_vum_update = _now
             except (tk.TclError, AttributeError):
                 break  # Break in order to terminate vu_meter.py below
 
@@ -1002,13 +1155,11 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                      ext.h(self.last_refresh_time), " >  now: ", ext.h(now))
             now = self.last_refresh_time  # Reset for proper sleep time
 
-        ''' Sleep remaining time to match GLO['REFRESH_MS'] '''
+        ''' Sleep remaining time to match GLO['YT_REFRESH_MS'] '''
         self.update()  # Process everything in tkinter queue before sleeping
-        sleep = GLO['REFRESH_MS'] - int(now - self.last_refresh_time)
+        sleep = GLO['YT_REFRESH_MS'] - int(now - self.last_refresh_time)
         sleep = sleep if sleep > 0 else 1  # Sleep minimum 1 millisecond
-        if sleep == 1:
-            v0_print(self.formatTime(), _who, "Only sleeping 1 millisecond")
-        self.after(sleep)  # Sleep until next GLO['REFRESH_MS'] (30 to 60 fps)
+        self.after(sleep)  # Sleep until next GLO['YT_REFRESH_MS'] (30 to 60 fps)
         self.last_refresh_time = time.time()
 
         return self.winfo_exists()  # Return app window status to caller
