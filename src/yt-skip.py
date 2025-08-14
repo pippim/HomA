@@ -449,7 +449,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.sb2_time = _time
         return _t
 
-    def formatTime(self, _time=None):
+    def formatTime(self, _time=None, dec=True):
         """ Format passed time or current time if none passed.
         import datetime
         """
@@ -459,9 +459,19 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         else:
             dt_time = dt.datetime.now()
 
-        formatted_time = dt_time.strftime("%H:%M:%S.") + \
-            dt_time.strftime("%f")[:2]
+        formatted_time = dt_time.strftime("%H:%M:%S")
+        if dec:
+            formatted_time += "." + dt_time.strftime("%f")[:2]
         return formatted_time
+
+    def formatXY(self, _x, _y):
+        """ Return 'x=9,   y=9   ' to
+                   'x=9999,y=9999'
+        """
+        _who = self.who + "formatXY():"
+        _x = str(_x) + ","
+        _y = str(_y)
+        return 'x=' + _x.ljust(6) + 'y=' + _y.ljust(5)
 
     def buildPavSB(self, _sink_inputs):
         """ Build self.pav_sb and self.asi (last active sink-input) """
@@ -546,8 +556,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         if _name.endswith(" - YouTube"):  # YouTube window found?
             if not self.checkNewName(_name):
-                # If a new name, then av_start has been set
-                self.vars["av_start"] = 0.0
+                # When new video, av_start already set to time.time()
+                self.vars["av_start"] = 0.0  # Same video as previous
             # Due to new sink-input, an Ad or video is playing, find out which one
             self.vars["ad_start"] = 0.0
             self.vars["video_start"] = 0.0
@@ -595,7 +605,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 and removes icons and search bars.
 
         """
-
+        _who = self.who + "checkNewName():"
         if _name == self.vars["last_name"]:  # New YouTube video name?
             return False  # Same video, nothing to do
 
@@ -613,6 +623,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         if self.mon.wn_is_fullscreen is True:
             self.vars["av_start"] = time.time()
             self.updateDuration()
+            v1_print(self.formatTime(), _who,
+                     "YouTube window already fullscreen:", self.mon.wn_dict['xid_hex'])
             return True  # Already full screen, nothing to force
 
         # YT fullscreen provides consistent ad/video progress bar coordinates
@@ -623,6 +635,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.sb2.highlight_pattern("fullscreen", "yellow")
         self.vars["av_start"] = time.time()  # Set A/V Check time after fullscreen
         self.updateDuration()
+        v1_print(self.formatTime(), _who,
+                 "YouTube window forced fullscreen:", self.mon.wn_dict['xid_hex'])
         return True  # A new window name hsa been discovered
 
     def waitAdOrVideo(self):
@@ -632,10 +646,29 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             os.stat() configuration file to see if modification time
                 has changed. If changed, reread coordinates and colors.
 
-            Find out if Ad or Video by testing colors @ coordinates.
+            Find out if Ad or Video by testing colors @ coordinates. Always
+                use the Ad coordinates because Video progress bar balloons
+                when mouse hovers over the progress bar.
 
             If stuck in "A/V Check" loop for two seconds assume video
                 already playing.
+
+            2025-08-13 y-offsets changed +5. Had to change 997 to 1002.
+
+                YT_AD_BAR_COLOR     #ffcc00
+                YT_AD_BAR_POINT     [35, 1002]
+                YT_VIDEO_BAR_COLOR  #ff0033
+                YT_VIDEO_BAR_POINT  [35, 1002]
+                YT_SKIP_BTN_COLOR   #ffffff
+                YT_SKIP_BT_POINT    [1830, 916]
+                YT_SKIP_BTN_COLOR2  #3f3f3f
+                YT_SKIP_BT_POINT2   [1834, 908]
+
+            v2 output
+
+99:99:99.99 waitAdOrVideo(): [x,y] = [9999, 9999] is #a1b2c3. Count 999 Dur 99.99
+99:99:99.99 waitAdSkip(): C1 [x,y] = [9999, 9999] is #a1b2c3. Count 999 Dur 99.99
+99:99:99.99 waitAdSkip(): C2 [x,y] = [9999, 9999] is #a1b2c3. Count 999 Dur 99.99
         """
 
         _who = self.who + "waitAdOrVideo():"
@@ -646,21 +679,21 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.insertSB2("Read newer preferences: " +
                            self.formatTime(self.this_stat.st_mtime))
             glo.openFile()
-            v1_print(_who, "New configuration time:",
+            v1_print(self.formatTime(), _who, "New configuration time:",
                      self.formatTime(self.this_stat.st_mtime))
             self.last_stat = self.this_stat
 
         try:
             _x, _y = GLO["YT_AD_BAR_POINT"]
         except AttributeError:
-            # TODO: display message and exit App.
-            return  # This will repeat test forever but overhead is low.
+            v0_print(self.formatTime(), _who,
+                     'failure: _x, _y = GLO["YT_AD_BAR_POINT"]')
+            return  # Tested at startup and should never happen
 
         if self.vars["av_start"] == 0.0:
             self.vars["av_start"] = time.time()  # "A/V check" start time
             v2_print(self.formatTime(self.vars["av_start"]), _who,
                      'self.vars["av_start"] was 0.0')
-            # Will wait maximum of two seconds before assuming video is playing
 
         def setVideo(_text):
             """ Shared function for knowing or assuming video has started """
@@ -677,6 +710,11 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.vars["ad_start"] = time.time()
             self.vars["av_start"] = 0.0
             self.vars["video_start"] = 0.0  # 2025-07-15 Extra insurance
+
+            v2_print(self.formatTime(), _who)
+            v2_print("  Color found at: [" + str(_x) + "," + str(_y) + "]",
+                     "is:", _tk_clr)
+            v2_print("  Ad progress bar found.")
 
             # If already muted, this is a duplicate
             _vol = self.audio.pav.get_volume(str(self.asi.index), print_error=False)
@@ -700,17 +738,24 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         elif _tk_clr == GLO["YT_VIDEO_BAR_COLOR"] and self.vars["video_start"] == 0.0:
             text_str = "Video playing"
             setVideo(text_str)
+
+            v2_print(self.formatTime(), _who)
+            v2_print("  Color found at: [" + str(_x) + "," + str(_y) + "]",
+                     "is:", _tk_clr)
+            v2_print("  Video progress bar found.")
             return
 
         else:
-            v2_print(_who)
+            v2_print(self.formatTime(), _who)
             v2_print("  Color found at: [" + str(_x) + "," + str(_y) + "]",
                      "is:", _tk_clr)
             v2_print("  Waiting for Ad or Video color to appear...")
 
-        if time.time() > self.vars["av_start"] + 2.0\
-                and self.vars["ad_start"] == 0.0 and self.vars["video_start"] == 0.0:
-            v1_print(_who, "A/V Check timeout. Assume video continuing.")
+        if time.time() > self.vars["av_start"] + 2.0 \
+                and self.vars["ad_start"] == 0.0 \
+                and self.vars["video_start"] == 0.0:
+            v1_print(self.formatTime(), _who,
+                     "A/V Check timeout. Assume video already playing.")
             text_str = "Assume video"
             setVideo(text_str)
 
@@ -751,10 +796,10 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 self.vars["ad_start"] = 0.0  # Turn off ad running
                 self.skip_clicked = 0.0  # Reset for next skip click test cycle
             else:
-                v3_print(_who)
-                v3_print("  Color found at: [" + str(_x) + "," + str(_y) + "]",
+                v2_print(self.formatTime(), _who)
+                v2_print("  Color found at: [" + str(_x) + "," + str(_y) + "]",
                          "is:", _tk_clr)
-                v3_print("  Waiting for Ad skip button white color to appear...")
+                v2_print("  Waiting for Ad skip button white color to appear...")
             return  # Skip button has not been clicked yet
 
         ''' At this point right tip of Ad skip Button triangle is confirmed
@@ -765,10 +810,10 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             is an Ad with a white background. _tk_clr2 == GLO["YT_SKIP_BTN_COLOR"] 
         '''
         if _tk_clr2 == GLO["YT_SKIP_BTN_COLOR"]:
-            v3_print(_who)
-            v3_print("  Color found at: [" + str(_x2) + "," + str(_y2) + "]",
+            v2_print(self.formatTime(), _who)
+            v2_print("  Color found at: [" + str(_x2) + "," + str(_y2) + "]",
                      "is:", _tk_clr2)
-            v3_print("  Waiting for Ad skip button non-white color to appear...")
+            v2_print("  Waiting for Ad skip button non-white color to appear...")
             return  # Skip button has not been clicked yet
 
         # If a click was already sent, wait before sending another to give the last
@@ -778,10 +823,10 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             #   Wait 0.45 seconds (GLO['YT_SKIP_BTN_WAIT2']) in HomA Preferences.
             # NOTE: 0.25 works ok until ffmpeg volume analyzer is run. Then the
             #       CPU temperature reached 94 degrees and CPU usage was 63%.
-            v3_print(_who)
-            v3_print("  Ad skip button color found:",
+            v2_print(self.formatTime(), _who)
+            v2_print("  Ad skip button color found:",
                      "'" + GLO["YT_SKIP_BTN_COLOR"] + "'.")
-            v3_print("  Waiting for Ad skip button color to disappear...")
+            v2_print("  Waiting for Ad skip button color to disappear...")
             return  # Too soon to assume last click was too early.
             # If last click worked the second click causes video pause.
 
@@ -793,14 +838,18 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         self.skip_clicked = time.time()  # When skip color disappears, it is success
         self.insertSB2("Ad skip button mouse click")
+        v2_print(self.formatTime(), _who)
+        v2_print("  Mouse click sent to coordinates: ["
+                 + str(_x) + ',' + str(_y) + "].")
 
         if len(_active) > 4:
             # Ocassionally xdotool doesn't reactivate window. Do it manually.
             os.popen('xdotool windowfocus ' + _active)
             os.popen('xdotool windowactivate ' + _active)
+            v2_print("  Restoring previous active window:", _active)
         else:
-            v0_print(self.formatTime(), _who,
-                     "Could not find active window. Result:", _active)
+            v0_print(self.formatTime(dec=False), _who,
+                     "Could not restore active window: '" + str(_active) + "'")
         ext.t_end("no_print")  # 4 xdotool commands: 0.0370068550 to 0.1740691662
 
     def updateRows(self):
@@ -899,16 +948,18 @@ class Application(DeviceCommonSelf, tk.Toplevel):
     def monitorVideos(self):
         """ Monitor Pulse Audio for new sinks.
 
+        2025-08-11 - Reboot and reset screens last night and today y-offsets
+            dropped down by 62 pixels. Ad/Video progress bars can't be seen.
+            Running `ssr`, and begin recording, shows:
+            - [X11Input::Init] Screen 1: x1 = 0, y1 = 62, x2 = 1920, y2 = 1142
+            - [X11Input::Init] Dead space 0: x1 = 0, y1 = 0, x2 = 1920, y2 = 62
+
         FULLSCREEN NOTES:
             Wnck.Screen.Window.fullscreen() isn't supported in version 3.18.
             wmctrl -ir hex_win -b toggle,fullscreen doesn't remove YT menus.
-            Use 'xdotool key "f"' instead.
+            Use 'xdotool key "f"' for YouTube fullscreen method.
 
-        AD SKIP NOTES:
-            False positives when only looking for a single white dot because
-                looking too soon < 3.2 seconds (GLO['YT_SKIP_BTN_WAIT']) will
-                see white dot in ad and not in the ad skip button resulting
-                in ad pause on click.
+        AD SKIP BUTTON CLICK NOTES:
             Gtk mouse click only works on GTK windows
             Python pyautogui click only works on primary monitor
             Browser previous history (<ALT>+<Left Arrow>) followed by forward
@@ -946,9 +997,10 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 self.buildPavSB(sink_inputs)  # Build scrollbox and self.asi
                 self.mon.make_wn_list()  # Rebuild list of active DM windows
                 if self.matchWindow():
-                    v1_print(_who, "Matching window:", self.mon.wn_dict['xid_hex'])
+                    v1_print(self.formatTime(), _who,
+                             "Matching window:", self.mon.wn_dict['xid_hex'])
                 else:
-                    v1_print(_who, "Matching window NOT FOUND!")
+                    v1_print(self.formatTime(), _who, "Matching window NOT FOUND!")
 
                 self.updateRows()  # 2025-07-03 - Handles self.mon.wn_dict is blank.
                 last_sink_inputs = sink_inputs  # deepcopy NOT required
@@ -1143,11 +1195,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         # Speedy derivative called by CPU intensive methods.
         if not tk_after:  # Skip tkinter update and 16 to 33ms sleep
             return self.winfo_exists()  # Application window destroyed?
-
-        minute = ext.h(now).split(":")[1]  # Current minute for this hour
-        if minute != self.last_minute:  # Get sunlight percentage every minute
-            v2_print(_who, ext.t(), "minute changed:", minute)
-            self.last_minute = minute
 
         now = time.time()  # Time changed after .Sensors() and .Rediscover()
         if self.last_refresh_time > now:

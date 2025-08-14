@@ -795,6 +795,7 @@ parser.add_argument('-v', '--verbose1', action='store_true')  # Print Overview
 parser.add_argument('-vv', '--verbose2', action='store_true')  # Print Functions
 parser.add_argument('-vvv', '--verbose3', action='store_true')  # Print Commands
 p_args = parser.parse_args()
+spamming = False  # 2025-08-11 undefined when at bottom
 
 
 def reset_spam():
@@ -1553,7 +1554,7 @@ def display_edid():
 
 glo = Globals()  # Global variables instance used everywhere
 GLO = glo.dictGlobals  # Default global dictionary. Live read in glo.openFile()
-spamming = False  # Used by spam_print for new line control
+#spamming = False  # Used by spam_print for new line control
 
 
 # End of homa_common.py
