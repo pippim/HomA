@@ -796,13 +796,17 @@ parser.add_argument('-vv', '--verbose2', action='store_true')  # Print Functions
 parser.add_argument('-vvv', '--verbose3', action='store_true')  # Print Commands
 p_args = parser.parse_args()
 spamming = False  # 2025-08-11 undefined when at bottom
+last_spam_callback = None
 
 
 def reset_spam():
     """ Reset spam printing to turn it off for regular print. """
-    global spamming
+    global spamming, last_spam_callback
     if spamming:
+        if last_spam_callback:
+            last_spam_callback()
         spamming = False
+        last_spam_callback = None
         print()
 
 
@@ -810,10 +814,19 @@ def spam_print(*args, **kwargs):
     """ Spam printing same line repeatedly by removing '\n' """
     if p_args.silent:
         return
-    global spamming
+    global spamming, last_spam_callback
     if not spamming:
-        print()
+        # print()  # For first spam print, a new line is required.
+        # 2025-08-17 disable initial blank line for yt-skip.py, check homa.py
         spamming = True
+
+    if 'last_spam_callback' in kwargs:
+        # Only required on first spam_print() call but no harm repeating
+        last_spam_callback = kwargs.pop('last_spam_callback')
+
+    if 'append_spam' in kwargs:
+        _append_spam = kwargs.pop('append_spam')  # True but doesn't matter
+        print(*args, end="", **kwargs)  # print at end of spam
 
     if args:  # Check if *args is not empty
         first_arg = args[0]  # This code from google search AI

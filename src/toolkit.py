@@ -3533,6 +3533,7 @@ def scroll_defaults(scrollbox, tabs=None):
     scrollbox.tag_config('green', foreground='green')
     scrollbox.tag_config('black', foreground='black')
     scrollbox.tag_config('gray', foreground='gray')
+    scrollbox.tag_config('orange', foreground='orange')  # 2025-08-18
 
     # Highlighting background colors
     scrollbox.tag_config('yellow', background='yellow')
