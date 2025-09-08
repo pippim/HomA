@@ -2375,6 +2375,50 @@ https://stackoverflow.com/questions/2829613/how-do-you-tell-if-a-string-contains
         if self.powerStatus != "OFF":
             return False  # Sony power status is "ON" or "?" or "Error:"
 
+        # noinspection SpellCheckingInspection
+        ''' 2025-09-03 Error after 991 jobs cleared in GATTToolJobs()
+Traceback (most recent call last):
+  File "./homa.py", line 7613, in <module>
+    main()
+  File "./homa.py", line 7607, in main
+    app = Application(root)  # Treeview of ni.discovered[{}, {}...{}]
+  File "./homa.py", line 4427, in __init__
+    while self.refreshApp():  # Run forever until quit
+  File "./homa.py", line 5434, in refreshApp
+    self.refreshAllPowerStatuses()  # Display "ON", "OFF" or "?"
+  File "./homa.py", line 5863, in refreshAllPowerStatuses
+    inst.getPower()  # Get the power status for device
+  File "./homa.py", line 4122, in getPower
+    self.startDevice()  # Will test self.BluetoothStatus attribute.
+  File "./homa.py", line 3227, in startDevice
+    self.turnOn()
+  File "./homa.py", line 4163, in turnOn
+    self.breatheColors()  # Start breathing
+  File "./homa.py", line 3868, in breatheColors
+    if not processStep():
+  File "./homa.py", line 3861, in processStep
+    refresh(sleep_ms)  # Normal / Fast Refresh in loop
+  File "./homa.py", line 3784, in refresh
+    self.app.refreshApp(tk_after=tk_after)
+  File "./homa.py", line 5417, in refreshApp
+    self.sonySaveInst.checkSonyEvents()  # 2025-06-01 new method
+  File "./homa.py", line 2344, in checkSonyEvents
+    if self.checkPowerOffSuspend(forgive=True):  # check "OFF"
+  File "./homa.py", line 2374, in checkPowerOffSuspend
+    self.getPower(forgive=forgive)
+  File "./homa.py", line 2428, in getPower
+    reply_dict = ni.curl(JSON_str, "system", self.ip, RESTid, forgive=forgive)
+  File "./homa.py", line 1049, in curl
+    event = self.runCommand(command_line_list, _who, forgive=forgive)
+  File "/home/rick/HomA/homa_common.py", line 242, in runCommand
+    pipe = sp.Popen(self.cmdCommand, stdout=sp.PIPE, stderr=sp.PIPE)
+  File "/usr/lib/python2.7/dist-packages/subprocess32.py", line 789, in __init__
+    errread, errwrite) = self._get_handles(stdin, stdout, stderr)
+  File "/usr/lib/python2.7/dist-packages/subprocess32.py", line 1276, in _get_handles
+    errread, errwrite = _create_pipe()
+OSError: [Errno 24] Too many open files
+        
+        '''
         v1_print(_who, "Suspending due to Sony TV powerStatus:", self.powerStatus)
 
         return True  # app.refreshApp will suspend system now

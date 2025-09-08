@@ -184,7 +184,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.tt = toolkit.ToolTips(print_error=print_error)
 
         ''' Set program icon in taskbar. '''
-        img.taskbar_icon(self, 64, 'red', 'green', 'blue', char='AS')
+        img.taskbar_icon(self, 64, 'green', 'white', 'red', char='YT')
 
         ''' Save Toplevel OS window ID for minimizing window '''
         self.buildButtonBar()  # Must be called after Tooltips defined
@@ -196,7 +196,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.close_btn = None  # Close button on button bar to control tooltip
         self.main_help_id = "HelpNetworkDevices"  # Toggles to HelpSensors and HelpDevices
 
-        self.main_frm = self.audio_frm = self.sb2 = self.vum = None
+        self.main_frm = self.audio_frm = self.yt_sb = self.vum = None
         self.pa_sb = None
         self.mon = monitor.Monitors()  # To get Wnck Windows
         self.pi = toolkit.PointerInspector(None, mon=self.mon)  # To get color at coordinates
@@ -230,7 +230,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.pa_sb.configure(tabs=tabs, wrap=tk.WORD)
         self.pa_sb.bind("<Configure>", reset_tabs)
 
-        line = "Input\tCorked\tApplication\tVideo name\n"
+        line = "Input\tCorked\tApplication\tWindow title\n"
         self.pa_sb.insert("end", line + "\n", "pav_sb_indent")
 
         # Display Audio. Rows 0 to 89 available in self
@@ -247,27 +247,28 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.audio_frm.grid_columnconfigure(2, minsize=600, weight=1)  # scrollbox
 
         # Status scrollbox Text widget in third column, spanning 9 rows
-        self.sb2 = toolkit.CustomScrolledText(self.audio_frm, state="normal", font=g.FONT,
-                                              height=11, borderwidth=15, relief=tk.FLAT)
-        self.sb2.grid(row=0, column=2, rowspan=9, padx=3, pady=3, sticky=tk.NSEW)
-        toolkit.scroll_defaults(self.sb2)  # Default tab stops are too wide
+        self.yt_sb = toolkit.CustomScrolledText(
+            self.audio_frm, state="normal", font=g.FONT,
+            height=11, borderwidth=15, relief=tk.FLAT)
+        self.yt_sb.grid(row=0, column=2, rowspan=9, padx=3, pady=3, sticky=tk.NSEW)
+        toolkit.scroll_defaults(self.yt_sb)  # Default tab stops are too wide
         _tabs2 = ("140", "right", "160", "left")  # Time right just, message left just
-        self.sb2.configure(tabs=_tabs2, wrap=tk.WORD)  # Wrap long messages on word
-        self.sb2.tag_config("audio_sb_indent", lmargin2=180)  # wrapped lines hanging indent
+        self.yt_sb.configure(tabs=_tabs2, wrap=tk.WORD)  # Wrap long messages on word
+        self.yt_sb.tag_config("audio_sb_indent", lmargin2=180)  # wrapped lines hanging indent
 
         def _reset_tabs2(event):
             """ https://stackoverflow.com/a/46605414/6929343 """
             event.widget.configure(tabs=_tabs2)
 
-        self.sb2.bind("<Configure>", _reset_tabs2)
+        self.yt_sb.bind("<Configure>", _reset_tabs2)
 
         _sb2_text = "INSTRUCTIONS:\n\n"
         _sb2_text += "1. Messages automatically scroll when videos start.\n\n"
         _sb2_text += '2. Messages can be copied by highlighting text and\n'
         _sb2_text += '     typing <Control> + "C".\n\n'
         _sb2_text += "3. Click Help button below for more instructions.\n\n"
-        self.sb2_time = "00:00:00.00"  # Last formatted time
-        self.insertSB2(_sb2_text)
+        self.yt_sb_last_time = "00:00:00.00"  # Last formatted time
+        self.insertYtSB(_sb2_text)
 
         self.update_idletasks()
 
@@ -320,6 +321,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                     self.ad_start
                     self.av_start
                     self.video_start 
+
+            2025-09-07 NOTE: still getting two hits for Ad and Video Playing
         
         '''
         self.yt_start = 0.0  # time YouTube video name first encountered
@@ -455,9 +458,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.showInfoMsg(title, text, icon="error")
             return False
 
-    def insertSB2(self, msg, _time=None):
-        """ Shared local function """
-        _who = "insertSB2():"
+    def insertYtSB(self, msg, _time=None):
+        """ Insert line into YouTube Scrollbox """
+        _who = "insertYtSB():"
 
         # Suppress repeating HH: then MM: then SS
         _time = self.formatTime(_time=_time)
@@ -465,26 +468,28 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         _m = _time[3:6]  # MM: <--- suppress duplicates
         _s = _time[6:8]  # SS  <--- suppress duplicates
         _f = _time[8:]   # .FF <--- always prints
-        if _time[0:3] == self.sb2_time[0:3]:
+        if _time[0:3] == self.yt_sb_last_time[0:3]:
             _h = "   "  # Suppress hour which hasn't changed
-            if _time[3:6] == self.sb2_time[3:6]:
+            if _time[3:6] == self.yt_sb_last_time[3:6]:
                 _m = "   "  # Suppress hour and minutes are the same
-                if _time[6:8] == self.sb2_time[6:8]:
+                if _time[6:8] == self.yt_sb_last_time[6:8]:
                     _s = "   "  # Suppress hour, minutes and seconds
         _t = _h + _m + _s + _f
         _t = _t.replace("0", " ", 1) if _t.lstrip().startswith("0") else _t
 
         _line = "\t" + _t + "\t" + msg + "\n"
-        self.sb2.insert("end", _line, "audio_sb_indent")
-        self.sb2.see("end")
-        self.sb2_time = _time
+        self.yt_sb.insert("end", _line, "audio_sb_indent")
+        self.yt_sb.see("end")
+        self.yt_sb_last_time = _time
         return _t
 
-    def buildPaSB(self, _sink_inputs):
-        """ Build self.pa_sb and self.asi (last active sink-input)
+    def rebuildPaSB(self, _sink_inputs):
+        """ Rebuild self.pa_sb (PulseAudio Scrollbox) and
+            recreate self.asi (active sink-input)
 
             Called when new Pulse Audio sink-input discovered.
             Called when current sink-input corked status changes.
+            Both instances occur if current sink_inputs list changes.
 
             2025-08-28 ERROR:
 
@@ -499,7 +504,7 @@ Traceback (most recent call last):
     self.monitorVideos()  # Loop until exit
   File "./yt-skip.py", line 1129, in monitorVideos
     if sink_inputs != last_sink_inputs:
-  File "./yt-skip.py", line 517, in buildPaSB
+  File "./yt-skip.py", line 517, in rebuildPaSB
     self.asi = self.asi if bool(self.asi) else last_sink_inputs[-1]
 NameError: global name 'last_sink_inputs' is not defined
 
@@ -528,7 +533,7 @@ pulsectl.pulsectl.PulseError: mserve.py get_pulse_control()
 Failed to connect: <class 'pulsectl.pulsectl.PulseError'> Failed to connect to pulseaudio server
 
         """
-        _who = "buildPaSB():"
+        _who = "rebuildPaSB():"
         self.pa_sb.delete("3.0", "end")  # delete all but headings
         self.asi = ()  # named tuple of active sink input
         self.last_corked_and_dropped = False
@@ -549,7 +554,11 @@ Failed to connect: <class 'pulsectl.pulsectl.PulseError'> Failed to connect to p
                 #   as the last active sink-input index number, override exclusion
                 #   and simply record new corked status. Later Ad or video status
                 #   changes from "muted" or "playing" to "paused".
-                self.last_corked_and_dropped = _si.name == self.last_name
+                if _si.name == self.last_name:
+                    self.last_corked_and_dropped = True
+                    self.resetSpam()  # Just in case spam printing was in progress
+                    v0_print(self.formatTime(), _who,
+                             "'self.last_corked_and_dropped' = 'True'.")
                 continue  # Corked sink-inputs excluded as the last active
 
             if bool(self.asi):
@@ -565,7 +574,7 @@ Failed to connect: <class 'pulsectl.pulsectl.PulseError'> Failed to connect to p
 16:48:48.65 waitAdOrVideo(): Already muted: 45
 16:48:54.04 waitAdSkip(): C2 x=1860, y=916   color: #3f3f3f  | Cnt: 036  | Dur: 2.79
 16:48:54.28 waitAdOrVideo(): x=22,   y=1008  color: #ff0033  | Cnt: 001  | Dur: 0.00
-16:48:54.35 buildPaSB(): Catastrophic error. No Sink Inputs
+16:48:54.35 rebuildPaSB(): Catastrophic error. No Sink Inputs
 Traceback (most recent call last):
   File "./yt-skip.py", line 1569, in <module>
     if not ext.kill_pid_running(vu_meter_pid):
@@ -608,7 +617,11 @@ AttributeError: 'tuple' object has no attribute 'name'
             _test = self.asi.name
         except AttributeError:
             # AttributeError: 'tuple' object has no attribute 'name'
-            self.asi = self.last_sink_inputs[-1]
+            try:
+                self.asi = self.last_sink_inputs[-1]
+            except IndexError:
+                # IndexError: List index out of range
+                v0_print(_who, "self.last_sink_inputs is empty")
         _name = self.asi.name
         _app = self.asi.application
         _pid = self.asi.pid
@@ -631,7 +644,7 @@ AttributeError: 'tuple' object has no attribute 'name'
 
         if not self.mon.get_wn_by_name(_name, pid=_pid):
             if _app == 'ffplay':
-                _name = self.getFFPlayName(_pid)  # mserve ffplay song name
+                _name = self.getFfPlayName(_pid)  # mserve ffplay song name
 
             v3_print(self.formatTime(), _who, "Matching window not found:")
             v3_print("  Name:", _name, " | PID:", _pid)
@@ -656,6 +669,11 @@ AttributeError: 'tuple' object has no attribute 'name'
             # Due to new sink-input, an Ad or video is playing, find out which one
             self.ad_start = 0.0
             self.video_start = 0.0
+            if self.skip_clicked:
+                self.resetSpam()  # Send spam \n print line
+                v0_print(self.formatTime(), _who, "'self.skip_clicked' reset:",
+                         time.time() - self.skip_clicked)
+                self.skip_clicked = 0.0  # Reset 2025-09-02
 
         else:
             updateBlacklist(" | window doesn't end in '- YouTube'")
@@ -664,7 +682,7 @@ AttributeError: 'tuple' object has no attribute 'name'
                  "Matching window:", self.mon.wn_dict['xid_hex'])
         return True  # Matching window found
 
-    def getFFPlayName(self, _pid):
+    def getFfPlayName(self, _pid):
         # noinspection SpellCheckingInspection
         """ If _pid = self.ffplay_pid, return self.ffplay_name and return.
 
@@ -676,7 +694,7 @@ AttributeError: 'tuple' object has no attribute 'name'
             afade=type=in:start_time=0.0:duration=1 -nodisp
 
         """
-        _who = "getFFPlayName():"
+        _who = "getFfPlayName():"
         if _pid == self.ffplay_pid:
             return self.ffplay_name  # pid matches so last name still active
 
@@ -721,22 +739,32 @@ AttributeError: 'tuple' object has no attribute 'name'
                 v1_print(self.formatTime(), _who,
                          "YouTube window forced fullscreen:",
                          self.mon.wn_dict['xid_int'])
-                self.insertSB2("Set YouTube fullscreen")
-                self.sb2.highlight_pattern("fullscreen", "yellow")
+                self.insertYtSB("Set YouTube fullscreen")
+                self.yt_sb.highlight_pattern("fullscreen", "yellow")
             self.av_start = time.time()
             self.updateDuration()
 
             return False  # Same video return for A/V check
 
+        if self.last_corked_and_dropped:
+            self.last_corked_and_dropped = False
+            self.resetSpam()  # Just in case spam printing was in progress
+            v0_print(self.formatTime(), _who,
+                     "New video forcing off: 'self.last_corked_and_dropped'.")
+
+        if self.skip_clicked:
+            self.skip_clicked = 0.0
+            self.resetSpam()  # Just in case spam printing was in progress
+            v0_print(self.formatTime(), _who,
+                     "New video forcing off: 'self.skip_clicked'.")
+
         self.last_name = _name
         self.yt_start = self.vars["pav_start"]
-        self.sb2_time = "00:00:00.00"  # Force next time to print in full
-        _remove = " - YouTube"
-        if _remove in _name:
-            # - YouTube suffix unnecessary detail
-            _name = _name.replace(_remove, "")
-        _time = self.insertSB2(_name, self.yt_start)
-        self.sb2.highlight_pattern(_time, "blue")
+        self.yt_sb_last_time = "00:00:00.00"  # Force next time to print in full
+        if " - YouTube" in _name:  # Remove "- YouTube" suffix from YouTube SB
+            _name = _name.replace(" - YouTube", "")
+        _time = self.insertYtSB(_name, self.yt_start)
+        self.yt_sb.highlight_pattern(_time, "blue")
 
         if self.mon.wn_is_fullscreen is True:
             self.av_start = time.time()
@@ -748,8 +776,8 @@ AttributeError: 'tuple' object has no attribute 'name'
         # YT fullscreen provides consistent ad/video progress bar coordinates
         self.mon.wn_is_fullscreen = True
         self.updateRows()
-        self.insertSB2("Set YouTube fullscreen")
-        self.sb2.highlight_pattern("fullscreen", "yellow")
+        self.insertYtSB("Set YouTube fullscreen")
+        self.yt_sb.highlight_pattern("fullscreen", "yellow")
         if not self.checkInstalled('xdotool'):
             v0_print(_who, "`xdotool` is not installed. Cannot set fullscreen")
             self.av_start = time.time()  # A/V Check even if fullscreen fails
@@ -806,8 +834,8 @@ AttributeError: 'tuple' object has no attribute 'name'
         # Has HomA saved a newer version of the configuration file?
         self.this_stat = os.stat(glo.config_fname)
         if self.this_stat.st_mtime != self.last_stat.st_mtime:
-            self.insertSB2("Read newer preferences: " +
-                           self.formatTime(self.this_stat.st_mtime))
+            self.insertYtSB("Read newer preferences: " +
+                            self.formatTime(self.this_stat.st_mtime))
             glo.openFile()
             # 2025-08-18 Above is NOT updating Ad Skip Button wait time.
             global GLO
@@ -832,7 +860,9 @@ AttributeError: 'tuple' object has no attribute 'name'
                      'self.av_start was 0.0')
 
         def setVideo(_text):
-            """ Shared function for knowing or assuming video has started """
+            """ Shared function for knowing or assuming video (not ad).
+                Video may be paused or playing.
+            """
             _who2 = _who + "setVideo():"
             self.video_start = time.time()
             self.av_start = 0.0
@@ -845,9 +875,11 @@ AttributeError: 'tuple' object has no attribute 'name'
                 #self.video_start = 0.0  # Reset to get matching window
                 # Above causes endless loop
             else:
-                self.insertSB2(_text + " on input #: " + str(self.vars["pav_index"]),
-                               self.video_start)
-                self.sb2.highlight_pattern(_text, "green")
+                self.insertYtSB(_text + " on input #: " + str(self.vars["pav_index"]),
+                                self.video_start)
+                # _text = "Video playing" or "Video paused"
+                _mark = "orange" if "paused" in _text else "green"
+                self.yt_sb.highlight_pattern(_text, _mark)
 
         # noinspection SpellCheckingInspection
         ''' Is YouTube video newly corked? 
@@ -884,14 +916,11 @@ AttributeError: 'tuple' object has no attribute 'name'
             self.av_start = 0.0
             self.video_start = 0.0  # 2025-07-15 Extra insurance
 
-            self.resetSpam()  # Do this before printing
-
+            self.resetSpam()  # Do this before normal printing
             v2_print(self.formatTime(), _who)
-            v2_print("  Color found at: [" + str(_x) + "," + str(_y) + "]",
-                     "color:", _tk_clr)
-            #spam_print("  Ad progress bar found.", append_spam=True)
+            v2_print("  Coordinates: [{}, {}] color: {}".format(_x, _y, _tk_clr))
 
-            # If already muted, this is a duplicate
+            # If already muted, this is a deprecating sink-input
             _vol = self.audio.pav.get_volume(str(self.asi.index), print_error=False)
             if _vol == 24.2424:
                 v0_print(self.formatTime(), _who,
@@ -901,9 +930,9 @@ AttributeError: 'tuple' object has no attribute 'name'
                 self.audio.pav.set_volume(str(self.asi.index), 0)  # Set volume to zero
                 self.updateRows()
                 text_str = "Ad muted"
-                self.insertSB2(text_str + " on input #: " + str(self.vars["pav_index"]),
-                               self.ad_start)
-                self.sb2.highlight_pattern(text_str, "red")
+                self.insertYtSB(text_str + " on input #: " + str(self.vars["pav_index"]),
+                                self.ad_start)
+                self.yt_sb.highlight_pattern(text_str, "red")
 
             else:  # Checking too soon after last mute command issued to PAV
                 v1_print(self.formatTime(), _who,
@@ -911,17 +940,17 @@ AttributeError: 'tuple' object has no attribute 'name'
             return
 
         elif _tk_clr == GLO["YT_VIDEO_BAR_COLOR"] and self.video_start == 0.0:
-            text_str = "Video playing"
+            text_str = "Video "
+            text_str += "paused" if self.last_corked_and_dropped else "playing"
             setVideo(text_str)
-
             v2_print(self.formatTime(), _who)
-            v2_print("  Color found at: [" + str(_x) + "," + str(_y) + "]",
-                     "color:", _tk_clr)
-            #spam_print("  Video progress bar found.", append_spam=True)
+            v2_print("  Coordinates: [{}, {}] color: {}".format(_x, _y, _tk_clr))
             return
 
         # Wait x seconds for progress bar then assume video already playing
-        if time.time() > self.av_start + 2.0 \
+        # 2025-08-31 Change wait time from 2.0 seconds to 4.0 seconds
+        # 2025-09-07 Change wait time from 4.0 seconds to 6.0 seconds
+        if time.time() > self.av_start + 6.0 \
                 and self.ad_start == 0.0 \
                 and self.video_start == 0.0:
             self.resetSpam()
@@ -943,7 +972,7 @@ AttributeError: 'tuple' object has no attribute 'name'
                 "C2" = checking for non-white color immediately outside triangle
                 "SC" = sent ad skip button mouse click
                 "SW" = waiting .45 seconds for ad skip button to disappear
-
+                "AS" = Ad skipped
 
             2025-08-27 Usually Ad Skip color is #ffffff. Today it was #f1f1f1 when
                 ad skip button had focus. TODO: Rewrite to test r>F0, g>F0 and b>F0.
@@ -955,32 +984,36 @@ AttributeError: 'tuple' object has no attribute 'name'
             return  # Delay button check for a few seconds after ad starts
 
         self.updateDuration()  # Force "Ad skip button color check" status display
+
         try:
             _x, _y = GLO["YT_SKIP_BTN_POINT"]
         except AttributeError:  # Coordinates for skip button unknown
             return  # This will repeat test forever but overhead is low.
+
         try:
             _x2, _y2 = GLO["YT_SKIP_BTN_POINT2"]
         except (AttributeError, ValueError):
             _x2 = _y2 = None  # Optional not-while coordinates undefined
 
         _tk_clr = self.pi.get_colors(_x, _y)  # Get color
-        self.printSpam(self.formatTime(), _who, "C1",
-                       self.formatXY(_x, _y), "color:", _tk_clr)
 
         def resetAd():
             """ Ad has finished. """
             self.ad_start = 0.0  # Turn off ad running
             self.skip_clicked = 0.0  # Reset for ad
+            # 2025-08-30 TODO: Review if av_start should be set
             self.resetSpam()  # Turn off spam printing to console
 
         if _tk_clr != GLO["YT_SKIP_BTN_COLOR"]:
             if self.skip_clicked > 0.0:
-                # Skip button clicked earlier and now it's disappeared
-                resetAd()
-                return  # Skip button was clicked and white color disappeared
+                resetAd()  # Ad Skip button clicked and now it's disappeared
+                # 2025-09-01 Just added but never prints, "SW" is last printed
+                self.printSpam(self.formatTime(), _who, "AS",
+                               self.formatXY(_x, _y), "color:", _tk_clr)
             else:
-                return  # Waiting for white color to appear
+                self.printSpam(self.formatTime(), _who, "C1",
+                               self.formatXY(_x, _y), "color:", _tk_clr)
+            return  # Waiting for white color to appear or Ad Skipped
 
         ''' At this point right tip of Ad skip Button triangle is confirmed
             to be white because _tk_clr == GLO["YT_SKIP_BTN_COLOR"]. 
@@ -992,19 +1025,18 @@ AttributeError: 'tuple' object has no attribute 'name'
 
         if _x2 and _y2:
             _tk_clr2 = self.pi.get_colors(_x2, _y2)  # Get color
-            self.printSpam(self.formatTime(), _who, "C2",
-                           self.formatXY(_x2, _y2), "color:", _tk_clr2)
         else:
             _tk_clr2 = "#808080"  # Color when non-white coordinates undefined
+
+        self.printSpam(self.formatTime(), _who, "C2",
+                       self.formatXY(_x2, _y2), "color:", _tk_clr2)
 
         if _tk_clr2 == GLO["YT_SKIP_BTN_COLOR"]:
             # This is a white ad, not white ad button
             #self.resetSpam()
             v3_print(self.formatTime(), _who)
-            v3_print("  Color found at: [" + str(_x2) + "," + str(_y2) + "]",
-                     "color:", _tk_clr2)
+            v3_print("  Coordinates: [{}, {}] color: {}".format(_x2, _y2, _tk_clr2))
             v3_print("  Waiting for Ad skip button non-white color to appear...")
-            #spam_print("  dark missing", append_spam=True)
             return  # Skip button has not been clicked yet
 
         # If a click was already sent, wait before sending another to give the last
@@ -1014,12 +1046,15 @@ AttributeError: 'tuple' object has no attribute 'name'
             #   Wait 0.45 seconds (GLO['YT_SKIP_BTN_WAIT2']) in HomA Preferences.
             # NOTE: 0.25 works ok until ffmpeg volume analyzer is run. Then the
             #       CPU temperature reached 94 degrees and CPU usage was 63%.
+            # 2025-08-31 bump to 0.5 seconds because second click paused video
             #self.resetSpam()
-            v2_print(self.formatTime(), _who)
-            v2_print("  Ad skip button color found:",
+            self.printSpam(self.formatTime(), _who, "SW",
+                           self.formatXY(_x, _y), "color:", _tk_clr)
+
+            v3_print(self.formatTime(), _who)
+            v3_print("  Ad skip button color found:",
                      "'" + GLO["YT_SKIP_BTN_COLOR"] + "'.")
-            v2_print("  Waiting for Ad skip button color to disappear...")
-            #spam_print("  button should disappear", append_spam=True)
+            v3_print("  Waiting for Ad skip button color to disappear...")
             return  # Too soon to assume last click was too early.
             # If last click worked the second click causes video pause.
 
@@ -1028,14 +1063,15 @@ AttributeError: 'tuple' object has no attribute 'name'
             resetAd()
             return
 
+        self.printSpam(self.formatTime(), _who, "SC",
+                       self.formatXY(_x, _y), "color:", _tk_clr)
         self.sendCommand("click", _x, _y)  # xdotool: 0.0370068550 to 0.1740691662
 
         self.skip_clicked = time.time()  # When skip color disappears, it is success
-        self.insertSB2("Ad skip button mouse click")
+        self.insertYtSB("Ad skip button mouse click")
         v2_print(self.formatTime(), _who)
         v2_print("  Mouse click sent to coordinates: ["
                  + str(_x) + ',' + str(_y) + "].")
-        #spam_print("  Button clicked", append_spam=True)
 
     def updateRows(self):
         """ Update rows with pulse audio active sink input (asi)
@@ -1109,7 +1145,7 @@ AttributeError: 'tuple' object has no attribute 'name'
             _dur = _now - self.ad_start - GLO['YT_SKIP_BTN_WAIT']
             _status = "Ad skip button color check"
             if old_status != _status:
-                self.insertSB2(_status)
+                self.insertYtSB(_status)
         elif self.ad_start > 0.0:
             _dur = _now - self.ad_start
             _status = "Ad playing"
@@ -1120,12 +1156,12 @@ AttributeError: 'tuple' object has no attribute 'name'
             _dur = _now - self.vars["pav_start"]
             _status = "A/V check"
             if old_status != _status:
-                self.insertSB2(_status)
+                self.insertYtSB(_status)
         elif self.vars["wn_name"] != "":
             _dur = _now - self.vars["pav_start"]
             _status = "NOT YouTube"
             if old_status != _status:
-                self.insertSB2(_status)
+                self.insertYtSB(_status)
 
         self.text_status.set(_status)
         self.text_duration.set(tmf.mm_ss(_dur))
@@ -1180,11 +1216,35 @@ AttributeError: 'tuple' object has no attribute 'name'
                 break  # Break in order to terminate vu_meter.py below
 
             sink_inputs = self.audio.pav.get_all_inputs()
+            if not bool(self.last_sink_inputs):
+                self.last_sink_inputs = sink_inputs
             self.last_refresh_time = time.time()  # set sleep duration
+
+            '''
+            2025-09-03 Error if `pulseaudio -k` used to reset:
+Traceback (most recent call last):
+  File "./yt-skip.py", line 1632, in <module>
+    main()
+  File "./yt-skip.py", line 1626, in main
+    app = Application(root)  # Main GUI window
+  File "./yt-skip.py", line 355, in __init__
+    self.monitorVideos()  # Loop until exit
+  File "./yt-skip.py", line 1192, in monitorVideos
+    sink_inputs = self.audio.pav.get_all_inputs()
+  File "/home/rick/HomA/vu_pulse_audio.py", line 702, in get_all_inputs
+    for sink in self.pulse.sink_input_list():
+  File "/home/rick/HomA/pulsectl/pulsectl.py", line 563, in _wrapper_method
+    *([index, cb, None] if index is not None else [cb, None]) )
+  File "/usr/lib/python2.7/context lib.py", line 24, in __exit__
+    self.gen.next()
+  File "/home/rick/HomA/pulsectl/pulsectl.py", line 523, in _pulse_op_cb
+    if not self._actions[act_id]: raise PulseOperationFailed(act_id)
+pulsectl.pulsectl.PulseOperationFailed: 946012
+            '''
 
             # New pulse audio sink-input means an Ad or Video play has started
             if sink_inputs != self.last_sink_inputs:
-                self.buildPaSB(sink_inputs)  # Build scrollbox and self.asi
+                self.rebuildPaSB(sink_inputs)  # Build scrollbox and self.asi
                 self.matchWindow(sink_inputs)  # Find matching window for self.asi
                 self.updateRows()  # 2025-07-03 - Handles self.mon.wn_dict is blank
                 self.last_sink_inputs = sink_inputs  # deepcopy NOT required
@@ -1227,9 +1287,10 @@ AttributeError: 'tuple' object has no attribute 'name'
                      str(self.mon.wn_dict['xid_int']))
             os.popen('xdotool key f &')
             time.sleep(0.1)  # sleep stops fullscreen toggling twice by YouTube.
+            # If && was used time.sleep(0.2) is required instead of (0.1)
+            self.resetSpam()  # Just in case spam printing was active
             v0_print(self.formatTime(), _who, 'xdotool windowactivate --sync ' +
                      str(self.mon.wn_dict['xid_int']) + ' && xdotool key f &')
-            # If && was used time.sleep(0.2) is required instead of (0.1)
         else:
             v0_print(self.formatTime(dec=False), _who,
                      "Bad '_command' parameter: '" + str(_command) + "'.")
@@ -1500,10 +1561,9 @@ AttributeError: 'tuple' object has no attribute 'name'
         """ Prevent self.refreshApp rerunning a second error message during
             first error message waiting for acknowledgement
         """
-        self.last_refresh_time = time.time()  # Prevent resume from suspend
+        self.last_refresh_time = time.time()  # Prevent elapsed time methods
         self.refreshApp(tk_after=False)
         self.after(10)
-        #self.update()  # Suspend button stays blue after mouseover ends?
 
     def showInfoMsg(self, title, text, icon="information", align="center"):
         """ Show message with thread safe refresh that doesn't invoke rediscovery.
@@ -1517,9 +1577,30 @@ AttributeError: 'tuple' object has no attribute 'name'
                          title=title, text=text, win_grp=self.win_grp)
 
 
+# Only prints if yt-skip.py started with '-v' or, '-vv' or, '-vvv' parameter.
 v1_print(sys.argv[0], "- YouTube Ad Mute and Skip", " | verbose1:", p_args.verbose1,
          " | verbose2:", p_args.verbose2, "\n  | verbose3:", p_args.verbose3,
          " | fast:", p_args.fast, " | silent:", p_args.silent)
+
+
+def checkVerbose(_level):
+    """ Check if requested verbose level is turned on. Not used for
+        v0_print (level 0 is information only, NOT a verbose level).
+    """
+    if p_args.silent:
+        return False  # Silent mode turns off all verbose levels
+
+    if p_args.verbose1 and _level == 1:
+        return True  # Verbose level is 1 and matches request of 1
+
+    if p_args.verbose2 and 1 <= _level <= 2:
+        return True  # Verbose level is 1 or 2 and matches request of 2
+    
+    if p_args.verbose3 and 1 <= _level <= 3:
+        return True  # Verbose level is 1, 2 or 3 and matches request of 3
+    
+    v0_print("Catastrophic error. Verbose level is not 1, 2 or 3:", _level)
+
 
 ''' Global class instances accessed by various other classes '''
 root = None  # Tkinter toplevel
