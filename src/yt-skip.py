@@ -355,7 +355,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.exitApp()
             return  # Test by making invalid color code > hex f or coordinate > 50000
 
-        self.monitorVideos()  # Loop until exit
+        self.loopForever()  # Loop until exit
 
     def checkRequirements(self):
         """ Check GLO dictionary for colors and coordinates """
@@ -491,47 +491,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             Called when current sink-input corked status changes.
             Both instances occur if current sink_inputs list changes.
 
-            2025-08-28 ERROR:
-
-22:54:17.31 waitAdSkip(): C1 x=1858, y=926   color: #000000  | Cnt: 028  | Dur: 2.73
-22:54:17.66 waitAdOrVideo(): x=19,   y=1013  color: #ff0033  | Cnt: 001  | Dur: 0.00
-Traceback (most recent call last):
-  File "./yt-skip.py", line 1526, in <module>
-    if __name__ == "__main__":
-  File "./yt-skip.py", line 1520, in main
-    ''' Open Main Application GUI Window '''
-  File "./yt-skip.py", line 354, in __init__
-    self.monitorVideos()  # Loop until exit
-  File "./yt-skip.py", line 1129, in monitorVideos
-    if sink_inputs != last_sink_inputs:
-  File "./yt-skip.py", line 517, in rebuildPaSB
-    self.asi = self.asi if bool(self.asi) else last_sink_inputs[-1]
-NameError: global name 'last_sink_inputs' is not defined
-
-            Restart and then new error:
-
-rick@alien:~/HomA$ yt-skip.py
-
-  ######################################################
- //////////////                            \\\\\\\\\\\\\\
-<<<<<<<<<<<<<<   YouTube Ad Mute and Skip   >>>>>>>>>>>>>>
- \\\\\\\\\\\\\\                            //////////////
-  ######################################################
-                    Started: 5:15 AM
-Traceback (most recent call last):
-  File "./yt-skip.py", line 1527, in <module>
-    main()
-  File "./yt-skip.py", line 1521, in main
-    app = Application(root)  # Main GUI window
-  File "./yt-skip.py", line 149, in __init__
-    self.audio = AudioControl()
-  File "/home/rick/HomA/homa_common.py", line 783, in __init__
-    self.pav = vu_pulse_audio.PulseAudio()
-  File "/home/rick/HomA/vu_pulse_audio.py", line 87, in __init__
-    'connect: {} {}'.format(type(err), err))
-pulsectl.pulsectl.PulseError: mserve.py get_pulse_control()
-Failed to connect: <class 'pulsectl.pulsectl.PulseError'> Failed to connect to pulseaudio server
-
         """
         _who = "rebuildPaSB():"
         self.pa_sb.delete("3.0", "end")  # delete all but headings
@@ -570,24 +529,7 @@ Failed to connect: <class 'pulsectl.pulsectl.PulseError'> Failed to connect to p
         except IndexError:
             v0_print(self.formatTime(), _who, "Catastrophic error. No Sink Inputs")
             return ()
-        '''
-16:48:48.65 waitAdOrVideo(): Already muted: 45
-16:48:54.04 waitAdSkip(): C2 x=1860, y=916   color: #3f3f3f  | Cnt: 036  | Dur: 2.79
-16:48:54.28 waitAdOrVideo(): x=22,   y=1008  color: #ff0033  | Cnt: 001  | Dur: 0.00
-16:48:54.35 rebuildPaSB(): Catastrophic error. No Sink Inputs
-Traceback (most recent call last):
-  File "./yt-skip.py", line 1569, in <module>
-    if not ext.kill_pid_running(vu_meter_pid):
-  File "./yt-skip.py", line 1563, in main
-    if yt_skip_pid:
-  File "./yt-skip.py", line 355, in __init__
-    self.monitorVideos()  # Loop until exit
-  File "./yt-skip.py", line 1173, in monitorVideos
-    
-  File "./yt-skip.py", line 589, in matchWindow
-    _name = self.asi.name
-AttributeError: 'tuple' object has no attribute 'name'
-        '''
+
         self.vars["pav_start"] = time.time()
         self.vars["pav_index"] = self.asi.index
         self.vars["pav_application"] = self.asi.application
@@ -1125,6 +1067,23 @@ AttributeError: 'tuple' object has no attribute 'name'
             self.tt_add(label, tt_text)
         return _var
 
+    def updateVuMeter(self):
+        """ Update VU Meter maximum 100 frames per second. """
+        _who = "updateVuMeter():"
+        _now = time.time()
+        if _now < self.last_vum_update + 0.01:
+            return True  # Don't want to update VU Meter too quickly
+
+        try:
+            self.vum.update_display()  # paint LED meters reflecting amplitude
+        except (tk.TclError, AttributeError) as err:
+            v0_print(_who, "Call to self.vum.update_display() failed!")
+            v0_print(" ", err)
+            return False
+
+        self.last_vum_update = _now
+        return True
+
     def updateDuration(self):
         """ Update Status and Duration in 8th & 9th rows.
             Called every second.
@@ -1166,8 +1125,9 @@ AttributeError: 'tuple' object has no attribute 'name'
         self.text_status.set(_status)
         self.text_duration.set(tmf.mm_ss(_dur))
 
-    def monitorVideos(self):
-        """ Monitor Pulse Audio for new sinks. Check if ad progress bar or
+    def updateVideos(self):
+        """ Called from self.loopForever() every 16 to 33 ms.
+            Monitor Pulse Audio for new sinks. Check if ad progress bar or
             video progress bar color is shown. If ad progress bar wait for
             Ad Skip Button to appear and click it.
 
@@ -1196,73 +1156,76 @@ AttributeError: 'tuple' object has no attribute 'name'
             Use:
                 `xdotool mousemove <x> <y> click 1 sleep 0.01 mousemove restore`
 
-        """
-        _who = "monitorVideos():"
 
-        self.last_sink_inputs = []  # Force reread
+        """
+        _who = "updateVideos():"
+
+        sink_inputs = self.audio.pav.get_all_inputs()
+        '''
+        2025-09-03 Error if `pulseaudio -k` used to reset:
+Traceback (most recent call last):
+File "./yt-skip.py", line 1632, in <module>
+main()
+File "./yt-skip.py", line 1626, in main
+app = Application(root)  # Main GUI window
+File "./yt-skip.py", line 355, in __init__
+self.loopForever()  # Loop until exit
+File "./yt-skip.py", line 1192, in loopForever
+sink_inputs = self.audio.pav.get_all_inputs()
+File "/home/rick/HomA/vu_pulse_audio.py", line 702, in get_all_inputs
+for sink in self.pulse.sink_input_list():
+File "/home/rick/HomA/pulsectl/pulsectl.py", line 563, in _wrapper_method
+*([index, cb, None] if index is not None else [cb, None]) )
+File "/usr/lib/python2.7/context lib.py", line 24, in __exit__
+self.gen.next()
+File "/home/rick/HomA/pulsectl/pulsectl.py", line 523, in _pulse_op_cb
+if not self._actions[act_id]: raise PulseOperationFailed(act_id)
+pulsectl.pulsectl.PulseOperationFailed: 946012
+        '''
+
+        # sink-input changes means an Ad or Video started, paused or ended
+        if sink_inputs != self.last_sink_inputs:
+            if not bool(self.last_sink_inputs):
+                # last sink-inputs empty first time so use current sink-inputs
+                self.last_sink_inputs = sink_inputs  # for matchWindow()
+            self.rebuildPaSB(sink_inputs)  # Build scrollbox and self.asi
+            self.matchWindow(sink_inputs)  # X11 window for self.asi
+            self.updateRows()  # 2025-07-03 - Handles no X11 window
+            self.last_sink_inputs = sink_inputs  # deepcopy NOT required
+
+        # YouTube started but Ad or Video started not set yet
+        if self.yt_start != 0.0 and self.ad_start == 0.0 and \
+                self.video_start == 0.0:
+            self.waitAdOrVideo()  # Set yellow Ad bar or red Video bar
+
+        # Is YouTube Ad active?
+        if self.ad_start != 0.0 and self.video_start == 0.0:
+            self.waitAdSkip()  # Wait to click Ad Skip button when it appears
+
+        # Update duration once per second
+        second = ext.h(time.time()).split(":")[2].split(".")[0]
+        if second != self.last_second:
+            self.updateDuration()  # Update status and duration
+            self.last_second = second  # Save current second for next test
+
+    def loopForever(self):
+        """ Loop forever refreshing App every 16 to 33 ms.
+            Update VU Meters display.
+            Call updateVideo() to monitor Pulse Audio for new sinks and Videos. 
+        """
+        _who = "loopForever():"
+
+        _vum_working = True  # Assume VU meter is working
 
         while self and self.winfo_exists():  # Loop until window closed
 
             if not self.refreshApp():  # sleeps 16 to 33 milliseconds
                 break  # exiting app
 
-            try:
-                _now = time.time()
-                # Limit VU meter display updates to 30 frames per second of human eye
-                if _now >= self.last_vum_update + 0.032:
-                    self.vum.update_display()  # paint LED meters reflecting amplitude
-                    self.last_vum_update = _now
-            except (tk.TclError, AttributeError):
-                break  # Break in order to terminate vu_meter.py below
+            if _vum_working:  # VU Meters still working after last display?
+                _vum_working = self.updateVuMeter()
 
-            sink_inputs = self.audio.pav.get_all_inputs()
-            if not bool(self.last_sink_inputs):
-                self.last_sink_inputs = sink_inputs
-            self.last_refresh_time = time.time()  # set sleep duration
-
-            '''
-            2025-09-03 Error if `pulseaudio -k` used to reset:
-Traceback (most recent call last):
-  File "./yt-skip.py", line 1632, in <module>
-    main()
-  File "./yt-skip.py", line 1626, in main
-    app = Application(root)  # Main GUI window
-  File "./yt-skip.py", line 355, in __init__
-    self.monitorVideos()  # Loop until exit
-  File "./yt-skip.py", line 1192, in monitorVideos
-    sink_inputs = self.audio.pav.get_all_inputs()
-  File "/home/rick/HomA/vu_pulse_audio.py", line 702, in get_all_inputs
-    for sink in self.pulse.sink_input_list():
-  File "/home/rick/HomA/pulsectl/pulsectl.py", line 563, in _wrapper_method
-    *([index, cb, None] if index is not None else [cb, None]) )
-  File "/usr/lib/python2.7/context lib.py", line 24, in __exit__
-    self.gen.next()
-  File "/home/rick/HomA/pulsectl/pulsectl.py", line 523, in _pulse_op_cb
-    if not self._actions[act_id]: raise PulseOperationFailed(act_id)
-pulsectl.pulsectl.PulseOperationFailed: 946012
-            '''
-
-            # New pulse audio sink-input means an Ad or Video play has started
-            if sink_inputs != self.last_sink_inputs:
-                self.rebuildPaSB(sink_inputs)  # Build scrollbox and self.asi
-                self.matchWindow(sink_inputs)  # Find matching window for self.asi
-                self.updateRows()  # 2025-07-03 - Handles self.mon.wn_dict is blank
-                self.last_sink_inputs = sink_inputs  # deepcopy NOT required
-
-            # YouTube started but Ad or Video status unknown?
-            if self.yt_start != 0.0 and self.ad_start == 0.0 and \
-                    self.video_start == 0.0:
-                self.waitAdOrVideo()  # Check for yellow Ad bar or red Video bar
-
-            # Is YouTube Ad active?
-            if self.ad_start != 0.0 and self.video_start == 0.0:
-                self.waitAdSkip()  # Click Ad Skip button when it appears
-
-            # Has a new second of time started?
-            second = ext.h(time.time()).split(":")[2].split(".")[0]
-            if second != self.last_second:
-                self.updateDuration()  # Update status and duration
-                self.last_second = second  # Wait for second change to check again
+            self.updateVideos()
 
         # Application shutting down. Is VU meter still running?
         if self.vum and ext.check_pid_running(self.vum.pid):
@@ -1417,7 +1380,7 @@ pulsectl.pulsectl.PulseOperationFailed: 946012
         self.isActive = False  # Signal closing down so methods return
 
         if self.vum and ext.check_pid_running(self.vum.pid):
-            self.vum.terminate()  # Also closed in monitorVideos()
+            self.vum.terminate()  # Also closed in loopForever()
 
         ''' reset to original SAVE_CWD (saved current working directory) '''
         if SAVE_CWD != g.PROGRAM_DIR:

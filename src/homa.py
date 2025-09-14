@@ -3266,7 +3266,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         if self.device is not None:
             v2_print(_who, self.mac, "successfully connected.")
             v2_print(self.device)
-            if GLO['LED_LIGHTS_STARTUP'] is not False:
+            if GLO['LED_LIGHTS_STARTUP'] is True:
                 v2_print(_who, "Turning on LED Light.")
                 self.turnOn()
             else:
@@ -4202,8 +4202,8 @@ $ ps aux | grep gatttool | grep -v grep | wc -l
             if self.suspendPowerOff:
                 self.breatheColors()  # Restart breathing
                 self.suspendPowerOff = 0
-            else:
-                # 2025-04-22 Always turn on breathe colors
+            elif GLO['LED_LIGHTS_STARTUP'] is True:
+                # 2025-09-14 Turn on breathe colors
                 self.breatheColors()  # Start breathing
 
             return self.powerStatus  # Success !
@@ -4462,14 +4462,15 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         ''' If bluetooth LED Light Strips used, resetBluetooth() always required '''
         if self.bleSaveInst:
             self.bleSaveInst.resetBluetooth()
-            self.bleSaveInst.turnOn()
+            if GLO['LED_LIGHTS_STARTUP'] is True:
+                self.bleSaveInst.turnOn()
 
         ''' If Sony TV used, enable Sony Volume controls '''
         self.updateDropdown()
 
         ''' Polling and processing with refresh tkinter loop forever '''
         while self.refreshApp():  # Run forever until quit
-            pass
+            pass  # 2025-09-14 - Redesign like yt-skip.py self.loopForever()
 
     def getWindowID(self, title):
         """ Use wmctrl to get window ID in hex and convert to decimal for xdotool
