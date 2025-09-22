@@ -3645,7 +3645,32 @@ class SearchText:
             self.tt.add_tip(but2, "Close search bar.", anchor="nw")
 
     def search_changed(self, *_args):
-        """ Callback as string variable changes in TK entry """
+        """ Callback as string variable changes in TK entry
+2025-09-15 - Intel processor code name abbreviations
+https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/i915
+
+adlp Alder Lake - 12th Generation
+adls Alder Lake - 12th Generation
+bmg Battlemage architecture, successor to Alchemist (Arc) GPUs
+bxt Broxton, Cancelled in 2016, successor to Cherry Trail
+cml Comet Lake - 10th Generation
+COFFEE Lake (Desktop) - 8th Generation. Same Gen 9.5 graphics technology
+    as Comet Lake. They are supported by the same driver infrastructure?
+COFFEE Lake Refresh - 9th Generation
+cnl Cannon Lake (Mobile) - 8th Generation
+dg1 Entry Level Discrete Graphics Card Xe-LP architecture
+dg2 "Alchemist" - 1st generation of Intel Arc GPU
+ehl Elkhart Lake - Intel Atom x6000E, Celeron, Pentium N / J Series
+glk Gemini Lake - Apollo Lake lower-power replacement
+icl Ice Lake - 10th Generation
+kbl Kaby Lake - 7th Generation
+mtl Meteor Lake - Core Ultra Series 1 mobile late 2023
+rkl Rocket Lake - 11th Generation desktop March 2021
+skl Sky Lake - 6th Generation
+tgl Tiger Lake - 11th Generation Core mobile Willow Cove Core
+xe2lpd
+xe3lpd
+        """
         #if self.keypress_waiting:
         #    print("if self.keypress_waiting:")
         #    # Never executed because can't type faster than search 0.0055580139

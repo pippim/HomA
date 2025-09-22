@@ -2269,7 +2269,7 @@ https://stackoverflow.com/questions/2829613/how-do-you-tell-if-a-string-contains
         self.subwooferPhase = "?"  # Set with getSpeakerSettings()  # normal
         self.subwooferPower = "?"  # Set with getSpeakerSettings()  # on
 
-        self.requires = ['curl']
+        self.requires = ['curl', 'notify-send']
         self.installed = []
         self.checkDependencies(self.requires, self.installed)
         _who = self.who + "__init__():"
@@ -2439,6 +2439,9 @@ OSError: [Errno 24] Too many open files
         if self.volume == self.volumeLast:
             return False
         self.volumeLast = self.volume
+        if not self.checkInstalled('notify-send'):
+            v3_print(_who, "Volume changed but `notify-send` not installed.")
+            return False
         title = self.ip  # 192.168.0.19
         title = self.name if self.name is not None else title  # SONY.LAN
         title = self.alias if self.alias is not None else title  # Sony Bravia KDL TV
@@ -4465,12 +4468,12 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             if GLO['LED_LIGHTS_STARTUP'] is True:
                 self.bleSaveInst.turnOn()
 
-        ''' If Sony TV used, enable Sony Volume controls '''
+        ''' If Sony TV used, enable Sony Volume menu controls '''
         self.updateDropdown()
 
-        ''' Polling and processing with refresh tkinter loop forever '''
+        ''' Polling and processing with refresh tkinter forever loop '''
         while self.refreshApp():  # Run forever until quit
-            pass  # 2025-09-14 - Redesign like yt-skip.py self.loopForever()
+            pass  # 2025-09-14 TODO: Redesign like yt-skip.py self.loopForever()
 
     def getWindowID(self, title):
         """ Use wmctrl to get window ID in hex and convert to decimal for xdotool

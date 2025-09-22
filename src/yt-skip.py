@@ -136,7 +136,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         _who = "__init__():"
 
         self.isActive = True  # Set False when exiting or suspending
-        self.requires = ['ps', 'grep', 'xdotool', 'wmctrl']
+        self.requires = ['ps', 'grep', 'xdotool', 'wmctrl', 'notify-send']
         self.installed = []
         self.checkDependencies(self.requires, self.installed)
 
@@ -172,8 +172,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.rowconfigure(0, weight=1)  # Weight 1 = stretchable row
         self.columnconfigure(0, weight=1)  # Weight 1 = stretchable column
 
-        app_title = "YouTube Ad Mute and Skip"  # Used to find window ID further down
-        self.title(app_title)
+        self.app_title = "YouTube Ad Mute and Skip"  # Used to find window ID
+        self.title(self.app_title)
         self.btn_frm = None  # Used by buildButtonBar(), can be hidden by edit_pref
 
         ''' ChildWindows() moves children with toplevel and keeps children on top '''
@@ -189,8 +189,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         ''' Save Toplevel OS window ID for minimizing window '''
         self.buildButtonBar()  # Must be called after Tooltips defined
         self.update_idletasks()  # Make visible for wmctrl. Verified needed 2025-02-13
-        #GLO["WINDOW_ID"] = getWindowID(app_title)  # Needs Work
-        self.getWindowID(app_title)
+        #GLO["WINDOW_ID"] = getWindowID(self.app_title)  # Needs Work
+        self.getWindowID(self.app_title)
 
         ''' When devices displayed show sensors button and vice versa. '''
         self.close_btn = None  # Close button on button bar to control tooltip
@@ -235,7 +235,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         # Display Audio. Rows 0 to 89 available in self
         if not self.audio.isWorking:
-            self.showInfoMsg("YouTube Ad Mute and Skip",
+            self.showInfoMsg(self.app_title,
                              "PulseAudio isn't working or software is missing.")
             return
 
@@ -298,7 +298,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         while not os.path.isfile(self.vum.AMPLITUDE_LEFT_FNAME):
             self.refreshApp()  # wait another 16ms to 33ms for file to appear.
             if time.time() > _start + 3.0:
-                self.showInfoMsg("YouTube Ad Mute and Skip",
+                self.showInfoMsg(self.app_title,
                                  "Daemon vu_meter.py did not start.")
                 return
 
@@ -325,6 +325,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             2025-09-07 NOTE: still getting two hits for Ad and Video Playing
         
         '''
+        self.pav_count = 0  # How many times PulseAudio Sink-Inputs have changed
         self.yt_start = 0.0  # time YouTube video name first encountered
         self.ad_start = 0.0  # time yellow ad progress bar first detected
         self.av_start = 0.0  # time red video progress bar first detected
@@ -351,15 +352,15 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         self.blacklist = []  # Blacklisted PulseAudio sink-inputs
 
-        if not self.checkRequirements():
+        if not self.checkPreferences():
             self.exitApp()
             return  # Test by making invalid color code > hex f or coordinate > 50000
 
         self.loopForever()  # Loop until exit
 
-    def checkRequirements(self):
+    def checkPreferences(self):
         """ Check GLO dictionary for colors and coordinates """
-        _who = "checkRequirements():"
+        _who = "checkPreferences():"
         _isHex = True  # Contains valid hex color string of "#a1b2c3"
         _isPoint = True  # Valid coordinates > 0 and < 50,000
         _hasAd = True
@@ -444,7 +445,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             _msg += " [x, y]: " + str(GLO[_point_key]) + "\n"
             return _msg
         
-        title = "YouTube Ad Mute and Skip Requirements"
+        title = self.app_title + " Requirements"
         text = "Colors and Coordinates defined in homa.py\n"
         text += buildMessage("YT_AD_BAR_COLOR", "YT_AD_BAR_POINT")
         text += buildMessage("YT_VIDEO_BAR_COLOR", "YT_VIDEO_BAR_POINT")
@@ -460,7 +461,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
     def insertYtSB(self, msg, _time=None):
         """ Insert line into YouTube Scrollbox """
-        _who = "insertYtSB():"
+        _who = "insertYtSB(" + str(self.pav_count) + "):"
 
         # Suppress repeating HH: then MM: then SS
         _time = self.formatTime(_time=_time)
@@ -492,7 +493,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             Both instances occur if current sink_inputs list changes.
 
         """
-        _who = "rebuildPaSB():"
+        _who = "rebuildPaSB(" + str(self.pav_count) + "):"
         self.pa_sb.delete("3.0", "end")  # delete all but headings
         self.asi = ()  # named tuple of active sink input
         self.last_corked_and_dropped = False
@@ -554,7 +555,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             Once a YouTube Video Name is used it stays in video status scrolled
             Text widget until a new name is encountered.
         """
-        _who = "matchWindow():"
+        _who = "matchWindow(" + str(self.pav_count) + "):"
         try:
             _test = self.asi.name
         except AttributeError:
@@ -636,7 +637,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             afade=type=in:start_time=0.0:duration=1 -nodisp
 
         """
-        _who = "getFfPlayName():"
+        _who = "getFfPlayName(" + str(self.pav_count) + "):"
         if _pid == self.ffplay_pid:
             return self.ffplay_name  # pid matches so last name still active
 
@@ -674,7 +675,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 subsequent new videos.
 
         """
-        _who = "checkNewVideo():"
+        _who = "checkNewVideo(" + str(self.pav_count) + "):"
         if _name == self.last_name:  # Is this the sameNew YouTube video name?
             if self.mon.wn_is_fullscreen is False:
                 self.sendCommand("fullscreen")  # YT fullscreen xdotool command
@@ -771,7 +772,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         """
 
-        _who = "waitAdOrVideo():"
+        _who = "waitAdOrVideo(" + str(self.pav_count) + "):"
 
         # Has HomA saved a newer version of the configuration file?
         self.this_stat = os.stat(glo.config_fname)
@@ -875,10 +876,17 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 self.insertYtSB(text_str + " on input #: " + str(self.vars["pav_index"]),
                                 self.ad_start)
                 self.yt_sb.highlight_pattern(text_str, "red")
+                # 2025-09-21 TODO: Check if last_sinks needs to be set to corked.
+                v1_print(self.formatTime(), _who,
+                         "Muting Ad on input: " + str(self.vars["pav_index"]),
+                         "volume: " + str(self.vars["pav_volume"]),
+                         "corked: " + str(self.vars["pav_corked"]))
 
             else:  # Checking too soon after last mute command issued to PAV
                 v1_print(self.formatTime(), _who,
-                         "Already muted: " + str(self.vars["pav_index"]))
+                         "Already muted: " + str(self.vars["pav_index"]),
+                         "volume: " + str(self.vars["pav_volume"]),
+                         "corked: " + str(self.vars["pav_corked"]))
             return
 
         elif _tk_clr == GLO["YT_VIDEO_BAR_COLOR"] and self.video_start == 0.0:
@@ -921,7 +929,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         """
 
-        _who = "waitAdSkip():"
+        _who = "waitAdSkip(" + str(self.pav_count) + "):"
         if time.time() < GLO['YT_SKIP_BTN_WAIT'] + self.ad_start:
             return  # Delay button check for a few seconds after ad starts
 
@@ -1048,7 +1056,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             Column 0 contains label, Column 1 contains passed text which is
             initialized into string variable returned to caller.
         """
-        _who2 = "addRow():"
+        _who = "addRow(" + str(self.pav_count) + "):"
         label = ttk.Label(self.audio_frm, text=label, font=g.FONT)
         label.grid(row=row_no, column=0, sticky=tk.NSEW, padx=15, pady=10)
 
@@ -1125,6 +1133,33 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.text_status.set(_status)
         self.text_duration.set(tmf.mm_ss(_dur))
 
+    def sendNotification(self, _msg, icon=None):
+        """ Send Desktop notification to current active monitor.
+            Called when forcing full screen and muting Ad volume.
+            2025-09-21 Added today. Need more than just speaker icon.
+        """
+        _who = "sendNotification():"
+
+        if not self.checkInstalled('notify-send'):
+            v3_print(_who, "`notify-send` not installed.")
+            return False
+
+        if icon is None:
+            icon = "/usr/share/icons/gnome/48x48/devices/audio-speakers.png"
+
+        command_line_list = [
+            "notify-send", "--urgency=critical", self.app_title,
+            "-h", "string:x-canonical-private-synchronous:yt-skip",
+            "--icon=" + icon, _msg]
+        event = self.runCommand(command_line_list, _who, forgive=False)
+
+        # Average command time is 0.025 seconds but never logged
+        if event['returncode'] != 0:  # Was there an error?
+            v0_print(_who, "Error:", event['returncode'])
+            v0_print(" ", self.cmdString)
+
+        return True  # Parent will delay rediscovery 1 minute
+
     def updateVideos(self):
         """ Called from self.loopForever() every 16 to 33 ms.
             Monitor Pulse Audio for new sinks. Check if ad progress bar or
@@ -1185,6 +1220,7 @@ pulsectl.pulsectl.PulseOperationFailed: 946012
 
         # sink-input changes means an Ad or Video started, paused or ended
         if sink_inputs != self.last_sink_inputs:
+            self.pav_count += 1  # PulseAudio Sink-Inputs changed count
             if not bool(self.last_sink_inputs):
                 # last sink-inputs empty first time so use current sink-inputs
                 self.last_sink_inputs = sink_inputs  # for matchWindow()
@@ -1471,7 +1507,7 @@ pulsectl.pulsectl.PulseOperationFailed: 946012
         self.bind("<Escape>", self.exitApp)  # 2025-05-03 pycharm error appeared today
         self.protocol("WM_DELETE_WINDOW", self.exitApp)
         self.close_btn = make_button(0, 2, "Exit", self.exitApp,
-                                     "Exit YouTube Ad Mute and Skip.",
+                                     "Exit " + self.app_title + ".",
                                      "ne", pic=self.img_close)
 
     def refreshApp(self, tk_after=True):
