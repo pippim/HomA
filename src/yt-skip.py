@@ -98,6 +98,8 @@ import json  # For dictionary storage in external file
 import time  # For now = time.time()
 import signal  # Shutdown signals
 import datetime as dt  # For dt.datetime.now().strftime('%I:%M %p')
+from collections import namedtuple
+
 
 try:
     reload(sys)  # June 25, 2023 - Without utf8 sys reload, os.popen() fails on OS
@@ -146,6 +148,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             v0_print(self.requires)
             v0_print(self.installed)
 
+        self.pav_count = 0  # How many times PulseAudio Sink-Inputs have changed
         self.audio = AudioControl()
         ''' TkDefaultFont changes default font everywhere except tk.Entry in Color Chooser '''
         default_font = font.nametofont("TkDefaultFont")
@@ -325,7 +328,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             2025-09-07 NOTE: still getting two hits for Ad and Video Playing
         
         '''
-        self.pav_count = 0  # How many times PulseAudio Sink-Inputs have changed
         self.yt_start = 0.0  # time YouTube video name first encountered
         self.ad_start = 0.0  # time yellow ad progress bar first detected
         self.av_start = 0.0  # time red video progress bar first detected
@@ -516,8 +518,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 #   changes from "muted" or "playing" to "paused".
                 if _si.name == self.last_name:
                     self.last_corked_and_dropped = True
-                    self.resetSpam()  # Just in case spam printing was in progress
-                    v0_print(self.formatTime(), _who,
+                    self.resetSpam(1)  # Just in case spam printing was in progress
+                    v1_print(self.formatTime(), _who,
                              "'self.last_corked_and_dropped' = 'True'.")
                 continue  # Corked sink-inputs excluded as the last active
 
@@ -556,6 +558,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             Text widget until a new name is encountered.
         """
         _who = "matchWindow(" + str(self.pav_count) + "):"
+        self.resetSpam(1)  # Send spam \n print line
+
         try:
             _test = self.asi.name
         except AttributeError:
@@ -564,7 +568,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 self.asi = self.last_sink_inputs[-1]
             except IndexError:
                 # IndexError: List index out of range
+                v0_print()  # resets last spam
                 v0_print(_who, "self.last_sink_inputs is empty")
+
         _name = self.asi.name
         _app = self.asi.application
         _pid = self.asi.pid
@@ -572,19 +578,17 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         if _name == "Playback Stream" and _app.startswith("Telegram"):
             _name = "Media viewer"  # Telegram's name in mon.wn_name
 
-        # 2025-08-20 TODO: If pid = saved non-YouTube Window, restore
-        #   non-YouTube Values, reset status to "Video paused" and exit
-        time.sleep(0.1)  # Pulse Audio sink-input plays a bit before video mounted
-        self.mon.make_wn_list()  # Rebuild list of active DM windows
-
         def updateBlacklist(_msg):
             """ If sink-input index # not in blacklist append it to list. """
             if self.asi.index not in self.blacklist:
                 self.blacklist.append(self.asi.index)
-                self.resetSpam()
-                v0_print(self.formatTime(), _who,
+                v1_print(self.formatTime(), _who,
                          "adding to blacklist:", self.asi.index, _msg)
 
+        # 2025-08-20 TODO: If pid = saved non-YouTube Window, restore
+        #   non-YouTube Values, reset status to "Video paused" and exit
+        time.sleep(0.1)  # Pulse Audio sink-input plays a bit before video mounted
+        self.mon.make_wn_list()  # Rebuild list of active DM windows
         if not self.mon.get_wn_by_name(_name, pid=_pid):
             if _app == 'ffplay':
                 _name = self.getFfPlayName(_pid)  # mserve ffplay song name
@@ -603,18 +607,13 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         if _name.endswith(" - YouTube"):  # YouTube window found?
             if self.asi.index in self.blacklist:
                 self.blacklist.remove(self.asi.index)
-                v0_print(self.formatTime(), _who, "remove from blacklist:",
+                v1_print(self.formatTime(), _who, "remove from blacklist:",
                          self.asi.index, " | YouTube Video window")
-            if not self.checkNewVideo(_name):  # True = new video name
-                # For new videos, av_start is set to current time above
-                self.av_start = 0.0  # Video name is the same.
-                # 2025-08-18 review if above can be cleaned up
-            # Due to new sink-input, an Ad or video is playing, find out which one
-            self.ad_start = 0.0
-            self.video_start = 0.0
+            self.checkNewVideo(_name)  # True = new video name
+            self.ad_start = 0.0  # A new sink-input will be an Ad or Video. Set both
+            self.video_start = 0.0  # start times to 0 to force discovery.
             if self.skip_clicked:
-                self.resetSpam()  # Send spam \n print line
-                v0_print(self.formatTime(), _who, "'self.skip_clicked' reset:",
+                v1_print(self.formatTime(), _who, "'self.skip_clicked' reset:",
                          time.time() - self.skip_clicked)
                 self.skip_clicked = 0.0  # Reset 2025-09-02
 
@@ -676,29 +675,30 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         """
         _who = "checkNewVideo(" + str(self.pav_count) + "):"
+        _msg = "YouTube window forced fullscreen. "  # 0x0 window id follows.
         if _name == self.last_name:  # Is this the sameNew YouTube video name?
             if self.mon.wn_is_fullscreen is False:
                 self.sendCommand("fullscreen")  # YT fullscreen xdotool command
-                v1_print(self.formatTime(), _who,
-                         "YouTube window forced fullscreen:",
-                         self.mon.wn_dict['xid_int'])
+                self.sendNotification(_msg)
+                self.resetSpam(1)  # Just in case spam printing was in progress
+                v1_print(self.formatTime(), _who, _msg, self.mon.wn_dict['xid_hex'])
                 self.insertYtSB("Set YouTube fullscreen")
                 self.yt_sb.highlight_pattern("fullscreen", "yellow")
-            self.av_start = time.time()
+            self.av_start = 0.0  # Video name is the same.
             self.updateDuration()
 
             return False  # Same video return for A/V check
 
         if self.last_corked_and_dropped:
             self.last_corked_and_dropped = False
-            self.resetSpam()  # Just in case spam printing was in progress
-            v0_print(self.formatTime(), _who,
+            self.resetSpam(1)  # Just in case spam printing was in progress
+            v1_print(self.formatTime(), _who,
                      "New video forcing off: 'self.last_corked_and_dropped'.")
 
         if self.skip_clicked:
             self.skip_clicked = 0.0
-            self.resetSpam()  # Just in case spam printing was in progress
-            v0_print(self.formatTime(), _who,
+            self.resetSpam(1)  # Just in case spam printing was in progress
+            v1_print(self.formatTime(), _who,
                      "New video forcing off: 'self.skip_clicked'.")
 
         self.last_name = _name
@@ -712,6 +712,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         if self.mon.wn_is_fullscreen is True:
             self.av_start = time.time()
             self.updateDuration()
+            self.resetSpam(1)  # Just in case spam printing was in progress
             v1_print(self.formatTime(), _who,
                      "YouTube window already fullscreen:", self.mon.wn_dict['xid_hex'])
             return True  # Already full screen, nothing to force
@@ -722,14 +723,16 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.insertYtSB("Set YouTube fullscreen")
         self.yt_sb.highlight_pattern("fullscreen", "yellow")
         if not self.checkInstalled('xdotool'):
-            v0_print(_who, "`xdotool` is not installed. Cannot set fullscreen")
+            self.resetSpam(1)  # Just in case spam printing was in progress
+            v1_print(_who, "`xdotool` is not installed. Cannot set fullscreen")
             self.av_start = time.time()  # A/V Check even if fullscreen fails
             return True
 
         self.sendCommand("fullscreen")  # YT fullscreen xdotool command
 
-        v1_print(self.formatTime(), _who,
-                 "YouTube window forced fullscreen:", self.mon.wn_dict['xid_int'])
+        self.sendNotification(_msg)
+        self.resetSpam(1)  # Just in case spam printing was in progress
+        v1_print(self.formatTime(), _who, _msg, self.mon.wn_dict['xid_hex'])
         self.av_start = time.time()  # Reset A/V Check time after fullscreen
         self.updateDuration()
         return True  # A new window name hsa been discovered
@@ -785,7 +788,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             GLO = glo.dictGlobals
             GLO['APP_RESTART_TIME'] = time.time()
 
-            self.resetSpam()
+            self.resetSpam(1)
             v1_print(self.formatTime(), _who, "New configuration time:",
                      self.formatTime(self.this_stat.st_mtime))
             self.last_stat = self.this_stat
@@ -813,7 +816,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.updateRows()
             self.resetSpam()
             if self.asi.index in self.blacklist:
-                v0_print(self.formatTime(), _who2,
+                v1_print(self.formatTime(), _who2,
                          "Ignoring blacklisted:", self.asi.index)
                 #self.video_start = 0.0  # Reset to get matching window
                 # Above causes endless loop
@@ -859,30 +862,33 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.av_start = 0.0
             self.video_start = 0.0  # 2025-07-15 Extra insurance
 
-            self.resetSpam()  # Do this before normal printing
+            self.resetSpam(1)  # Do this before normal printing (3 places)
             v2_print(self.formatTime(), _who)
             v2_print("  Coordinates: [{}, {}] color: {}".format(_x, _y, _tk_clr))
 
             # If already muted, this is a deprecating sink-input
             _vol = self.audio.pav.get_volume(str(self.asi.index), print_error=False)
             if _vol == 24.2424:
-                v0_print(self.formatTime(), _who,
+                v1_print(self.formatTime(), _who,
                          "Sink input obsolete:", str(self.vars["pav_index"]))
 
             elif _vol != 0:  # First time, turn down volume
-                self.audio.pav.set_volume(str(self.asi.index), 0)  # Set volume to zero
+                #self.audio.pav.set_volume(str(self.asi.index), 0)  # Set volume to zero
+                self.setVolume(0)  # Set volume
                 self.updateRows()
                 text_str = "Ad muted"
                 self.insertYtSB(text_str + " on input #: " + str(self.vars["pav_index"]),
                                 self.ad_start)
                 self.yt_sb.highlight_pattern(text_str, "red")
+                _msg = "Muting Ad on input: " + str(self.vars["pav_index"])
+                self.sendNotification(_msg)
+
                 # 2025-09-21 TODO: Check if last_sinks needs to be set to corked.
-                v1_print(self.formatTime(), _who,
-                         "Muting Ad on input: " + str(self.vars["pav_index"]),
+                v1_print(self.formatTime(), _who, _msg,
                          "volume: " + str(self.vars["pav_volume"]),
                          "corked: " + str(self.vars["pav_corked"]))
 
-            else:  # Checking too soon after last mute command issued to PAV
+            else:  # mute command already issued to PAV
                 v1_print(self.formatTime(), _who,
                          "Already muted: " + str(self.vars["pav_index"]),
                          "volume: " + str(self.vars["pav_volume"]),
@@ -903,7 +909,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         if time.time() > self.av_start + 6.0 \
                 and self.ad_start == 0.0 \
                 and self.video_start == 0.0:
-            self.resetSpam()
+            self.resetSpam(2)
             v2_print(self.formatTime(), _who,
                      "A/V Check timeout. Assume video already playing.")
             text_str = "Assume video"
@@ -983,7 +989,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         if _tk_clr2 == GLO["YT_SKIP_BTN_COLOR"]:
             # This is a white ad, not white ad button
-            #self.resetSpam()
+            self.resetSpam(3)
             v3_print(self.formatTime(), _who)
             v3_print("  Coordinates: [{}, {}] color: {}".format(_x2, _y2, _tk_clr2))
             v3_print("  Waiting for Ad skip button non-white color to appear...")
@@ -997,10 +1003,10 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             # NOTE: 0.25 works ok until ffmpeg volume analyzer is run. Then the
             #       CPU temperature reached 94 degrees and CPU usage was 63%.
             # 2025-08-31 bump to 0.5 seconds because second click paused video
-            #self.resetSpam()
             self.printSpam(self.formatTime(), _who, "SW",
                            self.formatXY(_x, _y), "color:", _tk_clr)
 
+            self.resetSpam(3)
             v3_print(self.formatTime(), _who)
             v3_print("  Ad skip button color found:",
                      "'" + GLO["YT_SKIP_BTN_COLOR"] + "'.")
@@ -1160,6 +1166,24 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         return True  # Parent will delay rediscovery 1 minute
 
+    def setVolume(self, _percent):
+        """ Set volume to integer percent. """
+        _who = "setVolume(" + str(self.pav_count) + "):"
+        self.audio.pav.set_volume(str(self.asi.index), 0)  # Set volume to zero
+        self.vars["pav_volume"] = 0.0
+        Input = namedtuple('Input', 
+                           'index corked mute volume name application pid user')
+        for i, _lsi in enumerate(self.last_sink_inputs):
+            if _lsi.index == self.asi.index:
+                self.resetSpam(3)
+                v3_print(_who, "Changing volume:", i, _lsi)
+                # noinspection PyArgumentList
+                _new = Input(_lsi.index, _lsi.corked, _lsi.mute, 0, _lsi.name,
+                             _lsi.application, _lsi.pid, _lsi.user)
+                self.last_sink_inputs[i] = _new
+                v3_print(_who, "New volume:", i, _new)
+                break
+
     def updateVideos(self):
         """ Called from self.loopForever() every 16 to 33 ms.
             Monitor Pulse Audio for new sinks. Check if ad progress bar or
@@ -1274,7 +1298,7 @@ pulsectl.pulsectl.PulseOperationFailed: 946012
                 - For left-click _x and _y parameters are required
 
         """
-        _who = "sendCommand():"
+        _who = "sendCommand(" + str(self.pav_count) + "):"
         ext.t_init("4 xdotool commands")
         _active = os.popen('xdotool getactivewindow').read().strip()
 
@@ -1287,8 +1311,8 @@ pulsectl.pulsectl.PulseOperationFailed: 946012
             os.popen('xdotool key f &')
             time.sleep(0.1)  # sleep stops fullscreen toggling twice by YouTube.
             # If && was used time.sleep(0.2) is required instead of (0.1)
-            self.resetSpam()  # Just in case spam printing was active
-            v0_print(self.formatTime(), _who, 'xdotool windowactivate --sync ' +
+            self.resetSpam(2)  # Just in case spam printing was active
+            v2_print(self.formatTime(), _who, 'xdotool windowactivate --sync ' +
                      str(self.mon.wn_dict['xid_int']) + ' && xdotool key f &')
         else:
             v0_print(self.formatTime(dec=False), _who,
@@ -1298,6 +1322,7 @@ pulsectl.pulsectl.PulseOperationFailed: 946012
             # Occasionally xdotool doesn't reactivate window. Do it manually.
             os.popen('xdotool windowfocus ' + _active)
             os.popen('xdotool windowactivate ' + _active)
+            self.resetSpam(2)  # Just in case spam printing was active
             v2_print("  Restoring previous active window: '" +
                      str(hex(int(_active))) + "'")
         else:
@@ -1333,10 +1358,13 @@ pulsectl.pulsectl.PulseOperationFailed: 946012
 
         #v0_print("\r" + _line, end="", **kwargs)
 
-    def resetSpam(self):
+    def resetSpam(self, _level=0):
         """ Reset spam printing for next print group. Check to ensure last
             print group actually printed something by checking spam_time
         """
+        if not checkVerbose(_level):
+            return  # Requested level is not printing so don't reset
+
         if self.spam_time:
             print()  # Force newline
             self.spam_time = 0.0
@@ -1589,6 +1617,9 @@ def checkVerbose(_level):
     if p_args.silent:
         return False  # Silent mode turns off all verbose levels
 
+    if _level == 0:
+        return True  # v0_print always prints
+
     if p_args.verbose1 and _level == 1:
         return True  # Verbose level is 1 and matches request of 1
 
@@ -1598,7 +1629,7 @@ def checkVerbose(_level):
     if p_args.verbose3 and 1 <= _level <= 3:
         return True  # Verbose level is 1, 2 or 3 and matches request of 3
     
-    v0_print("Catastrophic error. Verbose level is not 1, 2 or 3:", _level)
+    return False
 
 
 ''' Global class instances accessed by various other classes '''
