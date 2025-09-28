@@ -4604,12 +4604,54 @@ class PointerInspector:
         if len(_colors) > 3:
             _a = _colors[3]  # Color has an alpha channel
         else:
-            _a = b"?"  # Color has NO alpha channel assign chr 63
+            if g.PYTHON_VERSION.startswith("3"):
+                _a = 63  # Color has NO alpha channel assign chr 63
+            else:
+                _a = b"?"  # Color has NO alpha channel assign chr 63
+
+        _RGBA.append(_colors[0])  # Red
+        _RGBA.append(_colors[1])  # Green
+        _RGBA.append(_colors[2])  # Blue
+        _RGBA.append(_a)  # Alpha channel
+
+        ''' 2025-09-28
+        if g.PYTHON_VERSION.startswith("3"):
+            # TypeError: an integer is required
+            #_RGBA.append(chr(_colors[0])[0])  # Red
+            #_RGBA.append(chr(_colors[1])[0])  # Green
+            #_RGBA.append(chr(_colors[2])[0])  # Blue
+            #_RGBA.append(chr(_a)[0])  # Alpha channel
+            #
+            #print("type _colors[0]:", type(_colors[0]))
+            _RGBA.append(ord(chr(_colors[0])))  # Red
+            _RGBA.append(ord(chr(_colors[1])))  # Green
+            _RGBA.append(ord(chr(_colors[2])))  # Blue
+            _RGBA.append(ord(chr(_a)))  # Alpha channel
+        else:
+            _RGBA.append(_colors[0])  # Red
+            _RGBA.append(_colors[1])  # Green
+            _RGBA.append(_colors[2])  # Blue
+            _RGBA.append(_a)  # Alpha channel
+        '''
+
+        ''' 2025-09-28
         try:  # Python 3
             _RGBA.append(chr(_colors[0]))  # Red
             _RGBA.append(chr(_colors[1]))  # Green
             _RGBA.append(chr(_colors[2]))  # Blue
-            _RGBA.append(chr(_a))  # Alpha channel
+            try:
+                if _a == b"?":
+                    # 2025-09-28 Added but not tested to fix new error:
+                    #   File "/home/rick/HomA/toolkit.py", line 4619, in get_colors
+                    #     _RGBA.append(_a)  # Alpha channel
+                    # TypeError: an integer is required
+                    _RGBA.append(chr(63))  # Alpha channel
+                else:
+                    _RGBA.append(chr(_a))  # Alpha channel
+            except TypeError as err:
+                print(err)
+                print("_a:", _a, "type:", type(_a))
+
         except TypeError:  # Python 2
             # Expected type 'int' (matched generic type '_T'), got 'str' instead
             # Python 3 error: TypeError: an integer is required
@@ -4617,6 +4659,11 @@ class PointerInspector:
             _RGBA.append(_colors[1])  # Green
             _RGBA.append(_colors[2])  # Blue
             _RGBA.append(_a)  # Alpha channel
+            # 2025-09-28 Problem when Python 3 is executing this Python 2 code branch
+            #   File "/home/rick/HomA/toolkit.py", line 4631, in get_colors
+            #     _RGBA.append(_a)  # Alpha channel
+            # TypeError: an integer is required
+        '''
 
         self.clr_r = _RGBA[0]  # Red
         self.clr_g = _RGBA[1]  # Green

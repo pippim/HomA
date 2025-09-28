@@ -138,7 +138,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         _who = "__init__():"
 
         self.isActive = True  # Set False when exiting or suspending
-        self.requires = ['ps', 'grep', 'xdotool', 'wmctrl', 'notify-send']
+        self.requires = ['ps', 'grep', 'xdotool', 'wmctrl', 'notify-send',
+                         'pyaudio.py', 'numpy.py']  # .py also checked in AudioControl
         self.installed = []
         self.checkDependencies(self.requires, self.installed)
 
@@ -308,7 +309,12 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         # self.vars {} dictionary reduces number of class attributes
         # 2025-08-18 Start converting dictionary variables to attributes 
         self.vars = {  # pav_ = Pulse audio volume, wn_ = Wnck Window (GNOME)
-            "pav_start": 0.0, "pav_index": 0L, "pav_volume": 0.0,
+            "pav_start": 0.0, "pav_index": 0, "pav_volume": 0.0,
+            # 2025-09-28 - When using Python 3 get error:
+            #   File "./yt-skip.py", line 311
+            #     "pav_start": 0.0, "pav_index": 0L, "pav_volume": 0.0,
+            #                                     ^
+            # SyntaxError: invalid syntax
             "pav_corked": False, "pav_application": "", "pav_name": "",
             "wn_name": "", "wn_xid_hex": ""  # Could be YT or not YT
         }
