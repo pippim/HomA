@@ -1,7 +1,7 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
-# /usr/bin/python3
-# /usr/bin/env python  # puts name "python" into top, not "homa.py"
+# Line 1 Use: #!/usr/bin/python3 or #!/usr/bin/python2 or #!/usr/bin/python
+# /usr/bin/env python  # puts name "python" into top, not "yt-skip.py"
 """
 Author: pippim.com
 License: GNU GPLv3. (c) 2024-2025
@@ -131,9 +131,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
     """
 
     def __init__(self, master=None):
-        """ DeviceCommonSelf(): Variables used by all classes
-        :param toplevel: Usually <None> except when called by another program.
-        """
+        """ DeviceCommonSelf(): Variables used by all classes """
         DeviceCommonSelf.__init__(self, "Application().")  # Define self.who
         _who = "__init__():"
 
@@ -188,6 +186,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.tt = toolkit.ToolTips(print_error=print_error)
 
         ''' Set program icon in taskbar. '''
+        # char='YT' used in self.sendNotification() too.
         img.taskbar_icon(self, 64, 'green', 'white', 'red', char='YT')
 
         ''' Save Toplevel OS window ID for minimizing window '''
@@ -340,15 +339,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.video_start = 0.0  # time progress bar check started
         self.skip_btn_start = 0.0  # time Ad Skip Button check started
         self.skip_clicked = 0.0  # time Ad skip button clicked (sometimes ignored)
-        """ Occasionally Ad Skip button click is not recognized by YouTube 
-            16:11.06 Ad muted on input #: 1108
-               13.42 Ad skip button color check
-               16.53 Ad skip button mouse click <--- repeats 19 times
-               27.02 Ad skip button mouse click
-                 .61 Ad skip button mouse click <--- 14 seconds for 22 clicks
-               28.31 A/V check
-                 .56 Video playing on input #: 1109
-        """
+        self.last_grab_time = 0.0  # screen grabs limited to 10 / second.
+        self.last_grab_inside = None
+        self.last_grab_outside = None
         self.last_name = ""  # Last YouTube video name encountered
         self.last_corked_and_dropped = False
 
@@ -562,9 +555,13 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
             Once a YouTube Video Name is used it stays in video status scrolled
             Text widget until a new name is encountered.
+
+            NOTE: After upgrading FireFox in the background, unique PulseAudio
+                sink-inputs no longer appear per video and ad. Instead a static
+                "Firefox" "AudioStream" appears. Close and reopen Firefox to fix.
         """
         _who = "matchWindow(" + str(self.pav_count) + "):"
-        self.resetSpam(1)  # Send spam \n print line
+        self.resetSpam(1)  # Send spam \n print line if level 1 or greater
 
         try:
             _test = self.asi.name
@@ -574,7 +571,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 self.asi = self.last_sink_inputs[-1]
             except IndexError:
                 # IndexError: List index out of range
-                v0_print()  # resets last spam
+                v0_print()  # resets last spam to level 0 instead of level 1
                 v0_print(_who, "self.last_sink_inputs is empty")
 
         _name = self.asi.name
@@ -614,7 +611,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             if self.asi.index in self.blacklist:
                 self.blacklist.remove(self.asi.index)
                 v1_print(self.formatTime(), _who, "remove from blacklist:",
-                         self.asi.index, " | YouTube Video window")
+                         self.asi.index, " | Ends with '- YouTube'")
             self.checkNewVideo(_name)  # True = new video name
             self.ad_start = 0.0  # A new sink-input will be an Ad or Video. Set both
             self.video_start = 0.0  # start times to 0 to force discovery.
@@ -624,7 +621,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 self.skip_clicked = 0.0  # Reset 2025-09-02
 
         else:
-            updateBlacklist(" | window doesn't end in '- YouTube'")
+            updateBlacklist(" | Doesn't end with '- YouTube'")
 
         v3_print(self.formatTime(), _who,
                  "Matching window:", self.mon.wn_dict['xid_hex'])
@@ -681,32 +678,27 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         """
         _who = "checkNewVideo(" + str(self.pav_count) + "):"
-        _msg = "YouTube window forced fullscreen. "  # 0x0 window id follows.
-        if _name == self.last_name:  # Is this the sameNew YouTube video name?
-            if self.mon.wn_is_fullscreen is False:
-                self.sendCommand("fullscreen")  # YT fullscreen xdotool command
-                self.sendNotification(_msg)
-                self.resetSpam(1)  # Just in case spam printing was in progress
-                v1_print(self.formatTime(), _who, _msg, self.mon.wn_dict['xid_hex'])
-                self.insertYtSB("Set YouTube fullscreen")
-                self.yt_sb.highlight_pattern("fullscreen", "yellow")
-            self.av_start = 0.0  # Video name is the same.
+        self.resetSpam(1)  # Send spam \n print line if level 1 or greater
+        _msg = "Window forced to fullscreen. "  # 0x0 window id follows.
+
+        def forceFullscreen(_time):
+            """ Force YouTube window to fullscreen. """
+            self.sendCommand("fullscreen")  # YT fullscreen xdotool command
+            self.mon.wn_is_fullscreen = True
+            self.updateRows()  # Display new fullscreen status
+            self.sendNotification(_msg)
+            v1_print(self.formatTime(), _who, _msg, self.mon.wn_dict['xid_hex'])
+            self.insertYtSB(_msg)
+            self.yt_sb.highlight_pattern("fullscreen", "yellow")
+            self.av_start = _time  # 0.0 = Video name is the same. else time.time()
             self.updateDuration()
 
+        if _name == self.last_name:  # Same YouTube video name?
+            if self.mon.wn_is_fullscreen is False:
+                forceFullscreen(0.0)
             return False  # Same video return for A/V check
 
-        if self.last_corked_and_dropped:
-            self.last_corked_and_dropped = False
-            self.resetSpam(1)  # Just in case spam printing was in progress
-            v1_print(self.formatTime(), _who,
-                     "New video forcing off: 'self.last_corked_and_dropped'.")
-
-        if self.skip_clicked:
-            self.skip_clicked = 0.0
-            self.resetSpam(1)  # Just in case spam printing was in progress
-            v1_print(self.formatTime(), _who,
-                     "New video forcing off: 'self.skip_clicked'.")
-
+        # New YouTube Video
         self.last_name = _name
         self.yt_start = self.vars["pav_start"]
         self.yt_sb_last_time = "00:00:00.00"  # Force next time to print in full
@@ -715,69 +707,85 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         _time = self.insertYtSB(_name, self.yt_start)
         self.yt_sb.highlight_pattern(_time, "blue")
 
+        if self.last_corked_and_dropped:
+            self.last_corked_and_dropped = False
+            v1_print(self.formatTime(), _who,
+                     "New video forcing off: 'self.last_corked_and_dropped'.")
+
+        if self.skip_clicked:
+            self.skip_clicked = 0.0
+            v1_print(self.formatTime(), _who,
+                     "New video forcing off: 'self.skip_clicked'.")
+
         if self.mon.wn_is_fullscreen is True:
-            self.av_start = time.time()
+            self.av_start = time.time()  # Already full screen, nothing to force
             self.updateDuration()
-            self.resetSpam(1)  # Just in case spam printing was in progress
             v1_print(self.formatTime(), _who,
                      "YouTube window already fullscreen:", self.mon.wn_dict['xid_hex'])
-            return True  # Already full screen, nothing to force
+            return True  # A new window name has been discovered
 
         # YT fullscreen provides consistent ad/video progress bar coordinates
-        self.mon.wn_is_fullscreen = True
-        self.updateRows()
-        self.insertYtSB("Set YouTube fullscreen")
-        self.yt_sb.highlight_pattern("fullscreen", "yellow")
         if not self.checkInstalled('xdotool'):
-            self.resetSpam(1)  # Just in case spam printing was in progress
             v1_print(_who, "`xdotool` is not installed. Cannot set fullscreen")
             self.av_start = time.time()  # A/V Check even if fullscreen fails
-            return True
+        else:
+            forceFullscreen(time.time())
 
-        self.sendCommand("fullscreen")  # YT fullscreen xdotool command
-
-        self.sendNotification(_msg)
-        self.resetSpam(1)  # Just in case spam printing was in progress
-        v1_print(self.formatTime(), _who, _msg, self.mon.wn_dict['xid_hex'])
-        self.av_start = time.time()  # Reset A/V Check time after fullscreen
-        self.updateDuration()
-        return True  # A new window name hsa been discovered
+        return True  # A new window name has been discovered
 
     def waitAdOrVideo(self):
         """ A new YouTube PulseAudio sink-input is analyzed when:
                 yt_start != 0 and ad_start = 0 and video_start = 0.
 
             os.stat() configuration file to see if modification time
-                has changed. If changed, reread coordinates and colors.
+                was changed by homa.py - Tools - Configure YouTube Ads.
+                If time changed, reread coordinates and colors.
 
             Find out if Ad or Video by testing colors @ coordinates. Always
                 use the Ad coordinates because Video progress bar balloons
                 when mouse hovers over the progress bar.
 
-            If stuck in "A/V Check" loop for two seconds assume video
+            If stuck in "A/V Check" loop for 6.0 seconds, assume video
                 already playing.
 
-            2025-08-13 y-offsets changed +5. Had to change 997 to 1002.
+            2025-08-13 Progress y-offsets changed +5, from 997 to 1002.
 
                                         x,y          Color
                 YT_AD_BAR_POINT     [35, 1002]      #ffcc00
                 YT_VIDEO_BAR_POINT  [35, 1002]      #ff0033
-                YT_SKIP_BT_POINT    [1830, 916]     #ffffff
-                YT_SKIP_BT_POINT2   [1834, 908]     #3f3f3f
+                YT_SKIP_BTN_POINT   [1830, 916]     #ffffff
+                YT_SKIP_BTN_POINT2  [1834, 908]     #3f3f3f
 
-            2025-08-24 x-offsets changed -20, y-offsets changed +10.
+            2025-08-24 Progress x-offsets changed -16, y-offsets changed +9.
 
-                YT_AD_BAR_POINT     [19, 1013]
-                YT_VIDEO_BAR_POINT  [19, 1013]
-                YT_SKIP_BT_POINT    [1859, 925]
-                YT_SKIP_BT_POINT2   [1862, 924]
+                YT_AD_BAR_POINT     [19, 1013]      -16, +9
+                YT_SKIP_BTN_POINT   [1859, 925]     +29, +9
+                YT_SKIP_BTN_POINT2  [1862, 924]     +28, +16
 
-            2025-08-28 y-offsets changed -5
+            2025-08-28 Progress y-offsets changed -5
 
-                YT_AD_BAR_POINT     [22, 1008]
-                YT_VIDEO_BAR_POINT  [22, 1008]
-                YT_SKIP_BT_POINT    [1854, 922]
-                YT_SKIP_BT_POINT2   [1860, 916]
+                YT_AD_BAR_POINT     [22, 1008]      +3, -5
+                YT_SKIP_BTN_POINT   [1854, 922]     -5, -3
+                YT_SKIP_BTN_POINT2  [1860, 916]     -2, -8
+
+            2025-10-10 Progress y-offsets changed -4
+
+                YT_AD_BAR_POINT     [21, 1004]      -1, -4
+                YT_SKIP_BTN_POINT   [1851, 909]     -3, -13
+                YT_SKIP_BTN_POINT2  [1855, 906]     -5, -10
+
+            2025-10-12 Progress y-offsets changed +3 (Back to pre 2025-10-10)
+
+                YT_AD_BAR_POINT     [18, 1007]      -3, +3
+
+            2025-10-14 Progress y-offsets changed -15 (Back to pre 2025-08-13)
+                Fonts and icons are larger even though browser magnification
+                is still at 110%. New icon bar has been added above progress
+                bar. Four icons: Like, Dislike, comments & share.
+
+                YT_AD_BAR_POINT     [19, 992]       +1, -15
+                YT_SKIP_BTN_POINT   [1855, 946]     +4, +37
+                YT_SKIP_BTN_POINT2  [1858, 944]     +3, +38
 
         """
 
@@ -936,8 +944,24 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 "SW" = waiting .45 seconds for ad skip button to disappear
                 "AS" = Ad skipped
 
+            2025-10-14 Limit screen grabs to every 100 ms (10 times per second).
+                Normal refresh rate can be 16 ms to 33 ms (60fps to 30fps). Set
+                limit of 15 seconds (longest duration before skip button) in order
+                to catch instances when ad starts and user backs out.
+
             2025-08-27 Usually Ad Skip color is #ffffff. Today it was #f1f1f1 when
                 ad skip button had focus. TODO: Rewrite to test r>F0, g>F0 and b>F0.
+
+            2025-10-12 Back button in ad causes xorg to churn at 10% CPU usage:
+19:11:15.55 waitAdOrVideo(784): Muting Ad on input: 1616 volume: 0.0 corked: False
+19:11:22.26 waitAdSkip(784): C1 x=1851, y=909   color: #000000  | Cnt:  25  | Dur: 4.09
+19:13:45.28 waitAdSkip(785): C1 x=1851, y=909   color: #000000  | Cnt: 1045  | Dur: 2:22.74
+19:13:45.44 matchWindow(786): adding to blacklist: 1617  | sink-input has no window
+19:15:22.55 waitAdSkip(786): C1 x=1851, y=909   color: #000000  | Cnt: 676  | Dur: 1:36.94
+19:15:22.71 matchWindow(787): adding to blacklist: 1618  | window doesn't end in '- YouTube'
+19:17:51.20 waitAdSkip(787): C1 x=1851, y=909   color: #080501  | Cnt: 985  | Dur: 2:28.29
+19:29:21.34 waitAdSkip(788): C1 x=1851, y=909   color: #000000  | Cnt: 5392  | Dur: 11:29.85Changing from g.PROGRAM_DIR: . to SAVE_CWD: /home/rick/HomA
+EXIT yt-skip to bring CPU back in line
 
         """
 
@@ -947,17 +971,22 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         self.updateDuration()  # Force "Ad skip button color check" status display
 
-        try:
-            _x, _y = GLO["YT_SKIP_BTN_POINT"]
-        except AttributeError:  # Coordinates for skip button unknown
-            return  # This will repeat test forever but overhead is low.
+        if time.time() > self.last_grab_time + .1:
+            try:  # Get white triangle color
+                _x, _y = GLO["YT_SKIP_BTN_POINT"]
+                self.last_grab_inside = self.pi.get_colors(_x, _y)  # Get white triangle color
+            except AttributeError:  # Coordinates for skip button unknown
+                return  # This will repeat test forever but overhead is low.
 
-        try:
-            _x2, _y2 = GLO["YT_SKIP_BTN_POINT2"]
-        except (AttributeError, ValueError):
-            _x2 = _y2 = None  # Optional not-while coordinates undefined
-
-        _tk_clr = self.pi.get_colors(_x, _y)  # Get color
+            try:  # Get non-white color outside of triangle
+                _x2, _y2 = GLO["YT_SKIP_BTN_POINT2"]
+                self.last_grab_outside = self.pi.get_colors(_x2, _y2)  # Get non-white color
+            except (AttributeError, ValueError):
+                _x2 = _y2 = None  # Optional not-while coordinates undefined
+                self.last_grab_outside = "#808080"  # Color when non-white coordinates undefined
+            self.last_grab_time = time.time()
+        else:
+            _x = _y = _x2 = _y2 = 9999  # Define for printing when grab skipped
 
         def resetAd():
             """ Ad has finished. """
@@ -966,38 +995,39 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             # 2025-08-30 TODO: Review if av_start should be set
             self.resetSpam()  # Turn off spam printing to console
 
-        if _tk_clr != GLO["YT_SKIP_BTN_COLOR"]:
+        if self.last_grab_inside != GLO["YT_SKIP_BTN_COLOR"]:
             if self.skip_clicked > 0.0:
                 resetAd()  # Ad Skip button clicked and now it's disappeared
-                # 2025-09-01 Just added but never prints, "SW" is last printed
+                # 2025-09-01 Just added but rarely prints, "SW" is last printed
+                #   because a new sink-input resets wait loop.
+                # 2025-10-15 Code "AS" appears frequently if `yt-skip.py -v` used.
                 self.printSpam(self.formatTime(), _who, "AS",
-                               self.formatXY(_x, _y), "color:", _tk_clr)
+                               self.formatXY(_x, _y), "color:", self.last_grab_inside)
+                self.resetSpam()  # Repeat from resetAd()
             else:
                 self.printSpam(self.formatTime(), _who, "C1",
-                               self.formatXY(_x, _y), "color:", _tk_clr)
+                               self.formatXY(_x, _y), "color:", self.last_grab_inside)
             return  # Waiting for white color to appear or Ad Skipped
 
         ''' At this point right tip of Ad skip Button triangle is confirmed
-            to be white because _tk_clr == GLO["YT_SKIP_BTN_COLOR"]. 
+            to be white because self.last_grab_inside == GLO["YT_SKIP_BTN_COLOR"]. 
             
             If near non-white color is not white it's confirmed to be an
             Ad Skip Button mounted. If near non-white color is also white this
-            is an Ad with a white background. _tk_clr2 == GLO["YT_SKIP_BTN_COLOR"] 
+            is an Ad with a white background. self.last_grab_outside == GLO["YT_SKIP_BTN_COLOR"] 
         '''
 
-        if _x2 and _y2:
-            _tk_clr2 = self.pi.get_colors(_x2, _y2)  # Get color
-        else:
-            _tk_clr2 = "#808080"  # Color when non-white coordinates undefined
-
         self.printSpam(self.formatTime(), _who, "C2",
-                       self.formatXY(_x2, _y2), "color:", _tk_clr2)
+                       self.formatXY(_x2, _y2), "color:", self.last_grab_outside)
 
-        if _tk_clr2 == GLO["YT_SKIP_BTN_COLOR"]:
+        _rgb = img.hex_to_rgb(self.last_grab_outside)  # 2025-10-17 non-white compare
+        _high = max(_rgb)  # 2025-10-17 _high = "de" when value is "#ded8cf"
+        #if self.last_grab_outside == GLO["YT_SKIP_BTN_COLOR"]:
+        if _high < 176:  # 2025-10-19 r, g, and b all lower than hex b0
             # This is a white ad, not white ad button
             self.resetSpam(3)
             v3_print(self.formatTime(), _who)
-            v3_print("  Coordinates: [{}, {}] color: {}".format(_x2, _y2, _tk_clr2))
+            v3_print("  Coordinates: [{}, {}] color: {}".format(_x2, _y2, self.last_grab_outside))
             v3_print("  Waiting for Ad skip button non-white color to appear...")
             return  # Skip button has not been clicked yet
 
@@ -1010,7 +1040,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             #       CPU temperature reached 94 degrees and CPU usage was 63%.
             # 2025-08-31 bump to 0.5 seconds because second click paused video
             self.printSpam(self.formatTime(), _who, "SW",
-                           self.formatXY(_x, _y), "color:", _tk_clr)
+                           self.formatXY(_x, _y), "color:", self.last_grab_inside)
 
             self.resetSpam(3)
             v3_print(self.formatTime(), _who)
@@ -1021,12 +1051,22 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             # If last click worked the second click causes video pause.
 
         if not self.checkInstalled('xdotool'):
-            v0_print(_who, "`xdotool` is not installed. Cannot click Ad Skip")
             resetAd()
+            v0_print(_who, "`xdotool` is not installed. Cannot click Ad Skip")
             return
 
         self.printSpam(self.formatTime(), _who, "SC",
-                       self.formatXY(_x, _y), "color:", _tk_clr)
+                       self.formatXY(_x2, _y2), "color:", self.last_grab_outside)
+        # outside triangle: #000000 (4x), #011b30, #040302, #060606, #091113, #0b0908,
+        #   #11160f, #161c16, #171513, #1a1a1a, #1c1c1c, #1e0f0d, #1e2018, #1f0a06,
+        #   #270506, #322c2c, #371f13, #382e19 (2x), #3c3632, #3d3635,
+        #   #44392e, #453a2c, #454543, #46110f, #473b2e, #491211, #493d30, #4b3f33,
+        #   #533d30, #555555, #5b4637, #665001, #666666
+
+        # False positives: #fffffd
+        self.resetSpam()  # Want to see outside color so force printing
+        v0_print(self.formatTime(), _who, 'self.last_grab_outside "_high":', _high)
+        # _high = 102 for hex 66
         self.sendCommand("click", _x, _y)  # xdotool: 0.0370068550 to 0.1740691662
 
         self.skip_clicked = time.time()  # When skip color disappears, it is success
@@ -1157,7 +1197,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             return False
 
         if icon is None:
-            icon = "/usr/share/icons/gnome/48x48/devices/audio-speakers.png"
+            #icon = "/usr/share/icons/gnome/48x48/devices/audio-speakers.png"
+            _path = os.path.abspath(g.PROGRAM_DIR)  # '.' to '/home/USER/HomA'
+            icon = _path + os.sep + "YT_taskbar_icon.png"  # set in __init__()
 
         command_line_list = [
             "notify-send", "--urgency=critical", self.app_title,
@@ -1191,6 +1233,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 break
 
     def updateVideos(self):
+        # noinspection SpellCheckingInspection
         """ Called from self.loopForever() every 16 to 33 ms.
             Monitor Pulse Audio for new sinks. Check if ad progress bar or
             video progress bar color is shown. If ad progress bar wait for
@@ -1222,12 +1265,31 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 `xdotool mousemove <x> <y> click 1 sleep 0.01 mousemove restore`
 
 
-        """
-        _who = "updateVideos():"
+        2025-10-05 Currently no window active. Last pav is "ffplay" that has no
+            window. 'YouTube?', 'Window number:' and 'Fullscreen?' are all "N/A".
+            NOTE: Variable "YouTube start" is really "Last video start".
+            'YouTube start: 99:99:99.99', 'Status: Video Playing' and
+            'Duration: 9:99' are still actively updated from last video. When a
+            new video is started false update:
 
-        sink_inputs = self.audio.pav.get_all_inputs()
-        '''
+15:10:04.31	Killzone🔴The Ring Around Siversk Continues to Tighten⚔️🔥
+              Military Summary And Analysis For 2025.10.05
+        .55	Ad muted on input #: 189
+       7.06	Ad skip button color check
+      10.02	Ad skip button mouse click
+        .87	Video playing on input #: 190       <<< Old video ends, then new video picked
+   19:38.79	Window forced to fullscreen.        <<< First Ad should have forced new video
+      39.09	A/V check
+        .61	Ad muted on input #: 191
+      42.12	Ad skip button color check
+15:19:44.86	Insane moment of Geran dives the railway station in Shostka!
+      45.10	Ad muted on input #: 192            <<< Second Ad did force new video
+      47.64	Ad skip button color check
+      51.05	Video playing on input #: 193
+
+
         2025-09-03 Error if `pulseaudio -k` used to reset:
+
 Traceback (most recent call last):
 File "./yt-skip.py", line 1632, in <module>
 main()
@@ -1246,7 +1308,12 @@ self.gen.next()
 File "/home/rick/HomA/pulsectl/pulsectl.py", line 523, in _pulse_op_cb
 if not self._actions[act_id]: raise PulseOperationFailed(act_id)
 pulsectl.pulsectl.PulseOperationFailed: 946012
-        '''
+
+
+        """
+        _who = "updateVideos():"
+
+        sink_inputs = self.audio.pav.get_all_inputs()
 
         # sink-input changes means an Ad or Video started, paused or ended
         if sink_inputs != self.last_sink_inputs:
@@ -1320,6 +1387,7 @@ pulsectl.pulsectl.PulseOperationFailed: 946012
             self.resetSpam(2)  # Just in case spam printing was active
             v2_print(self.formatTime(), _who, 'xdotool windowactivate --sync ' +
                      str(self.mon.wn_dict['xid_int']) + ' && xdotool key f &')
+
         else:
             v0_print(self.formatTime(dec=False), _who,
                      "Bad '_command' parameter: '" + str(_command) + "'.")

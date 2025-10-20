@@ -1,6 +1,6 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
-# /usr/bin/python3
+# Line 1 Use: #!/usr/bin/python3 or #!/usr/bin/python2 or #!/usr/bin/python
 # /usr/bin/env python  # puts name "python" into top, not "homa.py"
 """
 Author: pippim.com
@@ -4290,9 +4290,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
     """
 
     def __init__(self, master=None):
-        """ DeviceCommonSelf(): Variables used by all classes
-        :param toplevel: Usually <None> except when called by another program.
-        """
+        """ DeviceCommonSelf(): Variables used by all classes """
         DeviceCommonSelf.__init__(self, "Application().")  # Define self.who
         _who = self.who + "__init__():"
 
