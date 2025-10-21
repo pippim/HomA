@@ -519,7 +519,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                     self.last_corked_and_dropped = True
                     self.resetSpam(1)  # Just in case spam printing was in progress
                     v1_print(self.formatTime(), _who,
-                             "'self.last_corked_and_dropped' = 'True'.")
+                             "'self.last_corked_and_dropped' = 'True'. Index:",
+                             _si.index)
                 continue  # Corked sink-inputs excluded as the last active
 
             if bool(self.asi):
@@ -952,7 +953,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             2025-08-27 Usually Ad Skip color is #ffffff. Today it was #f1f1f1 when
                 ad skip button had focus. TODO: Rewrite to test r>F0, g>F0 and b>F0.
 
-            2025-10-12 Back button in ad causes xorg to churn at 10% CPU usage:
+            2025-10-12 Back button during ad causes xorg to churn at 10% CPU usage:
 19:11:15.55 waitAdOrVideo(784): Muting Ad on input: 1616 volume: 0.0 corked: False
 19:11:22.26 waitAdSkip(784): C1 x=1851, y=909   color: #000000  | Cnt:  25  | Dur: 4.09
 19:13:45.28 waitAdSkip(785): C1 x=1851, y=909   color: #000000  | Cnt: 1045  | Dur: 2:22.74
@@ -961,7 +962,19 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 19:15:22.71 matchWindow(787): adding to blacklist: 1618  | window doesn't end in '- YouTube'
 19:17:51.20 waitAdSkip(787): C1 x=1851, y=909   color: #080501  | Cnt: 985  | Dur: 2:28.29
 19:29:21.34 waitAdSkip(788): C1 x=1851, y=909   color: #000000  | Cnt: 5392  | Dur: 11:29.85Changing from g.PROGRAM_DIR: . to SAVE_CWD: /home/rick/HomA
-EXIT yt-skip to bring CPU back in line
+EXIT yt-skip to bring CPU back to normal
+
+
+            2025-10-20 Second Ad Button Skip click invokes Share button:
+16:16:24.43 waitAdSkip(20): SC x=1858, y=944   color: #564133  | Cnt:  13  | Dur: 2.83
+16:16:25.29 waitAdSkip(20): SC x=1858, y=944   color: #452f21  | Cnt:   6  | Dur: 0.53
+16:16:25.89 waitAdSkip(21): AS x=1855, y=946   color: #000000  | Cnt:   1  | Dur: 0.00
+
+            Normal looks like this:
+16:09:39.45 waitAdSkip(13): SC x=1858, y=944   color: #050606  | Cnt:  13  | Dur: 2.86
+16:09:39.81 waitAdSkip(13): SW x=1855, y=946   color: #ffffff  | Cnt:   2  | Dur: 0.00
+16:09:40.21 waitAdSkip(14): AS x=1855, y=946   color: #000000  | Cnt:   1  | Dur: 0.00
+
 
         """
 
@@ -969,24 +982,25 @@ EXIT yt-skip to bring CPU back in line
         if time.time() < GLO['YT_SKIP_BTN_WAIT'] + self.ad_start:
             return  # Delay button check for a few seconds after ad starts
 
+        if time.time() < self.last_grab_time + .1:
+            return  # Limit screen color grabs to 10 per second
+
         self.updateDuration()  # Force "Ad skip button color check" status display
 
-        if time.time() > self.last_grab_time + .1:
-            try:  # Get white triangle color
-                _x, _y = GLO["YT_SKIP_BTN_POINT"]
-                self.last_grab_inside = self.pi.get_colors(_x, _y)  # Get white triangle color
-            except AttributeError:  # Coordinates for skip button unknown
-                return  # This will repeat test forever but overhead is low.
+        try:  # Get white triangle color
+            _x, _y = GLO["YT_SKIP_BTN_POINT"]
+            self.last_grab_inside = self.pi.get_colors(_x, _y)  # Get white triangle color
+        except AttributeError:  # Coordinates for skip button unknown
+            return  # This will repeat test forever but overhead is low.
 
-            try:  # Get non-white color outside of triangle
-                _x2, _y2 = GLO["YT_SKIP_BTN_POINT2"]
-                self.last_grab_outside = self.pi.get_colors(_x2, _y2)  # Get non-white color
-            except (AttributeError, ValueError):
-                _x2 = _y2 = None  # Optional not-while coordinates undefined
-                self.last_grab_outside = "#808080"  # Color when non-white coordinates undefined
-            self.last_grab_time = time.time()
-        else:
-            _x = _y = _x2 = _y2 = 9999  # Define for printing when grab skipped
+        try:  # Get non-white color outside of triangle
+            _x2, _y2 = GLO["YT_SKIP_BTN_POINT2"]
+            self.last_grab_outside = self.pi.get_colors(_x2, _y2)  # Get non-white color
+        except (AttributeError, ValueError):
+            _x2 = _y2 = 9999  # Optional not-while coordinates undefined
+            self.last_grab_outside = "#808080"  # Color when non-white coordinates undefined
+
+        self.last_grab_time = time.time()  # Limit screen color grabs to 10 per second
 
         def resetAd():
             """ Ad has finished. """
@@ -1012,22 +1026,23 @@ EXIT yt-skip to bring CPU back in line
         ''' At this point right tip of Ad skip Button triangle is confirmed
             to be white because self.last_grab_inside == GLO["YT_SKIP_BTN_COLOR"]. 
             
-            If near non-white color is not white it's confirmed to be an
-            Ad Skip Button mounted. If near non-white color is also white this
-            is an Ad with a white background. self.last_grab_outside == GLO["YT_SKIP_BTN_COLOR"] 
+            If near non-white color is <= 176 (b0) it's an Ad Skip Button. 
+            If near non-white color is > 176 (b0) it's an Ad with a white background. 
+            self.last_grab_outside contains the near non-white color. 
         '''
 
         self.printSpam(self.formatTime(), _who, "C2",
                        self.formatXY(_x2, _y2), "color:", self.last_grab_outside)
 
+        # Check if this is a white-ish ad, and not the ad skip button
+        #if self.last_grab_outside == GLO["YT_SKIP_BTN_COLOR"]:  # 2025-10-19 OLD
         _rgb = img.hex_to_rgb(self.last_grab_outside)  # 2025-10-17 non-white compare
         _high = max(_rgb)  # 2025-10-17 _high = "de" when value is "#ded8cf"
-        #if self.last_grab_outside == GLO["YT_SKIP_BTN_COLOR"]:
-        if _high < 176:  # 2025-10-19 r, g, and b all lower than hex b0
-            # This is a white ad, not white ad button
+        if _high > 176:  # 2025-10-19 r, g, or b is greater than hex b0
             self.resetSpam(3)
             v3_print(self.formatTime(), _who)
-            v3_print("  Coordinates: [{}, {}] color: {}".format(_x2, _y2, self.last_grab_outside))
+            v3_print("  Coordinates: [{}, {}] color: {}"
+                     .format(_x2, _y2, self.last_grab_outside))
             v3_print("  Waiting for Ad skip button non-white color to appear...")
             return  # Skip button has not been clicked yet
 
@@ -1065,7 +1080,7 @@ EXIT yt-skip to bring CPU back in line
 
         # False positives: #fffffd
         self.resetSpam()  # Want to see outside color so force printing
-        v0_print(self.formatTime(), _who, 'self.last_grab_outside "_high":', _high)
+        v3_print(self.formatTime(), _who, 'self.last_grab_outside "_high":', _high)
         # _high = 102 for hex 66
         self.sendCommand("click", _x, _y)  # xdotool: 0.0370068550 to 0.1740691662
 
