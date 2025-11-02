@@ -142,7 +142,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.checkDependencies(self.requires, self.installed)
 
         if not self.dependencies_installed:
-            v0_print(self.formatTime(), _who,
+            v0_print(self.printTime(), _who,
                      "Some Application() dependencies are not installed.")
             v0_print(self.requires)
             v0_print(self.installed)
@@ -270,7 +270,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         _sb2_text += '2. Messages can be copied by highlighting text and\n'
         _sb2_text += '     typing <Control> + "C".\n\n'
         _sb2_text += "3. Click Help button below for more instructions.\n\n"
-        self.yt_sb_last_time = "00:00:00.00"  # Last formatted time
+        self.yt_sb_last_time = self.print_last_time = self.spam_last_time = \
+            "00:00:00.00"  # Last time for suppressing duplicate HH:MM:SS
         self.insertYtSB(_sb2_text)
 
         self.update_idletasks()
@@ -336,7 +337,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.yt_start = 0.0  # time YouTube video name first encountered
         self.ad_start = 0.0  # time yellow ad progress bar first detected
         self.av_start = 0.0  # time red video progress bar first detected
-        self.video_start = 0.0  # time progress bar check started
+        self.video_start = 0.0  # time red video progress bar check started
+        self.pause_start = 0.0  # 2025-10-25 time video was paused
         self.skip_btn_start = 0.0  # time Ad Skip Button check started
         self.skip_clicked = 0.0  # time Ad skip button clicked (sometimes ignored)
         self.last_grab_time = 0.0  # screen grabs limited to 10 / second.
@@ -344,6 +346,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.last_grab_outside = None
         self.last_name = ""  # Last YouTube video name encountered
         self.last_corked_and_dropped = False
+        self.last_index = 0
 
         self.spam_time = 0.0  # Spam reprinting on the same console line.
         self.spam_count = 0  # Vars set in self.printSpam() and self.resetSpam()
@@ -466,18 +469,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         # Suppress repeating HH: then MM: then SS
         _time = self.formatTime(_time=_time)
-        _h = _time[0:3]  # HH: <--- suppress duplicates
-        _m = _time[3:6]  # MM: <--- suppress duplicates
-        _s = _time[6:8]  # SS  <--- suppress duplicates
-        _f = _time[8:]   # .FF <--- always prints
-        if _time[0:3] == self.yt_sb_last_time[0:3]:
-            _h = "   "  # Suppress hour which hasn't changed
-            if _time[3:6] == self.yt_sb_last_time[3:6]:
-                _m = "   "  # Suppress hour and minutes are the same
-                if _time[6:8] == self.yt_sb_last_time[6:8]:
-                    _s = "   "  # Suppress hour, minutes and seconds
-        _t = _h + _m + _s + _f
-        _t = _t.replace("0", " ", 1) if _t.lstrip().startswith("0") else _t
+        _t = self.suppressTime(_time, self.yt_sb_last_time)
+        self.yt_sb_last_time = _time
 
         _line = "\t" + _t + "\t" + msg + "\n"
         self.yt_sb.insert("end", _line, "audio_sb_indent")
@@ -498,6 +491,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.pa_sb.delete("3.0", "end")  # delete all but headings
         self.asi = ()  # named tuple of active sink input
         self.last_corked_and_dropped = False
+        self.last_index = 0
 
         for _si in reversed(_sink_inputs):  # Read reversed to get last active
 
@@ -517,8 +511,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 #   changes from "muted" or "playing" to "paused".
                 if _si.name == self.last_name:
                     self.last_corked_and_dropped = True
-                    self.resetSpam(1)  # Just in case spam printing was in progress
-                    v1_print(self.formatTime(), _who,
+                    self.last_index = _si.index
+                    self.resetSpam(3)  # Just in case spam printing was in progress
+                    v3_print(self.printTime(3), _who,
                              "'self.last_corked_and_dropped' = 'True'. Index:",
                              _si.index)
                 continue  # Corked sink-inputs excluded as the last active
@@ -530,11 +525,11 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         try:  # Set fallback to last inactive sink-input when no active inputs
             self.asi = self.asi if bool(self.asi) else self.last_sink_inputs[-1]
         except IndexError:
-            v0_print(self.formatTime(), _who, "Catastrophic error. No Sink Inputs")
+            v0_print(self.printTime(), _who, "Catastrophic error. No Sink Inputs")
             return ()
 
         self.vars["pav_start"] = time.time()
-        self.vars["pav_index"] = self.asi.index
+        self.vars["pav_index"] = int(str(self.asi.index))
         self.vars["pav_application"] = self.asi.application
         self.vars["pav_name"] = self.asi.name
         self.vars["pav_volume"] = self.asi.volume
@@ -586,7 +581,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             """ If sink-input index # not in blacklist append it to list. """
             if self.asi.index not in self.blacklist:
                 self.blacklist.append(self.asi.index)
-                v1_print(self.formatTime(), _who,
+                v1_print(self.printTime(1), _who,
                          "adding to blacklist:", self.asi.index, _msg)
 
         # 2025-08-20 TODO: If pid = saved non-YouTube Window, restore
@@ -597,7 +592,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             if _app == 'ffplay':
                 _name = self.getFfPlayName(_pid)  # mserve ffplay song name
 
-            v3_print(self.formatTime(), _who, "Matching window not found:")
+            v3_print(self.printTime(3), _who, "Matching window not found:")
             v3_print("  Name:", _name, " | PID:", _pid)
             v3_print("  Application:", _app)
             self.vars["wn_found"] = False
@@ -611,20 +606,21 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         if _name.endswith(" - YouTube"):  # YouTube window found?
             if self.asi.index in self.blacklist:
                 self.blacklist.remove(self.asi.index)
-                v1_print(self.formatTime(), _who, "remove from blacklist:",
+                v1_print(self.printTime(1), _who, "remove from blacklist:",
                          self.asi.index, " | Ends with '- YouTube'")
             self.checkNewVideo(_name)  # True = new video name
             self.ad_start = 0.0  # A new sink-input will be an Ad or Video. Set both
             self.video_start = 0.0  # start times to 0 to force discovery.
+            self.pause_start = 0.0  # 2025-10-25 time video was paused
             if self.skip_clicked:
-                v1_print(self.formatTime(), _who, "'self.skip_clicked' reset:",
+                v1_print(self.printTime(1), _who, "'self.skip_clicked' reset:",
                          time.time() - self.skip_clicked)
                 self.skip_clicked = 0.0  # Reset 2025-09-02
 
         else:
             updateBlacklist(" | Doesn't end with '- YouTube'")
 
-        v3_print(self.formatTime(), _who,
+        v3_print(self.printTime(3), _who,
                  "Matching window:", self.mon.wn_dict['xid_hex'])
         return True  # Matching window found
 
@@ -680,6 +676,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         """
         _who = "checkNewVideo(" + str(self.pav_count) + "):"
         self.resetSpam(1)  # Send spam \n print line if level 1 or greater
+
         _msg = "Window forced to fullscreen. "  # 0x0 window id follows.
 
         def forceFullscreen(_time):
@@ -688,7 +685,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.mon.wn_is_fullscreen = True
             self.updateRows()  # Display new fullscreen status
             self.sendNotification(_msg)
-            v1_print(self.formatTime(), _who, _msg, self.mon.wn_dict['xid_hex'])
+            v1_print(self.printTime(1), _who, _msg, self.mon.wn_dict['xid_hex'])
             self.insertYtSB(_msg)
             self.yt_sb.highlight_pattern("fullscreen", "yellow")
             self.av_start = _time  # 0.0 = Video name is the same. else time.time()
@@ -710,18 +707,18 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         if self.last_corked_and_dropped:
             self.last_corked_and_dropped = False
-            v1_print(self.formatTime(), _who,
+            v1_print(self.printTime(1), _who,
                      "New video forcing off: 'self.last_corked_and_dropped'.")
 
         if self.skip_clicked:
             self.skip_clicked = 0.0
-            v1_print(self.formatTime(), _who,
+            v1_print(self.printTime(1), _who,
                      "New video forcing off: 'self.skip_clicked'.")
 
         if self.mon.wn_is_fullscreen is True:
             self.av_start = time.time()  # Already full screen, nothing to force
             self.updateDuration()
-            v1_print(self.formatTime(), _who,
+            v1_print(self.printTime(1), _who,
                      "YouTube window already fullscreen:", self.mon.wn_dict['xid_hex'])
             return True  # A new window name has been discovered
 
@@ -731,6 +728,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.av_start = time.time()  # A/V Check even if fullscreen fails
         else:
             forceFullscreen(time.time())
+
 
         return True  # A new window name has been discovered
 
@@ -798,27 +796,26 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.insertYtSB("Read newer preferences: " +
                             self.formatTime(self.this_stat.st_mtime))
             glo.openFile()
-            # 2025-08-18 Above is NOT updating Ad Skip Button wait time.
             global GLO
             GLO = glo.dictGlobals
             GLO['APP_RESTART_TIME'] = time.time()
 
             self.resetSpam(1)
-            v1_print(self.formatTime(), _who, "New configuration time:",
+            v1_print(self.printTime(1), _who, "New configuration time:",
                      self.formatTime(self.this_stat.st_mtime))
             self.last_stat = self.this_stat
 
         try:
-            _x, _y = GLO["YT_AD_BAR_POINT"]
+            # noinspection PyUnboundLocalVariable
+            _x, _y = GLO["YT_AD_BAR_POINT"]  # GLO is defined in main
         except AttributeError:
-            v0_print(self.formatTime(), _who,
+            v0_print(self.printTime(), _who,
                      'failure: _x, _y = GLO["YT_AD_BAR_POINT"]')
             return  # Tested at startup and should never happen
 
         if self.av_start == 0.0:
             self.av_start = time.time()  # "A/V check" start time
-            v3_print(self.formatTime(self.av_start), _who,
-                     'self.av_start was 0.0')
+            v3_print(self.printTime(3), _who, 'self.av_start was 0.0')
 
         def setVideo(_text):
             """ Shared function for knowing or assuming video (not ad).
@@ -831,7 +828,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.updateRows()
             self.resetSpam()
             if self.asi.index in self.blacklist:
-                v1_print(self.formatTime(), _who2,
+                v1_print(self.printTime(1), _who2,
                          "Ignoring blacklisted:", self.asi.index)
                 #self.video_start = 0.0  # Reset to get matching window
                 # Above causes endless loop
@@ -870,21 +867,22 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         _tk_clr = self.pi.get_colors(_x, _y)  # Get color
         self.printSpam(self.formatTime(), _who,
-                       self.formatXY(_x, _y), "color:", _tk_clr)
+                       self.printXY(_x, _y), "color:", _tk_clr)
 
         if _tk_clr == GLO["YT_AD_BAR_COLOR"] and self.ad_start == 0.0:
             self.ad_start = time.time()
             self.av_start = 0.0
             self.video_start = 0.0  # 2025-07-15 Extra insurance
+            self.pause_start = 0.0  # 2025-10-25 time video was paused
 
             self.resetSpam(1)  # Do this before normal printing (3 places)
-            v2_print(self.formatTime(), _who)
+            v2_print(self.printTime(2), _who)
             v2_print("  Coordinates: [{}, {}] color: {}".format(_x, _y, _tk_clr))
 
             # If already muted, this is a deprecating sink-input
             _vol = self.audio.pav.get_volume(str(self.asi.index), print_error=False)
             if _vol == 24.2424:
-                v1_print(self.formatTime(), _who,
+                v1_print(self.printTime(1), _who,
                          "Sink input obsolete:", str(self.vars["pav_index"]))
 
             elif _vol != 0:  # First time, turn down volume
@@ -898,13 +896,12 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 _msg = "Muting Ad on input: " + str(self.vars["pav_index"])
                 self.sendNotification(_msg)
 
-                # 2025-09-21 TODO: Check if last_sinks needs to be set to corked.
-                v1_print(self.formatTime(), _who, _msg,
+                v2_print(self.printTime(2), _who, _msg,
                          "volume: " + str(self.vars["pav_volume"]),
                          "corked: " + str(self.vars["pav_corked"]))
 
             else:  # mute command already issued to PAV
-                v1_print(self.formatTime(), _who,
+                v1_print(self.printTime(1), _who,
                          "Already muted: " + str(self.vars["pav_index"]),
                          "volume: " + str(self.vars["pav_volume"]),
                          "corked: " + str(self.vars["pav_corked"]))
@@ -913,8 +910,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         elif _tk_clr == GLO["YT_VIDEO_BAR_COLOR"] and self.video_start == 0.0:
             text_str = "Video "
             text_str += "paused" if self.last_corked_and_dropped else "playing"
+            # 2025-10-25 Above added months ago but, status is always "playing"
             setVideo(text_str)
-            v2_print(self.formatTime(), _who)
+            v2_print(self.printTime(2), _who)
             v2_print("  Coordinates: [{}, {}] color: {}".format(_x, _y, _tk_clr))
             return
 
@@ -925,7 +923,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 and self.ad_start == 0.0 \
                 and self.video_start == 0.0:
             self.resetSpam(2)
-            v2_print(self.formatTime(), _who,
+            v2_print(self.printTime(2), _who,
                      "A/V Check timeout. Assume video already playing.")
             text_str = "Assume video"
             setVideo(text_str)
@@ -939,6 +937,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 If color doesn't disappear after 0.45 seconds, send another click.
 
             Status display in self.printSpam() line:
+                "DC" = Delay checking for Ad Skip Button appearance
                 "C1" = checking for white triangle color
                 "C2" = checking for non-white color immediately outside triangle
                 "SC" = sent ad skip button mouse click
@@ -961,25 +960,28 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 19:15:22.55 waitAdSkip(786): C1 x=1851, y=909   color: #000000  | Cnt: 676  | Dur: 1:36.94
 19:15:22.71 matchWindow(787): adding to blacklist: 1618  | window doesn't end in '- YouTube'
 19:17:51.20 waitAdSkip(787): C1 x=1851, y=909   color: #080501  | Cnt: 985  | Dur: 2:28.29
-19:29:21.34 waitAdSkip(788): C1 x=1851, y=909   color: #000000  | Cnt: 5392  | Dur: 11:29.85Changing from g.PROGRAM_DIR: . to SAVE_CWD: /home/rick/HomA
+19:29:21.34 waitAdSkip(788): C1 x=1851, y=909   color: #000000  | Cnt: 5392  | Dur: 11:29.85
+Changing from g.PROGRAM_DIR: . to SAVE_CWD: /home/rick/HomA
 EXIT yt-skip to bring CPU back to normal
 
 
-            2025-10-20 Second Ad Button Skip click invokes Share button:
+            2025-10-20 Second Ad Skip Button click invokes Share button:
 16:16:24.43 waitAdSkip(20): SC x=1858, y=944   color: #564133  | Cnt:  13  | Dur: 2.83
-16:16:25.29 waitAdSkip(20): SC x=1858, y=944   color: #452f21  | Cnt:   6  | Dur: 0.53
-16:16:25.89 waitAdSkip(21): AS x=1855, y=946   color: #000000  | Cnt:   1  | Dur: 0.00
+       5.29 waitAdSkip(20): SC x=1858, y=944   color: #452f21  | Cnt:   6  | Dur: 0.53
+        .89 waitAdSkip(21): AS x=1855, y=946   color: #000000  | Cnt:   1  | Dur: 0.00
 
-            Normal looks like this:
+            Normal single Ad Skip Button click looks like this:
 16:09:39.45 waitAdSkip(13): SC x=1858, y=944   color: #050606  | Cnt:  13  | Dur: 2.86
-16:09:39.81 waitAdSkip(13): SW x=1855, y=946   color: #ffffff  | Cnt:   2  | Dur: 0.00
-16:09:40.21 waitAdSkip(14): AS x=1855, y=946   color: #000000  | Cnt:   1  | Dur: 0.00
-
+        .81 waitAdSkip(13): SW x=1855, y=946   color: #ffffff  | Cnt:   2  | Dur: 0.00
+      40.21 waitAdSkip(14): AS x=1855, y=946   color: #000000  | Cnt:   1  | Dur: 0.00
 
         """
 
         _who = "waitAdSkip(" + str(self.pav_count) + "):"
         if time.time() < GLO['YT_SKIP_BTN_WAIT'] + self.ad_start:
+            self.printSpam(self.formatTime(), _who, "DC",  # Need 30 chars now
+                           # 23456789012345678901234567890
+                           "Delay Ad Skip Button check ...")
             return  # Delay button check for a few seconds after ad starts
 
         if time.time() < self.last_grab_time + .1:
@@ -989,18 +991,18 @@ EXIT yt-skip to bring CPU back to normal
 
         try:  # Get white triangle color
             _x, _y = GLO["YT_SKIP_BTN_POINT"]
-            self.last_grab_inside = self.pi.get_colors(_x, _y)  # Get white triangle color
+            self.last_grab_inside = self.pi.get_colors(_x, _y)
         except AttributeError:  # Coordinates for skip button unknown
-            return  # This will repeat test forever but overhead is low.
+            return  # Should never happen because startup tests for _x & _y
 
         try:  # Get non-white color outside of triangle
             _x2, _y2 = GLO["YT_SKIP_BTN_POINT2"]
-            self.last_grab_outside = self.pi.get_colors(_x2, _y2)  # Get non-white color
+            self.last_grab_outside = self.pi.get_colors(_x2, _y2)
         except (AttributeError, ValueError):
             _x2 = _y2 = 9999  # Optional not-while coordinates undefined
-            self.last_grab_outside = "#808080"  # Color when non-white coordinates undefined
+            self.last_grab_outside = "#1a2b3c"  # Color when no coordinates
 
-        self.last_grab_time = time.time()  # Limit screen color grabs to 10 per second
+        self.last_grab_time = time.time()  # Limit grabs to 10 per second
 
         def resetAd():
             """ Ad has finished. """
@@ -1016,11 +1018,12 @@ EXIT yt-skip to bring CPU back to normal
                 #   because a new sink-input resets wait loop.
                 # 2025-10-15 Code "AS" appears frequently if `yt-skip.py -v` used.
                 self.printSpam(self.formatTime(), _who, "AS",
-                               self.formatXY(_x, _y), "color:", self.last_grab_inside)
+                               self.printXY(_x, _y), "color:", self.last_grab_inside)
                 self.resetSpam()  # Repeat from resetAd()
             else:
+                # Ad Skip button has not been clicked yet
                 self.printSpam(self.formatTime(), _who, "C1",
-                               self.formatXY(_x, _y), "color:", self.last_grab_inside)
+                               self.printXY(_x, _y), "color:", self.last_grab_inside)
             return  # Waiting for white color to appear or Ad Skipped
 
         ''' At this point right tip of Ad skip Button triangle is confirmed
@@ -1032,7 +1035,7 @@ EXIT yt-skip to bring CPU back to normal
         '''
 
         self.printSpam(self.formatTime(), _who, "C2",
-                       self.formatXY(_x2, _y2), "color:", self.last_grab_outside)
+                       self.printXY(_x2, _y2), "color:", self.last_grab_outside)
 
         # Check if this is a white-ish ad, and not the ad skip button
         #if self.last_grab_outside == GLO["YT_SKIP_BTN_COLOR"]:  # 2025-10-19 OLD
@@ -1040,25 +1043,26 @@ EXIT yt-skip to bring CPU back to normal
         _high = max(_rgb)  # 2025-10-17 _high = "de" when value is "#ded8cf"
         if _high > 176:  # 2025-10-19 r, g, or b is greater than hex b0
             self.resetSpam(3)
-            v3_print(self.formatTime(), _who)
+            v3_print(self.printTime(3), _who)
             v3_print("  Coordinates: [{}, {}] color: {}"
                      .format(_x2, _y2, self.last_grab_outside))
             v3_print("  Waiting for Ad skip button non-white color to appear...")
-            return  # Skip button has not been clicked yet
+            return  # White-ish ad, not the Ad Skip button
 
-        # If a click was already sent, wait before sending another to give the last
-        #   click a chance to grab.
+        # If a click was already sent, wait before sending another in order to
+        #   give the browser enough time to process the last click.
         if time.time() < self.skip_clicked + GLO['YT_SKIP_BTN_WAIT2']:
             # 0.15, 0.25, 0.35 too short for YouTube button to disappear.
             #   Wait 0.45 seconds (GLO['YT_SKIP_BTN_WAIT2']) in HomA Preferences.
             # NOTE: 0.25 works ok until ffmpeg volume analyzer is run. Then the
             #       CPU temperature reached 94 degrees and CPU usage was 63%.
-            # 2025-08-31 bump to 0.5 seconds because second click paused video
+            # 2025-08-31 bump to 0.5 seconds because second click paused video.
+            # 2025-10-23 hola.com running on background tab also pushes 94 degrees.
             self.printSpam(self.formatTime(), _who, "SW",
-                           self.formatXY(_x, _y), "color:", self.last_grab_inside)
+                           self.printXY(_x, _y), "color:", self.last_grab_inside)
 
-            self.resetSpam(3)
-            v3_print(self.formatTime(), _who)
+            self.resetSpam(3)  # New line only if -vvv parameter was used
+            v3_print(self.printTime(3), _who)
             v3_print("  Ad skip button color found:",
                      "'" + GLO["YT_SKIP_BTN_COLOR"] + "'.")
             v3_print("  Waiting for Ad skip button color to disappear...")
@@ -1071,22 +1075,22 @@ EXIT yt-skip to bring CPU back to normal
             return
 
         self.printSpam(self.formatTime(), _who, "SC",
-                       self.formatXY(_x2, _y2), "color:", self.last_grab_outside)
+                       self.printXY(_x2, _y2), "color:", self.last_grab_outside)
         # outside triangle: #000000 (4x), #011b30, #040302, #060606, #091113, #0b0908,
         #   #11160f, #161c16, #171513, #1a1a1a, #1c1c1c, #1e0f0d, #1e2018, #1f0a06,
         #   #270506, #322c2c, #371f13, #382e19 (2x), #3c3632, #3d3635,
         #   #44392e, #453a2c, #454543, #46110f, #473b2e, #491211, #493d30, #4b3f33,
-        #   #533d30, #555555, #5b4637, #665001, #666666
+        #   #533d30, #555555, #5b4637, #5e5d5f, #665001 (2x), #666666
 
         # False positives: #fffffd
         self.resetSpam()  # Want to see outside color so force printing
-        v3_print(self.formatTime(), _who, 'self.last_grab_outside "_high":', _high)
-        # _high = 102 for hex 66
+        v3_print(self.printTime(3), _who, 'self.last_grab_outside "_high":', _high)
+                                                    # When hex 66: _high  =  102
         self.sendCommand("click", _x, _y)  # xdotool: 0.0370068550 to 0.1740691662
 
         self.skip_clicked = time.time()  # When skip color disappears, it is success
         self.insertYtSB("Ad skip button mouse click")
-        v2_print(self.formatTime(), _who)
+        v2_print(self.printTime(2), _who)
         v2_print("  Mouse click sent to coordinates: ["
                  + str(_x) + ',' + str(_y) + "].")
 
@@ -1132,7 +1136,7 @@ EXIT yt-skip to bring CPU back to normal
         elif _type == "Int":
             _var = tk.IntVar()
         else:
-            v0_print(self.formatTime(), _who, "Unknown tk variable type:", _type)
+            v0_print(self.printTime(), _who, "Unknown tk variable type:", _type)
             return None
 
         _var.set(_val)
@@ -1167,12 +1171,60 @@ EXIT yt-skip to bring CPU back to normal
                       Ad skip button color check / NOT YouTube
 
             Duration: 99:99:99.99
+
+            2025-10-25 When self.last_corked_and_dropped == True:
+                If the last status was "Video paused" set "External".
+                If the last status was "Video playing" set "Video paused".
         """
         _who = "updateDuration():"
         _now = time.time()
         _status = ""
         old_status = self.text_status.get()
         _dur = 0.0
+
+        def setVideoStatus():
+            """ 2025-10-25 New function for self.video_start > 0.0
+                if self.last_corked_and_dropped == True:
+                    if the old_status was "Video playing" or "Assume video":
+                        and self.pause_start == 0.0
+                            set the new status to "Video paused".
+                            reset self.video_start to current time.
+                            set self.pause_start to current time.
+                    if the last status was none of above, video has just
+                        started playing and variable should have been False.
+                else self.last_corked_and_dropped == False:
+                    if last status was "Video paused":
+                        set the new status to "Video resumed"
+                        reset self.video_start to current time.
+                        set self.pause_start to 0.0.
+                    else
+                        set status to "Video playing"
+                        set self.pause_start to 0.0.  # Extra insurance
+                        # self.video_start time was set by parents.
+
+            """
+            def newStatus(_index):
+                """ Insert into scroll box with pattern highlighting. """
+                self.insertYtSB(_new_status + " on input #: " + str(_index),
+                                self.video_start)
+                _mark = "orange" if "paused" in _new_status else "green"
+                self.yt_sb.highlight_pattern(_new_status, _mark)
+
+            now = time.time()
+            if self.last_corked_and_dropped is True:
+                _new_status = "Video paused"
+                if self.pause_start == 0.0:
+                    self.pause_start = now
+                    self.video_start = now
+                    newStatus(self.last_index)
+            else:  # self.last_corked_and_dropped is False
+                _new_status = "Video playing"
+                self.pause_start = 0.0
+                if old_status == "Video paused":
+                    self.video_start = now
+                    # newStatus(self.vars["pav_index"]) false dummy input
+
+            return _new_status
 
         if self.ad_start > 0.0 and \
                 _now > GLO['YT_SKIP_BTN_WAIT'] + self.ad_start:
@@ -1184,14 +1236,16 @@ EXIT yt-skip to bring CPU back to normal
             _dur = _now - self.ad_start
             _status = "Ad playing"
         elif self.video_start > 0.0:
+            _status = setVideoStatus()
             _dur = _now - self.video_start
-            _status = "Video playing"
+            #_status = "Video playing"  # 2025-10-25 Set in new setVideoStatus()
         elif self.yt_start > 0.0:
             _dur = _now - self.vars["pav_start"]
             _status = "A/V check"
             if old_status != _status:
                 self.insertYtSB(_status)
         elif self.vars["wn_name"] != "":
+            # 2025-10-25 TODO: review with new setVideoStatus() function
             _dur = _now - self.vars["pav_start"]
             _status = "NOT YouTube"
             if old_status != _status:
@@ -1400,11 +1454,11 @@ pulsectl.pulsectl.PulseOperationFailed: 946012
             time.sleep(0.1)  # sleep stops fullscreen toggling twice by YouTube.
             # If && was used time.sleep(0.2) is required instead of (0.1)
             self.resetSpam(2)  # Just in case spam printing was active
-            v2_print(self.formatTime(), _who, 'xdotool windowactivate --sync ' +
+            v2_print(self.printTime(2), _who, 'xdotool windowactivate --sync ' +
                      str(self.mon.wn_dict['xid_int']) + ' && xdotool key f &')
 
         else:
-            v0_print(self.formatTime(dec=False), _who,
+            v0_print(self.printTime(0, dec=False), _who,
                      "Bad '_command' parameter: '" + str(_command) + "'.")
 
         if len(_active) > 4:
@@ -1415,7 +1469,7 @@ pulsectl.pulsectl.PulseOperationFailed: 946012
             v2_print("  Restoring previous active window: '" +
                      str(hex(int(_active))) + "'")
         else:
-            v0_print(self.formatTime(dec=False), _who,
+            v0_print(self.printTime(0, dec=False), _who,
                      "Could not restore active window: '" +
                      str(hex(int(_active))) + "'")
         ext.t_end("no_print")  # 4 xdotool commands: 0.0370068550 to 0.1740691662
@@ -1428,13 +1482,22 @@ pulsectl.pulsectl.PulseOperationFailed: 946012
             _duration = time.time() - self.spam_time
         else:
             self.spam_time = time.time()  # Time spam printing started
+            # 2025-11-02 Set significant HH:MM to print
         self.spam_count += 1
 
         if args:  # Check if *args is not empty
             first_arg = args[0]  # This code from google search AI
             if isinstance(first_arg, str):  # Ensure the first argument is a string
+                # 2025-11-01 suppress repeating HH:MM:SS
+                _t = self.suppressTime(first_arg, self.spam_last_time)
+
+                # 2025-11-02 attempts to suppress HH:MM and then just HH:
+                #_t = first_arg[3:].rjust(11)  # Suppress HH:
+                # self.spam_last_time = first_arg  # 2025-11-02 Now in resetSpam()
+                #_t = _t.replace("0", " ", 1) if _t.lstrip().startswith("0") else _t
+
                 prepended_char = '\r'  # The character to prepend
-                new_first_arg = prepended_char + first_arg
+                new_first_arg = prepended_char + _t
                 new_end_arg = " | Cnt: %3d  | Dur: " % self.spam_count
                 new_end_arg += tmf.mm_ss(_duration, rem='h')
                 # Create a new tuple with the modified first argument
@@ -1445,24 +1508,45 @@ pulsectl.pulsectl.PulseOperationFailed: 946012
 
         v0_print("\r", *args, end="", **kwargs)  # Cannot prepend "\r"
 
-        #v0_print("\r" + _line, end="", **kwargs)
-
-    def resetSpam(self, _level=0):
+    def resetSpam(self, _v=0):
         """ Reset spam printing for next print group. Check to ensure last
             print group actually printed something by checking spam_time
         """
-        if not checkVerbose(_level):
+        if not checkVerbose(_v):
             return  # Requested level is not printing so don't reset
 
         if self.spam_time:
             print()  # Force newline
             self.spam_time = 0.0
             self.spam_count = 0
+            #self.spam_last_time = self.print_last_time  # inherit last print
+            #self.spam_last_time = self.formatTime()  # Prepends leading space?
+            # 2025-11-02 Just before new v9_print() direct call not printSpam()
+            #   Set time baseline for HH:MM:SS for suppressTime() function
+            self.spam_last_time = self.formatTime()  # v9_print() will use this time
+
+    def printTime(self, _v=0, _time=None, dec=True):
+        """ Format passed _time as HH:MM:SS or use current time if _time=None.
+            If dec=True append decimal seconds for HH:MM:SS.dd format.
+
+            Only called by debug printing. GUI formatting uses setGuiTime.
+            The last formatted time is saved for comparison on next call.
+            If level > 0, check if debug printing is set >= verbose level.
+        """
+        _who = "printTime():"
+        if not checkVerbose(_v):
+            return "N/A"  # Requested level is not printing so don't format time
+
+        _time = self.formatTime(_time, dec)
+        # Suppress repeating HH: then MM: then SS
+        _t = self.suppressTime(_time, self.print_last_time)
+        self.print_last_time = self.spam_last_time = _time
+        return _t
 
     @staticmethod
     def formatTime(_time=None, dec=True):
-        """ Format passed time or current time if none passed.
-        import datetime
+        """ Format passed _time as HH:MM:SS or use current time if _time=None.
+            If dec=True append decimal seconds for HH:MM:SS.dd format.
         """
         _who = "formatTime():"
         if _time:
@@ -1473,14 +1557,38 @@ pulsectl.pulsectl.PulseOperationFailed: 946012
         formatted_time = dt_time.strftime("%H:%M:%S")
         if dec:
             formatted_time += "." + dt_time.strftime("%f")[:2]
+
         return formatted_time
 
     @staticmethod
-    def formatXY(_x, _y):
+    def suppressTime(_time, _last_time):
+        """ Return parts of _time that are different from _last_time """
+
+        # Suppress repeating HH: then MM: then SS
+        _h = _time[0:3]  # HH: <--- suppress duplicates
+        _m = _time[3:6]  # MM: <--- suppress duplicates
+        _s = _time[6:8]  # SS  <--- suppress duplicates
+        _f = _time[8:]   # .FF <--- always prints
+        if _time[0:3] == _last_time[0:3]:
+            _h = "   "  # Suppress hour which hasn't changed
+            if _time[3:6] == _last_time[3:6]:
+                _m = "   "  # Suppress hour and minutes are the same
+                if _time[6:8] == _last_time[6:8]:
+                    _s = "   "  # Suppress hour, minutes and seconds
+        _t = _h + _m + _s + _f
+        _t = _t.replace("0", " ", 1) if _t.lstrip().startswith("0") else _t
+
+        if len(_t) > 11:
+            _t = _t[1:]  # 2025-11-02 Getting a leading space?
+
+        return _t
+
+    @staticmethod
+    def printXY(_x, _y):
         """ Return 'x=9,   y=9   ' to
                    'x=9999,y=9999'
         """
-        _who = "formatXY():"
+        _who = "printXY():"
         _x = str(_x) + ","
         _y = str(_y)
         return 'x=' + _x.ljust(6) + 'y=' + _y.ljust(5)
@@ -1510,7 +1618,7 @@ pulsectl.pulsectl.PulseOperationFailed: 946012
 
         v2_print(_who, "Integer GLO['WINDOW_ID']: '" + str(GLO['WINDOW_ID']) + "'")
         if GLO['WINDOW_ID'] is None:
-            v0_print(self.formatTime(), _who, "ERROR `wmctrl` could not find Window.")
+            v0_print(self.printTime(), _who, "ERROR `wmctrl` could not find Window.")
             v0_print("Search for title failed: '" + title + "'.\n")
 
     def exitApp(self, kill_now=False, *_args):
@@ -1522,7 +1630,7 @@ pulsectl.pulsectl.PulseOperationFailed: 946012
 
         if msg and not kill_now:  # Cannot suspend when other jobs are active
             self.showInfoMsg("Cannot Close now.", msg, icon="error")
-            v0_print(self.formatTime(), _who, "Aborting Close.", msg)
+            v0_print(self.printTime(), _who, "Aborting Close.", msg)
             return
 
         sql.close_homa_db()  # Close SQL History Table
@@ -1638,7 +1746,7 @@ pulsectl.pulsectl.PulseOperationFailed: 946012
             return False  # self.close() has destroyed window
 
         if killer.kill_now:  # Is system shutting down?
-            v0_print(self.formatTime(), '\nyt-skip.py refresh() closed by SIGTERM')
+            v0_print(self.printTime(), '\nyt-skip.py refresh() closed by SIGTERM')
             self.exitApp(kill_now=True)
             return False  # Not required because this point never reached.
 
@@ -1660,7 +1768,7 @@ pulsectl.pulsectl.PulseOperationFailed: 946012
 
         now = time.time()  # Time changed after .Sensors() and .Rediscover()
         if self.last_refresh_time > now:
-            v0_print(self.formatTime(), _who, "self.last_refresh_time: ",
+            v0_print(self.printTime(), _who, "self.last_refresh_time: ",
                      ext.h(self.last_refresh_time), " >  now: ", ext.h(now))
             now = self.last_refresh_time  # Reset for proper sleep time
 
@@ -1699,23 +1807,25 @@ v1_print(sys.argv[0], "- YouTube Ad Mute and Skip", " | verbose1:", p_args.verbo
          " | fast:", p_args.fast, " | silent:", p_args.silent)
 
 
-def checkVerbose(_level):
-    """ Check if requested verbose level is turned on. Not used for
-        v0_print (level 0 is information only, NOT a verbose level).
+def checkVerbose(_v):
+    """ Check if requested verbose level is turned on. Automatically passes
+        v0_print (verbose 0 is information printing, NOT a verbose level).
+
+        Called by resetSpam() and printTime().
     """
     if p_args.silent:
         return False  # Silent mode turns off all verbose levels
 
-    if _level == 0:
+    if _v == 0:
         return True  # v0_print always prints
 
-    if p_args.verbose1 and _level == 1:
+    if p_args.verbose1 and _v == 1:
         return True  # Verbose level is 1 and matches request of 1
 
-    if p_args.verbose2 and 1 <= _level <= 2:
+    if p_args.verbose2 and 1 <= _v <= 2:
         return True  # Verbose level is 1 or 2 and matches request of 2
     
-    if p_args.verbose3 and 1 <= _level <= 3:
+    if p_args.verbose3 and 1 <= _v <= 3:
         return True  # Verbose level is 1, 2 or 3 and matches request of 3
     
     return False

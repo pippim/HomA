@@ -4426,8 +4426,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         ''' When devices displayed show sensors button and vice versa. '''
         self.sensors_devices_btn = None
-        self.sensors_btn_text = "Sensors"  # when Devices active
-        self.devices_btn_text = "Devices"  # when Sensors active
+        self.sensors_btn_text = "Thermal"  # when Network Devices active
+        self.devices_btn_text = "Devices"  # when Thermal Cruise active
         self.suspend_btn = None  # Suspend button on button bar to control tooltip
         self.close_btn = None  # Close button on button bar to control tooltip
         self.main_help_id = "HelpNetworkDevices"  # Toggles to HelpSensors and HelpDevices
@@ -4962,11 +4962,11 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         # noinspection SpellCheckingInspection
         ''' 🌡 (U+1F321) Sensors Button  -OR-  🗲 (U+1F5F2) Devices Button '''
         if toggle_text == self.sensors_btn_text:
-            text = "Show Temperatures and Fans."
+            text = "View Thermal Cruise."
             self.main_help_id = "HelpNetworkDevices"
             pic_image = self.img_sensors
         else:
-            text = "Show Network Devices."
+            text = "View Network Devices."
             self.main_help_id = "HelpSensors"
             pic_image = self.img_devices
 
@@ -5008,28 +5008,28 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.tt.zap_tip_window(self.sensors_devices_btn)
 
         # Get current button state and toggle it for next time.
-        if "Sensors" in self.sensors_devices_btn['text']:
-            self.sensors_devices_btn['text'] = toolkit.normalize_tcl(self.devices_btn_text)
+        if self.usingDevicesTreeview:
+            self.sensors_devices_btn['text'] = \
+                toolkit.normalize_tcl(self.devices_btn_text)
             self.sensors_devices_btn['image'] = self.img_devices
-            self.tt.set_text(self.sensors_devices_btn, "Show Network Devices.")
+            self.tt.set_text(self.sensors_devices_btn, "View Network Devices.")
             self.main_help_id = "HelpSensors"
             self.usingDevicesTreeview = False
             self.tree.destroy()  # Destroy Network Devices Treeview
             sm.treeview_active = True
-            sm.populateSensorsTree()  # Build Sensors Treeview using sm.Print(start=0, end=-1)
-        elif "Devices" in self.sensors_devices_btn['text']:
-            self.sensors_devices_btn['text'] = toolkit.normalize_tcl(self.sensors_btn_text)
+            sm.populateSensorsTree()  # Build Sensors Treeview
+        else:
+            self.sensors_devices_btn['text'] = \
+                toolkit.normalize_tcl(self.sensors_btn_text)
             self.sensors_devices_btn['image'] = self.img_sensors
-            self.tt.set_text(self.sensors_devices_btn, "Show Temperatures and Fans.")
+            self.tt.set_text(self.sensors_devices_btn, "View Thermal Cruise.")
             self.main_help_id = "HelpNetworkDevices"
             self.usingDevicesTreeview = True
             sm.tree.destroy()  # Destroy Sensors Treeview
             sm.treeview_active = False
             self.populateDevicesTree()  # Build Network Devices Treeview
-        else:
-            v0_print("Invalid Button self.sensors_devices_btn['text']:",
-                     self.sensors_devices_btn['text'])
-            return
+            # 2025-10-29 Devices in "Wait..." state until "Rediscover now" is run.
+            self.Rediscover()  # Check for new network devices
 
         self.updateDropdown()  # NORMAL/DISABLED options for view Sensors/Devices
 
@@ -5121,7 +5121,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 image=self.img_nighttime, command=lambda: self.setLEDNight(cr))
             menu.add_command(
                 label="Breathing colors", font=g.FONT, state=tk.DISABLED, compound=tk.LEFT,
-                image=self.img_breathing, command=lambda: self.breatheLEDColors(cr))
+                image=self.img_breathing, command=lambda: self.setLEDBreathe(cr))
 
             menu.add_separator()
 
@@ -5255,7 +5255,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         cr.tree.item(cr.item, text=text)
         cr.tree.update_idletasks()
 
-    def breatheLEDColors(self, cr):
+    def setLEDBreathe(self, cr):
         """ Manual mouse right button click selected "Breathing colors".
 
             Call cr.inst.breatheColors() method. Which is also automatically
@@ -5270,7 +5270,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 Calls app.refreshApp after each LED set color as time permits
 
         """
-        _who = self.who + "breatheLEDColors():"
+        _who = self.who + "setLEDBreathe():"
         resp = cr.inst.breatheColors()  # Loops forever until self.isActive False
         self.last_refresh_time = time.time()
         if not self.isActive:
@@ -7541,7 +7541,8 @@ def main():
         When existing restore original current directory.
     """
     global root  # named when main() called
-    global app, GLO
+    # noinspection PyGlobalUndefined
+    global app, GLO  # pyCharm thinks GLO can be undefined but it's not.
     global ni  # NetworkInformation() class instance used everywhere
     global SAVE_CWD  # Saved current working directory to restore on exit
 
