@@ -1491,11 +1491,6 @@ pulsectl.pulsectl.PulseOperationFailed: 946012
                 # 2025-11-01 suppress repeating HH:MM:SS
                 _t = self.suppressTime(first_arg, self.spam_last_time)
 
-                # 2025-11-02 attempts to suppress HH:MM and then just HH:
-                #_t = first_arg[3:].rjust(11)  # Suppress HH:
-                # self.spam_last_time = first_arg  # 2025-11-02 Now in resetSpam()
-                #_t = _t.replace("0", " ", 1) if _t.lstrip().startswith("0") else _t
-
                 prepended_char = '\r'  # The character to prepend
                 new_first_arg = prepended_char + _t
                 new_end_arg = " | Cnt: %3d  | Dur: " % self.spam_count
@@ -1523,7 +1518,7 @@ pulsectl.pulsectl.PulseOperationFailed: 946012
             #self.spam_last_time = self.formatTime()  # Prepends leading space?
             # 2025-11-02 Just before new v9_print() direct call not printSpam()
             #   Set time baseline for HH:MM:SS for suppressTime() function
-            self.spam_last_time = self.formatTime()  # v9_print() will use this time
+            #self.spam_last_time = self.formatTime()  # v9_print() will use this time
 
     def printTime(self, _v=0, _time=None, dec=True):
         """ Format passed _time as HH:MM:SS or use current time if _time=None.
