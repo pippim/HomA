@@ -21,7 +21,8 @@ warnings.filterwarnings("ignore", "ResourceWarning")  # PIL python 3 unclosed fi
 #       2025-02-10 - Support Python 3 shebang.
 #       2025-06-01 - Change #!/usr/bin/env python to #!/usr/bin/python for top.
 #       2025-06-13 - CheckRunning() convert from wmctrl to Wnck methods.
-#       2025-07-19 - Add "YT Ad Skip" (yt-skip.py) to menu. 
+#       2025-07-19 - Add "YT Ad Skip" (yt-skip.py) to menu.
+#       2025-11-09 - Fix check for no window returned from CheckRunning().
 #
 # ==============================================================================
 
@@ -40,6 +41,7 @@ https://gist.github.com/candidtim/5663cc76aa329b2ddfb5
 import os
 import signal
 import time
+import textwrap
 
 try:
     import subprocess32 as sp
@@ -163,6 +165,8 @@ def Eyesome(_):
 
     window = hc.CheckRunning(EYESOME_TITLE)
     # window: 0x06400007  0 3449 667  782  882  alien eyesome setup
+    if not bool(window):
+        window = [" "]  # Create dummy list for no window
 
     if len(window) < 4:  # Not running yet
         #print("homa-indicator.py Eyesome(): Starting Eyesome with sudo powers")

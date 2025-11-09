@@ -338,6 +338,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.ad_start = 0.0  # time yellow ad progress bar first detected
         self.av_start = 0.0  # time red video progress bar first detected
         self.video_start = 0.0  # time red video progress bar check started
+        self.video_ended = 0.0  # time video sink-input window disappeared
         self.pause_start = 0.0  # 2025-10-25 time video was paused
         self.skip_btn_start = 0.0  # time Ad Skip Button check started
         self.skip_clicked = 0.0  # time Ad skip button clicked (sometimes ignored)
@@ -676,25 +677,27 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         """
         _who = "checkNewVideo(" + str(self.pav_count) + "):"
         self.resetSpam(1)  # Send spam \n print line if level 1 or greater
+        self.video_ended = 0.0
 
-        _msg = "Window forced to fullscreen. "  # 0x0 window id follows.
+        _msg = "Forcing window fullscreen"
 
         def forceFullscreen(_time):
             """ Force YouTube window to fullscreen. """
             self.sendCommand("fullscreen")  # YT fullscreen xdotool command
             self.mon.wn_is_fullscreen = True
             self.updateRows()  # Display new fullscreen status
-            self.sendNotification(_msg)
-            v1_print(self.printTime(1), _who, _msg, self.mon.wn_dict['xid_hex'])
+            self.sendNotification(_msg + ". ")
+            v1_print(self.printTime(1), _who, _msg + ":",
+                     self.mon.wn_dict['xid_hex'])
             self.insertYtSB(_msg)
             self.yt_sb.highlight_pattern("fullscreen", "yellow")
             self.av_start = _time  # 0.0 = Video name is the same. else time.time()
             self.updateDuration()
 
-        if _name == self.last_name:  # Same YouTube video name?
+        if _name == self.last_name:  # Same YouTube video window name?
             if self.mon.wn_is_fullscreen is False:
-                forceFullscreen(0.0)
-            return False  # Same video return for A/V check
+                forceFullscreen(0.0)  # Video was paused and set non-fullscreen
+            return False  # Same video window name for A/V check
 
         # New YouTube Video
         self.last_name = _name
@@ -719,8 +722,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.av_start = time.time()  # Already full screen, nothing to force
             self.updateDuration()
             v1_print(self.printTime(1), _who,
-                     "YouTube window already fullscreen:", self.mon.wn_dict['xid_hex'])
-            return True  # A new window name has been discovered
+                     "Window already fullscreen:", self.mon.wn_dict['xid_hex'])
+            return True  # New window name discovered
 
         # YT fullscreen provides consistent ad/video progress bar coordinates
         if not self.checkInstalled('xdotool'):
@@ -729,8 +732,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         else:
             forceFullscreen(time.time())
 
-
-        return True  # A new window name has been discovered
+        return True  # New window name discovered
 
     def waitAdOrVideo(self):
         """ A new YouTube PulseAudio sink-input is analyzed when:
@@ -978,6 +980,7 @@ EXIT yt-skip to bring CPU back to normal
         """
 
         _who = "waitAdSkip(" + str(self.pav_count) + "):"
+
         if time.time() < GLO['YT_SKIP_BTN_WAIT'] + self.ad_start:
             self.printSpam(self.formatTime(), _who, "DC",  # Need 30 chars now
                            # 23456789012345678901234567890
@@ -1025,6 +1028,15 @@ EXIT yt-skip to bring CPU back to normal
                 self.printSpam(self.formatTime(), _who, "C1",
                                self.printXY(_x, _y), "color:", self.last_grab_inside)
             return  # Waiting for white color to appear or Ad Skipped
+
+        # 2025-11-08 Was browser back button pressed while ad was playing?
+        if self.last_name != self.vars["pav_name"]:
+            _print_name = self.last_name  # save for printing
+            self.last_name = ""  # Force printing time in full next time
+            self.yt_start = self.av_start = self.ad_start = self.skip_clicked = 0.0
+            self.resetSpam()
+            v1_print(self.printTime(1), _who, "Ad cancelled:", _print_name)
+            return
 
         ''' At this point right tip of Ad skip Button triangle is confirmed
             to be white because self.last_grab_inside == GLO["YT_SKIP_BTN_COLOR"]. 
@@ -1093,6 +1105,31 @@ EXIT yt-skip to bring CPU back to normal
         v2_print(self.printTime(2), _who)
         v2_print("  Mouse click sent to coordinates: ["
                  + str(_x) + ',' + str(_y) + "].")
+
+    def waitVideoEnd(self):
+        """ Called when YouTube Video is running.
+            Caller discovered video_start != 0 and ad_start == 0.
+        """
+
+        _who = "waitVideoEnd(" + str(self.pav_count) + "):"
+
+        if self.last_name == self.vars["pav_name"]:  # Compare to active name
+            return  # Last name is still the active sink-input name
+
+        if self.last_corked_and_dropped:  # Was last active sink-input corked?
+            return  # Video is paused, not ended
+
+        if self.video_ended == 0.0:  # First video end suspected?
+            self.video_ended = time.time()  # Time video end encountered
+
+        if self.video_ended + 3.0 > time.time():  # 3 seconds passed?
+            return  # Wait to confirm video has truly ended
+
+        _print_name = self.last_name  # save for printing
+        self.last_name = ""  # Force printing time in full next time
+        self.yt_start = self.av_start = self.video_start = 0.0
+        self.resetSpam(1)
+        v1_print(self.printTime(1), _who, "Video ended:", _print_name)
 
     def updateRows(self):
         """ Update rows with pulse audio active sink input (asi)
@@ -1404,6 +1441,10 @@ pulsectl.pulsectl.PulseOperationFailed: 946012
         if self.ad_start != 0.0 and self.video_start == 0.0:
             self.waitAdSkip()  # Wait to click Ad Skip button when it appears
 
+        # Is YouTube Video active?
+        if self.video_start != 0.0 and self.ad_start == 0.0:
+            self.waitVideoEnd()  # Wait for video to end
+
         # Update duration once per second
         second = ext.h(time.time()).split(":")[2].split(".")[0]
         if second != self.last_second:
@@ -1511,20 +1552,20 @@ pulsectl.pulsectl.PulseOperationFailed: 946012
             return  # Requested level is not printing so don't reset
 
         if self.spam_time:
-            print()  # Force newline
+            v0_print()  # Force newline
             self.spam_time = 0.0
             self.spam_count = 0
             #self.spam_last_time = self.print_last_time  # inherit last print
             #self.spam_last_time = self.formatTime()  # Prepends leading space?
             # 2025-11-02 Just before new v9_print() direct call not printSpam()
             #   Set time baseline for HH:MM:SS for suppressTime() function
-            #self.spam_last_time = self.formatTime()  # v9_print() will use this time
+            self.spam_last_time = self.formatTime()  # v9_print() will use this time
 
     def printTime(self, _v=0, _time=None, dec=True):
         """ Format passed _time as HH:MM:SS or use current time if _time=None.
             If dec=True append decimal seconds for HH:MM:SS.dd format.
 
-            Only called by debug printing. GUI formatting uses setGuiTime.
+            Only called by debug printing => v0_print() -> v3_print().
             The last formatted time is saved for comparison on next call.
             If level > 0, check if debug printing is set >= verbose level.
         """
@@ -1533,6 +1574,10 @@ pulsectl.pulsectl.PulseOperationFailed: 946012
             return "N/A"  # Requested level is not printing so don't format time
 
         _time = self.formatTime(_time, dec)
+        # If last spam print time is newer, use that as baseline HH:MM:SS
+        if self.print_last_time < self.spam_last_time:
+            self.print_last_time = self.spam_last_time
+
         # Suppress repeating HH: then MM: then SS
         _t = self.suppressTime(_time, self.print_last_time)
         self.print_last_time = self.spam_last_time = _time
