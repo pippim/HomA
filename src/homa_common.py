@@ -270,9 +270,9 @@ class DeviceCommonSelf:
 
         if log:
             v3_print("\n" + who, "'" + self.cmdString + "'")
-            o = self.cmdOutput if isinstance(self.cmdOutput, str) else '\n'.join(self.cmdOutput)
+            o = self.cmdOutput if isinstance(self.cmdOutput, str) else ''.join(self.cmdOutput)
             v3_print("  cmdOutput: '" + o + "'")
-            o = self.cmdError if isinstance(self.cmdError, str) else '\n'.join(self.cmdError)
+            o = self.cmdError if isinstance(self.cmdError, str) else ''.join(self.cmdError)
             v3_print("  cmdError : '" + o + "'  | cmdReturncode: ",
                      self.cmdReturncode, "  | cmdDuration:", self.cmdDuration)
 
@@ -600,14 +600,15 @@ class Globals(DeviceCommonSelf):
             ("RESUME_DELAY_RESTART", 6, RW, INT, INT, 3, DEC, MIN, MAX, CB,
              "Pause x seconds after resuming from suspend"),
             ("LED_LIGHTS_MAC", 4, RW, MAC, STR, 17, DEC, MIN, MAX, CB,
-             "Bluetooth Low Energy LED Light Strip address"),
+             "Bluetooth Low Energy (BLE) LED lights MAC address"),
             ("LED_LIGHTS_STARTUP", 4, RW, BOOL, BOOL, 2, DEC, MIN, MAX, CB,
-             "LED Lights Turn On at startup? True/False"),
+             "Turn on LED lights at startup?  1=True / 0=False"),
             ("LED_LIGHTS_COLOR", 4, RO, STR, STR, 20, DEC, MIN, MAX, CB,
-             'LED Lights last used color.\nFormat: (red, green, blue) #9f9f9f"]'),
+             'LED lights last used color.\nFormat: (red, green, blue) #9f9f9f"]'),
             ("LED_RED+GREEN_ADJ", 4, RW, BOOL, BOOL, 2, DEC, MIN, MAX, CB,
              "When LED Red and Green are mixed together,\n"
-             "boost Red by 50% and reduce Green by 50%."),
+             "boost Red by 50% and reduce Green by 50%\n",
+             "for a more accurate color?  1=True / 0=False"),
             ("BLUETOOTH_SCAN_TIME", 4, RW, INT, INT, 3, DEC, MIN, MAX, CB,
              'Number of seconds to perform bluetooth scan.\n'
              'A longer time may discover more devices.'),
@@ -620,7 +621,8 @@ class Globals(DeviceCommonSelf):
             ("TIMER_ALARM", 5, RW, FNAME, STR, 30, DEC, MIN, MAX, CB,
              ".wav sound file to play when timer ends."),
             ("LOG_EVENTS", 0, HD, BOOL, BOOL, 2, DEC, MIN, MAX, CB,
-             "Override runCommand events'\nlogging and --verbose3 printing"),
+             "Override runCommand events' logging and\n",
+             "--verbose3 printing?  1=True / 0=False"),
             ("EVENT_ERROR_COUNT", 0, HD, INT, INT, 9, 0, MIN, MAX, CB,
              "To enable/disable View Dropdown menu 'Discovery errors'"),
             ("SENSOR_CHECK", 5, RW, FLOAT, FLOAT, 7, DEC, MIN, MAX, CB,

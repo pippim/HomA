@@ -3028,6 +3028,8 @@ Display Power: state=ON
 adb shell dumpsys display| grep -i mScreenState
   mScreenState=ON
 
+2025-11-21 "screenOn" broken again - "Display Power" and "mScreenState" are working.
+2025-11-22 "screenOn" working again after suspend / resume. Other two working still.
         """
 
         _who = self.who + "getPower():"

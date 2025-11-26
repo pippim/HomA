@@ -41,7 +41,6 @@ https://gist.github.com/candidtim/5663cc76aa329b2ddfb5
 import os
 import signal
 import time
-import textwrap
 
 try:
     import subprocess32 as sp

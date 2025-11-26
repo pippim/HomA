@@ -99,6 +99,7 @@ import time  # For now = time.time()
 import signal  # Shutdown signals
 import datetime as dt  # For dt.datetime.now().strftime('%I:%M %p')
 from collections import namedtuple
+import textwrap
 
 
 try:
@@ -155,6 +156,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.text_font = font.nametofont("TkTextFont")  # tk.Entry fonts in Color Chooser
         self.text_font.configure(size=g.MON_FONT)
 
+        self.sink_inputs = []  # Current Pulse Audio sinks
         self.last_refresh_time = time.time()  # Refresh idle loop last entered time
         self.last_vum_update = time.time()  # Faster than 32ms causes eye fatigue
         self.last_minute = "0"  # Check sunlight percentage every minute
@@ -345,7 +347,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.last_grab_time = 0.0  # screen grabs limited to 10 / second.
         self.last_grab_inside = None
         self.last_grab_outside = None
+
         self.last_name = ""  # Last YouTube video name encountered
+        self.last_name_mulligan = False  # Second chance done after 1 second?
         self.last_corked_and_dropped = False
         self.last_index = 0
 
@@ -479,22 +483,33 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.yt_sb_last_time = _time
         return _t
 
-    def rebuildPaSB(self, _sink_inputs):
+    def rebuildPaSB(self):
         """ Rebuild self.pa_sb (PulseAudio Scrollbox) and
             recreate self.asi (active sink-input)
 
             Called when new Pulse Audio sink-input discovered.
             Called when current sink-input corked status changes.
-            Both instances occur if current sink_inputs list changes.
+            Both instances occur if current self.sink_inputs list changes.
 
         """
-        _who = "rebuildPaSB(" + str(self.pav_count) + "):"
+        _who = "rebuildPaSB(" + str(self.pav_count) + ")  :"
         self.pa_sb.delete("3.0", "end")  # delete all but headings
         self.asi = ()  # named tuple of active sink input
+        self.last_name_mulligan = False  # Second chance done after 1 second?
         self.last_corked_and_dropped = False
         self.last_index = 0
 
-        for _si in reversed(_sink_inputs):  # Read reversed to get last active
+        self.vars["pav_start"] = time.time()
+        self.vars["pav_index"] = 0
+        self.vars["pav_application"] = "N/A"
+        self.vars["pav_name"] = "N/A"
+        self.vars["pav_volume"] = 0.0
+        self.vars["pav_corked"] = False
+
+        self.vars["wn_found"] = False  # Reset last MatchWindow() results
+        self.vars["wn_xid_hex"] = "N/A"
+
+        for _si in reversed(self.sink_inputs):  # Read reversed to get last active
 
             # Override with ffplay song name instead of generic ffplay player name
             _name = self.ffplay_name if _si.application == "ffplay" else _si.name
@@ -529,18 +544,15 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             v0_print(self.printTime(), _who, "Catastrophic error. No Sink Inputs")
             return ()
 
-        self.vars["pav_start"] = time.time()
         self.vars["pav_index"] = int(str(self.asi.index))
         self.vars["pav_application"] = self.asi.application
         self.vars["pav_name"] = self.asi.name
         self.vars["pav_volume"] = self.asi.volume
         self.vars["pav_corked"] = self.asi.corked
-        self.vars["wn_found"] = False  # Reset last MatchWindow() results
-        self.vars["wn_xid_hex"] = "N/A"
 
         return self.asi
 
-    def matchWindow(self, _sink_inputs):
+    def matchWindow(self):
         """ Find matching window for self.asi(named tuple) Active Sink-Input.
 
             When a new sink appears it can happen when Video switches to an
@@ -557,11 +569,11 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 sink-inputs no longer appear per video and ad. Instead a static
                 "Firefox" "AudioStream" appears. Close and reopen Firefox to fix.
         """
-        _who = "matchWindow(" + str(self.pav_count) + "):"
+        _who = "matchWindow(" + str(self.pav_count) + ")  :"
         self.resetSpam(1)  # Send spam \n print line if level 1 or greater
 
         try:
-            _test = self.asi.name
+            _test = self.asi.name  # 2025-11-17 TODO: use self.vars["pav_name"]
         except AttributeError:
             # AttributeError: 'tuple' object has no attribute 'name'
             try:
@@ -584,6 +596,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 self.blacklist.append(self.asi.index)
                 v1_print(self.printTime(1), _who,
                          "adding to blacklist:", self.asi.index, _msg)
+            else:
+                v2_print(self.printTime(2), _who,
+                         "already blacklisted:", self.asi.index, _msg)
 
         # 2025-08-20 TODO: If pid = saved non-YouTube Window, restore
         #   non-YouTube Values, reset status to "Video paused" and exit
@@ -593,9 +608,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             if _app == 'ffplay':
                 _name = self.getFfPlayName(_pid)  # mserve ffplay song name
 
-            v3_print(self.printTime(3), _who, "Matching window not found:")
-            v3_print("  Name:", _name, " | PID:", _pid)
-            v3_print("  Application:", _app)
+            #v3_print(self.printTime(3), _who, "Matching window not found:")
+            #v3_print("  Name:", _name, " | PID:", _pid)
+            #v3_print("  Application:", _app, " | Input:", self.asi.index)
             self.vars["wn_found"] = False
             self.vars["wn_xid_hex"] = "N/A"
             updateBlacklist(" | sink-input has no window")
@@ -609,7 +624,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 self.blacklist.remove(self.asi.index)
                 v1_print(self.printTime(1), _who, "remove from blacklist:",
                          self.asi.index, " | Ends with '- YouTube'")
-            self.checkNewVideo(_name)  # True = new video name
+            self.checkNewVideo()  # True = new video name
             self.ad_start = 0.0  # A new sink-input will be an Ad or Video. Set both
             self.video_start = 0.0  # start times to 0 to force discovery.
             self.pause_start = 0.0  # 2025-10-25 time video was paused
@@ -621,8 +636,14 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         else:
             updateBlacklist(" | Doesn't end with '- YouTube'")
 
-        v3_print(self.printTime(3), _who,
-                 "Matching window:", self.mon.wn_dict['xid_hex'])
+        v2_print(self.printTime(2), _who,
+                 "YouTube:", self.mon.wn_dict['xid_hex'],
+                 " |", self.asi.name[:30], "...")
+
+        # 2025-11-12 Save as new last window
+        self.last_name = self.asi.name
+        self.last_index = self.asi.index
+
         return True  # Matching window found
 
     def getFfPlayName(self, _pid):
@@ -651,7 +672,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.ffplay_name = "Simply DirectMedia Layer"  # Old name
         return self.ffplay_name
 
-    def checkNewVideo(self, _name):
+    def checkNewVideo(self):
         """ Check for new YouTube video name to initialize variables.
             If not fullscreen, force YouTube fullscreen with 'f' key.
 
@@ -694,15 +715,19 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.av_start = _time  # 0.0 = Video name is the same. else time.time()
             self.updateDuration()
 
-        if _name == self.last_name:  # Same YouTube video window name?
+        if self.asi.name == self.last_name:  # Same YouTube video window name?
             if self.mon.wn_is_fullscreen is False:
                 forceFullscreen(0.0)  # Video was paused and set non-fullscreen
             return False  # Same video window name for A/V check
 
         # New YouTube Video
-        self.last_name = _name
         self.yt_start = self.vars["pav_start"]
+        self.doNewVideo()
+        ''' 2025-11-16 Old code moved to doNewVideo() shared by checkMulligan()
+        self.last_name = self.asi.name
+        self.last_index = self.asi.index  # 2025-11-12 added this line
         self.yt_sb_last_time = "00:00:00.00"  # Force next time to print in full
+        _name = self.asi.name
         if " - YouTube" in _name:  # Remove "- YouTube" suffix from YouTube SB
             _name = _name.replace(" - YouTube", "")
         _time = self.insertYtSB(_name, self.yt_start)
@@ -717,6 +742,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.skip_clicked = 0.0
             v1_print(self.printTime(1), _who,
                      "New video forcing off: 'self.skip_clicked'.")
+        '''
 
         if self.mon.wn_is_fullscreen is True:
             self.av_start = time.time()  # Already full screen, nothing to force
@@ -733,6 +759,39 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             forceFullscreen(time.time())
 
         return True  # New window name discovered
+
+    def doNewVideo(self):
+        """ New YouTube video name to initialize variables.
+            Called from checkNewVideo() and checkMulligan()
+
+            Blacklisted sink-inputs are never passed to this method. If
+            they were blacklisted at first, they are un-blacklisted
+            before this method is called.
+
+        """
+        _who = "doNewVideo(" + str(self.pav_count) + ")   :"
+        self.resetSpam(1)  # Send spam \n print line if level 1 or greater
+        self.video_ended = 0.0
+
+        # New YouTube Video
+        self.last_name = self.asi.name
+        self.last_index = self.asi.index  # 2025-11-12 added this line
+        self.yt_sb_last_time = "00:00:00.00"  # Force next time to print in full
+        _name = self.asi.name
+        if " - YouTube" in _name:  # Remove "- YouTube" suffix from YouTube SB
+            _name = _name.replace(" - YouTube", "")
+        _time = self.insertYtSB(_name, self.yt_start)
+        self.yt_sb.highlight_pattern(_time, "blue")
+
+        if self.last_corked_and_dropped:
+            self.last_corked_and_dropped = False
+            v1_print(self.printTime(1), _who,
+                     "New video forcing off: 'self.last_corked_and_dropped'.")
+
+        if self.skip_clicked:
+            self.skip_clicked = 0.0
+            v1_print(self.printTime(1), _who,
+                     "New video forcing off: 'self.skip_clicked'.")
 
     def waitAdOrVideo(self):
         """ A new YouTube PulseAudio sink-input is analyzed when:
@@ -823,23 +882,69 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             """ Shared function for knowing or assuming video (not ad).
                 Video may be paused or playing.
             """
-            _who2 = _who + "setVideo():"
             self.video_start = time.time()
             self.av_start = 0.0
             self.ad_start = 0.0  # 2025-07-14 Extra insurance
             self.updateRows()
             self.resetSpam()
             if self.asi.index in self.blacklist:
-                v1_print(self.printTime(1), _who2,
+                v1_print(self.printTime(1), _who,
                          "Ignoring blacklisted:", self.asi.index)
-                #self.video_start = 0.0  # Reset to get matching window
-                # Above causes endless loop
-            else:
-                self.insertYtSB(_text + " on input #: " + str(self.vars["pav_index"]),
-                                self.video_start)
-                # _text = "Video playing" or "Video paused"
-                _mark = "orange" if "paused" in _text else "green"
-                self.yt_sb.highlight_pattern(_text, _mark)
+                return
+
+            ''' 2025-11-16 False positive when video ended printing old video
+                CODE SNIPPET from waitVideoEnd():
+                    self.video_ended = time.time()  # Time video end encountered
+                    if self.video_ended + 2.0 > time.time():  # 2 seconds passed?
+                        return  # Wait to confirm video has truly ended
+                    self.printLastName("Video ended")
+                    self.video_start = 0.0
+            '''
+
+            # _text = "Video playing" or "Video paused"
+            self.insertYtSB(_text + " on input #: " + str(self.vars["pav_index"]),
+                            self.video_start)
+            _mark = "orange" if "paused" in _text else "green"
+            self.yt_sb.highlight_pattern(_text, _mark)
+
+        def setAd():
+            """ An Ad has started or is restarting after window established. """
+            self.ad_start = time.time()
+            self.av_start = 0.0
+            self.video_start = 0.0  # 2025-07-15 Extra insurance
+            self.pause_start = 0.0  # 2025-10-25 time video was paused
+
+            self.resetSpam(2)  # Do this before normal printing (3 places)
+            v2_print(self.printTime(2), _who,
+                     "Coordinates: [{}, {}] color: {}".format(_x, _y, _tk_clr))
+
+            # If already muted, this is a deprecating sink-input
+            _vol = self.audio.pav.get_volume(str(self.asi.index), print_error=False)
+            if _vol == 24.2424:
+                self.resetSpam()
+                v0_print(self.printTime(1), _who,
+                         "Sink input obsolete:", str(self.vars["pav_index"]))
+
+            elif _vol != 0:  # First time, turn down volume
+                #self.audio.pav.set_volume(str(self.asi.index), 0)  # Set volume to zero
+                self.setVolume(0)  # Set volume
+                self.updateRows()
+                _text_str = "Ad muted"
+                self.insertYtSB(_text_str + " on input #: " + str(self.vars["pav_index"]),
+                                self.ad_start)
+                self.yt_sb.highlight_pattern(_text_str, "red")
+                _msg = "Muting Ad on input: " + str(self.vars["pav_index"])
+                self.sendNotification(_msg)
+
+                v2_print(self.printTime(2), _who, _msg,
+                         " | volume: " + str(self.vars["pav_volume"]),
+                         " | corked: " + str(self.vars["pav_corked"]))
+
+            else:  # mute command already issued to PAV
+                v2_print(self.printTime(1), _who,
+                         "Already muted: " + str(self.vars["pav_index"]),
+                         " | volume: " + str(self.vars["pav_volume"]),
+                         " | corked: " + str(self.vars["pav_corked"]))
 
         # noinspection SpellCheckingInspection
         ''' Is YouTube video newly corked? 
@@ -861,7 +966,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
             E.G. Sink-input # 1190 disappears after Ad Skip button click and 
             "Video playing on input#: 249" appears. This is false though and
-            then .2 seconds later "Video playing on input #: 1191" appears".
+            then .2 seconds later "Video playing on input #: 1191" appears.
 
             Build list of non-YouTube windows to be ignored. If list is empty
             then allow "No Pulse Audio" situation.
@@ -872,41 +977,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                        self.printXY(_x, _y), "color:", _tk_clr)
 
         if _tk_clr == GLO["YT_AD_BAR_COLOR"] and self.ad_start == 0.0:
-            self.ad_start = time.time()
-            self.av_start = 0.0
-            self.video_start = 0.0  # 2025-07-15 Extra insurance
-            self.pause_start = 0.0  # 2025-10-25 time video was paused
-
-            self.resetSpam(1)  # Do this before normal printing (3 places)
-            v2_print(self.printTime(2), _who)
-            v2_print("  Coordinates: [{}, {}] color: {}".format(_x, _y, _tk_clr))
-
-            # If already muted, this is a deprecating sink-input
-            _vol = self.audio.pav.get_volume(str(self.asi.index), print_error=False)
-            if _vol == 24.2424:
-                v1_print(self.printTime(1), _who,
-                         "Sink input obsolete:", str(self.vars["pav_index"]))
-
-            elif _vol != 0:  # First time, turn down volume
-                #self.audio.pav.set_volume(str(self.asi.index), 0)  # Set volume to zero
-                self.setVolume(0)  # Set volume
-                self.updateRows()
-                text_str = "Ad muted"
-                self.insertYtSB(text_str + " on input #: " + str(self.vars["pav_index"]),
-                                self.ad_start)
-                self.yt_sb.highlight_pattern(text_str, "red")
-                _msg = "Muting Ad on input: " + str(self.vars["pav_index"])
-                self.sendNotification(_msg)
-
-                v2_print(self.printTime(2), _who, _msg,
-                         "volume: " + str(self.vars["pav_volume"]),
-                         "corked: " + str(self.vars["pav_corked"]))
-
-            else:  # mute command already issued to PAV
-                v1_print(self.printTime(1), _who,
-                         "Already muted: " + str(self.vars["pav_index"]),
-                         "volume: " + str(self.vars["pav_volume"]),
-                         "corked: " + str(self.vars["pav_corked"]))
+            setAd()
             return
 
         elif _tk_clr == GLO["YT_VIDEO_BAR_COLOR"] and self.video_start == 0.0:
@@ -914,8 +985,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             text_str += "paused" if self.last_corked_and_dropped else "playing"
             # 2025-10-25 Above added months ago but, status is always "playing"
             setVideo(text_str)
-            v2_print(self.printTime(2), _who)
-            v2_print("  Coordinates: [{}, {}] color: {}".format(_x, _y, _tk_clr))
+            v2_print(self.printTime(2), _who,
+                     "Coordinates: [{}, {}] color: {}".format(_x, _y, _tk_clr))
             return
 
         # Wait x seconds for progress bar then assume video already playing
@@ -926,7 +997,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 and self.video_start == 0.0:
             self.resetSpam(2)
             v2_print(self.printTime(2), _who,
-                     "A/V Check timeout. Assume video already playing.")
+                     "A/V Check 6 second timeout. Assume video already playing.")
             text_str = "Assume video"
             setVideo(text_str)
 
@@ -951,21 +1022,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 limit of 15 seconds (longest duration before skip button) in order
                 to catch instances when ad starts and user backs out.
 
-            2025-08-27 Usually Ad Skip color is #ffffff. Today it was #f1f1f1 when
-                ad skip button had focus. TODO: Rewrite to test r>F0, g>F0 and b>F0.
-
-            2025-10-12 Back button during ad causes xorg to churn at 10% CPU usage:
-19:11:15.55 waitAdOrVideo(784): Muting Ad on input: 1616 volume: 0.0 corked: False
-19:11:22.26 waitAdSkip(784): C1 x=1851, y=909   color: #000000  | Cnt:  25  | Dur: 4.09
-19:13:45.28 waitAdSkip(785): C1 x=1851, y=909   color: #000000  | Cnt: 1045  | Dur: 2:22.74
-19:13:45.44 matchWindow(786): adding to blacklist: 1617  | sink-input has no window
-19:15:22.55 waitAdSkip(786): C1 x=1851, y=909   color: #000000  | Cnt: 676  | Dur: 1:36.94
-19:15:22.71 matchWindow(787): adding to blacklist: 1618  | window doesn't end in '- YouTube'
-19:17:51.20 waitAdSkip(787): C1 x=1851, y=909   color: #080501  | Cnt: 985  | Dur: 2:28.29
-19:29:21.34 waitAdSkip(788): C1 x=1851, y=909   color: #000000  | Cnt: 5392  | Dur: 11:29.85
-Changing from g.PROGRAM_DIR: . to SAVE_CWD: /home/rick/HomA
-EXIT yt-skip to bring CPU back to normal
-
 
             2025-10-20 Second Ad Skip Button click invokes Share button:
 16:16:24.43 waitAdSkip(20): SC x=1858, y=944   color: #564133  | Cnt:  13  | Dur: 2.83
@@ -980,6 +1036,10 @@ EXIT yt-skip to bring CPU back to normal
         """
 
         _who = "waitAdSkip(" + str(self.pav_count) + "):"
+
+        if time.time() > 1.0 + self.ad_start and \
+                self.vars["pav_name"].endswith("- YouTube"):
+            self.checkMulligan()
 
         if time.time() < GLO['YT_SKIP_BTN_WAIT'] + self.ad_start:
             self.printSpam(self.formatTime(), _who, "DC",  # Need 30 chars now
@@ -1031,11 +1091,8 @@ EXIT yt-skip to bring CPU back to normal
 
         # 2025-11-08 Was browser back button pressed while ad was playing?
         if self.last_name != self.vars["pav_name"]:
-            _print_name = self.last_name  # save for printing
-            self.last_name = ""  # Force printing time in full next time
-            self.yt_start = self.av_start = self.ad_start = self.skip_clicked = 0.0
-            self.resetSpam()
-            v1_print(self.printTime(1), _who, "Ad cancelled:", _print_name)
+            self.printLastName("Ad cancelled")
+            self.ad_start = self.skip_clicked = 0.0
             return
 
         ''' At this point right tip of Ad skip Button triangle is confirmed
@@ -1055,8 +1112,7 @@ EXIT yt-skip to bring CPU back to normal
         _high = max(_rgb)  # 2025-10-17 _high = "de" when value is "#ded8cf"
         if _high > 176:  # 2025-10-19 r, g, or b is greater than hex b0
             self.resetSpam(3)
-            v3_print(self.printTime(3), _who)
-            v3_print("  Coordinates: [{}, {}] color: {}"
+            v3_print(self.printTime(3), _who, "   Coordinates: [{}, {}] color: {}"
                      .format(_x2, _y2, self.last_grab_outside))
             v3_print("  Waiting for Ad skip button non-white color to appear...")
             return  # White-ish ad, not the Ad Skip button
@@ -1074,12 +1130,11 @@ EXIT yt-skip to bring CPU back to normal
                            self.printXY(_x, _y), "color:", self.last_grab_inside)
 
             self.resetSpam(3)  # New line only if -vvv parameter was used
-            v3_print(self.printTime(3), _who)
-            v3_print("  Ad skip button color found:",
-                     "'" + GLO["YT_SKIP_BTN_COLOR"] + "'.")
-            v3_print("  Waiting for Ad skip button color to disappear...")
+            v3_print(self.printTime(3), _who,
+                     "   Skip color found:", "'" + GLO["YT_SKIP_BTN_COLOR"] + "'.",
+                     "Wait to disappear...")
             return  # Too soon to assume last click was too early.
-            # If last click worked the second click causes video pause.
+            # If first click in progress, a second click causes video pause.
 
         if not self.checkInstalled('xdotool'):
             resetAd()
@@ -1096,22 +1151,26 @@ EXIT yt-skip to bring CPU back to normal
 
         # False positives: #fffffd
         self.resetSpam()  # Want to see outside color so force printing
-        v3_print(self.printTime(3), _who, 'self.last_grab_outside "_high":', _high)
+        v3_print(self.printTime(3), _who, '   self.last_grab_outside "_high":', _high)
                                                     # When hex 66: _high  =  102
         self.sendCommand("click", _x, _y)  # xdotool: 0.0370068550 to 0.1740691662
 
         self.skip_clicked = time.time()  # When skip color disappears, it is success
         self.insertYtSB("Ad skip button mouse click")
-        v2_print(self.printTime(2), _who)
-        v2_print("  Mouse click sent to coordinates: ["
-                 + str(_x) + ',' + str(_y) + "].")
+        v2_print(self.printTime(2), _who, "   Send click to:", self.printXY(_x, _y))
 
     def waitVideoEnd(self):
         """ Called when YouTube Video is running.
             Caller discovered video_start != 0 and ad_start == 0.
+            The current video is in self.last_name. If the active
+            sink-input name is different, then the video has ended.
         """
 
         _who = "waitVideoEnd(" + str(self.pav_count) + "):"
+
+        if time.time() > 1.0 + self.video_start and \
+                self.vars["pav_name"].endswith("- YouTube"):
+            self.checkMulligan()
 
         if self.last_name == self.vars["pav_name"]:  # Compare to active name
             return  # Last name is still the active sink-input name
@@ -1119,17 +1178,29 @@ EXIT yt-skip to bring CPU back to normal
         if self.last_corked_and_dropped:  # Was last active sink-input corked?
             return  # Video is paused, not ended
 
-        if self.video_ended == 0.0:  # First video end suspected?
+        if self.video_ended == 0.0:  # Last video end not encountered yet?
             self.video_ended = time.time()  # Time video end encountered
 
-        if self.video_ended + 3.0 > time.time():  # 3 seconds passed?
+        if self.video_ended + 2.0 > time.time():  # 2 seconds passed?
             return  # Wait to confirm video has truly ended
 
+        self.printLastName("Video ended")
+        self.video_start = 0.0
+
+    def printLastName(self, _text):
+        """ Print self.last_name from waitAdSkip() and waitVideoEnd().
+            :param _text: "Ad cancelled" or "Video ended" inserted in scrollbox
+        """
+        _who = "printLastName(" + str(self.pav_count) + "):"
         _print_name = self.last_name  # save for printing
         self.last_name = ""  # Force printing time in full next time
-        self.yt_start = self.av_start = self.video_start = 0.0
+        self.yt_start = self.av_start = 0.0
+        self.insertYtSB(_text)
         self.resetSpam(1)
-        v1_print(self.printTime(1), _who, "Video ended:", _print_name)
+        _merged = _who + " " + _text + ": " + _print_name
+        _wrapped = textwrap.fill(_merged, initial_indent=" " * 12,
+                                 subsequent_indent=" " * 12, width=87)
+        v1_print(self.printTime(1), _wrapped[12:])
 
     def updateRows(self):
         """ Update rows with pulse audio active sink input (asi)
@@ -1158,6 +1229,74 @@ EXIT yt-skip to bring CPU back to normal
         self.text_is_YouTube.set(_yt)
         _fs = "yes" if self.mon.wn_is_fullscreen else "no"
         self.text_is_fullscreen.set(_fs)
+
+    def checkMulligan(self):
+        """ 1 second into Ad or Video, use a mulligan to establish the
+            self.last_name value.
+
+            Required because PulseAudio and Gnome Window Manager can
+            establish the YouTube video name at different times.
+        """
+
+        if self.last_name_mulligan is True:
+            return  # Second chance already done after 1 second
+
+        if "- YouTube" not in self.asi.name:
+            # v3_print(self.printTime(3), _who, self.asi.name)
+            # Likely a blacklisted sink-input that happens when a video is paused
+            #   and in that case, after 1 second, will no longer come back here
+            return  # Nothing to do when non-YouTube PulseAudio source
+
+        _who = "checkMulligan(" + str(self.pav_count) + "):"
+        _yt_start = self.yt_start  # save vars for restoring later
+        _av_start = self.av_start
+        _ad_start = self.ad_start
+        _video_start = self.video_start
+
+        if self.mon.wn_name:
+            _win_name = self.mon.wn_name
+        else:
+            _win_name = "?" * 25
+
+        self.resetSpam(2)
+        self.last_name_mulligan = True
+        _trg = "- YouTube"
+        _h1, _s, _t = _win_name.partition(_trg)  # Xxx - YouTube — Mozilla Firefox
+        _h2, _s, _t = self.asi.name.partition(_trg)  # Xxx - YouTube
+        if _h1 == _h2:  # compare headers when separator and tail are stripped off
+            v2_print(self.printTime(2), _who,
+                     self.mon.wn_name[:23],
+                     " | Window already matches")
+            return
+
+        v3_print(self.printTime(3), _who,
+                 _win_name[:23],
+                 " | pav:", self.asi.name[:23])
+
+        self.mon.make_wn_list()  # Rebuild list of active DM windows
+
+        if self.mon.get_wn_by_name(self.asi.name):
+            self.vars["wn_found"] = True  # Matching window found
+            self.vars["wn_xid_hex"] = self.mon.wn_xid_hex
+            v2_print(self.printTime(2), _who,
+                     self.mon.wn_name[:23],
+                     " | Window successfully found")
+            # Remove from blacklist
+            if self.asi.name.endswith(" - YouTube"):  # YouTube window found?
+                if self.asi.index in self.blacklist:
+                    self.blacklist.remove(self.asi.index)
+                    self.resetSpam(1)
+                    v1_print(self.printTime(1), _who, "remove from blacklist:",
+                             self.asi.index, " | Ends with '- YouTube'")
+            self.doNewVideo()  # Update screen shared with checkNewVideo()
+        else:
+            self.vars["wn_found"] = False
+            self.vars["wn_xid_hex"] = "N/A"
+            #self.last_name_mulligan = False  # Trying again spams too much
+            self.resetSpam(2)
+            v2_print(self.printTime(2), _who,
+                     _win_name[:23],
+                     " | Failed to find window")
 
     def addRow(self, row_no, label, _val, _type="String", tt_text=None):
         """ Add row to Pointer Location section
@@ -1322,7 +1461,7 @@ EXIT yt-skip to bring CPU back to normal
 
     def setVolume(self, _percent):
         """ Set volume to integer percent. """
-        _who = "setVolume(" + str(self.pav_count) + "):"
+        _who = "setVolume(" + str(self.pav_count) + ")    :"
         self.audio.pav.set_volume(str(self.asi.index), 0)  # Set volume to zero
         self.vars["pav_volume"] = 0.0
         Input = namedtuple('Input', 
@@ -1330,15 +1469,17 @@ EXIT yt-skip to bring CPU back to normal
         for i, _lsi in enumerate(self.last_sink_inputs):
             if _lsi.index == self.asi.index:
                 self.resetSpam(3)
-                v3_print(_who, "Changing volume:", i, _lsi)
+                v3_print(self.printTime(3), _who, "Input:", _lsi.index,
+                         "Old volume:", _lsi.volume)
                 # noinspection PyArgumentList
                 _new = Input(_lsi.index, _lsi.corked, _lsi.mute, 0, _lsi.name,
                              _lsi.application, _lsi.pid, _lsi.user)
                 self.last_sink_inputs[i] = _new
-                v3_print(_who, "New volume:", i, _new)
+                v3_print(self.printTime(3), _who, "Input:", _lsi.index,
+                         "New volume:", _new.volume)
                 break
 
-    def updateVideos(self):
+    def doSinkInputs(self):
         # noinspection SpellCheckingInspection
         """ Called from self.loopForever() every 16 to 33 ms.
             Monitor Pulse Audio for new sinks. Check if ad progress bar or
@@ -1417,20 +1558,19 @@ pulsectl.pulsectl.PulseOperationFailed: 946012
 
 
         """
-        _who = "updateVideos():"
+        _who = "doSinkInputs():"
 
-        sink_inputs = self.audio.pav.get_all_inputs()
+        self.sink_inputs = self.audio.pav.get_all_inputs()
 
         # sink-input changes means an Ad or Video started, paused or ended
-        if sink_inputs != self.last_sink_inputs:
+        if self.sink_inputs != self.last_sink_inputs:
             self.pav_count += 1  # PulseAudio Sink-Inputs changed count
-            if not bool(self.last_sink_inputs):
-                # last sink-inputs empty first time so use current sink-inputs
-                self.last_sink_inputs = sink_inputs  # for matchWindow()
-            self.rebuildPaSB(sink_inputs)  # Build scrollbox and self.asi
-            self.matchWindow(sink_inputs)  # X11 window for self.asi
+            if not bool(self.last_sink_inputs):  # Empty on startup
+                self.last_sink_inputs = self.sink_inputs  # for matchWindow()
+            self.rebuildPaSB()  # Build scrollbox and self.asi
+            self.matchWindow()  # X11 window for self.asi
             self.updateRows()  # 2025-07-03 - Handles no X11 window
-            self.last_sink_inputs = sink_inputs  # deepcopy NOT required
+            self.last_sink_inputs = self.sink_inputs  # deepcopy NOT required
 
         # YouTube started but Ad or Video started not set yet
         if self.yt_start != 0.0 and self.ad_start == 0.0 and \
@@ -1454,7 +1594,7 @@ pulsectl.pulsectl.PulseOperationFailed: 946012
     def loopForever(self):
         """ Loop forever refreshing App every 16 to 33 ms.
             Update VU Meters display.
-            Call updateVideo() to monitor Pulse Audio for new sinks and Videos. 
+            Call doSinkInputs() to monitor Pulse Audio for sink-input changes.
         """
         _who = "loopForever():"
 
@@ -1468,7 +1608,7 @@ pulsectl.pulsectl.PulseOperationFailed: 946012
             if _vum_working:  # VU Meters still working after last display?
                 _vum_working = self.updateVuMeter()
 
-            self.updateVideos()
+            self.doSinkInputs()
 
         # Application shutting down. Is VU meter still running?
         if self.vum and ext.check_pid_running(self.vum.pid):
@@ -1481,7 +1621,7 @@ pulsectl.pulsectl.PulseOperationFailed: 946012
                 - For left-click _x and _y parameters are required
 
         """
-        _who = "sendCommand(" + str(self.pav_count) + "):"
+        _who = "sendCommand(" + str(self.pav_count) + ")  :"
         ext.t_init("4 xdotool commands")
         _active = os.popen('xdotool getactivewindow').read().strip()
 
@@ -1507,7 +1647,7 @@ pulsectl.pulsectl.PulseOperationFailed: 946012
             os.popen('xdotool windowfocus ' + _active)
             os.popen('xdotool windowactivate ' + _active)
             self.resetSpam(2)  # Just in case spam printing was active
-            v2_print("  Restoring previous active window: '" +
+            v2_print(self.printTime(2), _who, "Reactivate window: '" +
                      str(hex(int(_active))) + "'")
         else:
             v0_print(self.printTime(0, dec=False), _who,
