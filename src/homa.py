@@ -5452,10 +5452,10 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             return False  # Not required because this point never reached.
 
         now = time.time()  # lost time means suspend initiated outside of HomA
-        delta = now - self.last_refresh_time
-        if delta > GLO['RESUME_TEST_SECONDS']:  # Assume > is resume from suspend
+        _delta = now - self.last_refresh_time
+        if _delta > GLO['RESUME_TEST_SECONDS']:  # Assume > is resume from suspend
             v0_print("\n" + "= "*4, _who, "Resuming from suspend after:",
-                     tmf.days(delta), " ="*4 + "\n")
+                     tmf.days(_delta), " ="*4 + "\n")
             self.resumeFromSuspend()  # Resume Wait + Conditionally Power on devices
 
         if not self.winfo_exists():  # Application window destroyed?
