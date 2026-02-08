@@ -347,6 +347,10 @@ class Globals(DeviceCommonSelf):
         # Configuration filename assigned during file open
         self.config_fname = None
 
+        # self.dictGlobals {} changes for homa_, ytads_ and led_
+        self.dictGlobals = {}
+        # if appname == "ytads":
+
         # Usage: glo = Globals()
         #        GLO = glo.dictGlobals
         #        GLO['APP_RESTART_TIME'] = time.time()
@@ -604,18 +608,18 @@ class Globals(DeviceCommonSelf):
             ("LED_LIGHTS_STARTUP", 4, RW, BOOL, BOOL, 2, DEC, MIN, MAX, CB,
              "Turn on LED lights at startup?  1=True / 0=False"),
             ("LED_LIGHTS_COLOR", 4, RO, STR, STR, 20, DEC, MIN, MAX, CB,
-             'LED lights last used color.\nFormat: (red, green, blue) #9f9f9f"]'),
+             'LED lights last used color.\nFormat: "(red, green, blue) #9f9f9f"'),
             ("LED_RED+GREEN_ADJ", 4, RW, BOOL, BOOL, 2, DEC, MIN, MAX, CB,
              "When LED Red and Green are mixed together,\n"
-             "boost Red by 50% and reduce Green by 50%\n",
-             "for a more accurate color?  1=True / 0=False"),
+             "boost Red by 50% and reduce Green by 50%\n"
+             "for a more accurate Yellow?  1=True / 0=False"),
             ("BLUETOOTH_SCAN_TIME", 4, RW, INT, INT, 3, DEC, MIN, MAX, CB,
-             'Number of seconds to perform bluetooth scan.\n'
-             'A longer time may discover more devices.'),
+             "Number of seconds to perform bluetooth scan.\n"
+             "A longer time may discover more devices."),
             ("SUNLIGHT_PERCENT", 4, RW, FNAME, STR, 32, DEC, MIN, MAX, CB,
-             'Pippim Eyesome sunlight percentage filename.\n'
+             "Pippim Eyesome sunlight percentage filename.\n"
              'Or any filename containing "0%" to "100%",\n'
-             '(without the quotes) on the first line.'),
+             "(without the quotes) on the first line."),
             ("TIMER_SEC", 5, RW, INT, INT, 6, DEC, MIN, MAX, CB,
              "Tools Dropdown Menubar - Countdown Timer default"),
             ("TIMER_ALARM", 5, RW, FNAME, STR, 30, DEC, MIN, MAX, CB,
@@ -699,8 +703,8 @@ class Globals(DeviceCommonSelf):
 
         help_id = "https://www.pippim.com/programs/homa.html#"  # same as g.HELP_URL
         help_tag = "EditPreferences"
-        help_text = "Open a new window in your default web browser for\n"
-        help_text += "explanations of fields in this Preferences Tab."
+        help_text = "Open a new window, or tab, in your default web browser\n"
+        help_text += "for an explanation of fields in this Preferences Tab."
         listHelp = [help_id, help_tag, help_text]
 
         return listTabs, listFields, listHelp

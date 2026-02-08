@@ -34,18 +34,45 @@ warnings.filterwarnings("ignore", "ResourceWarning")  # PIL python 3 unclosed fi
 # ==============================================================================
 
 '''
-    TODO: create DisplayArps(), DisplayHosts(), DisplayDevices()
-    WIP: Volume Meters, PulseAudio sinks and volume levels for YT ad skipping    
+
+Ubuntu 24.04 Python 2.7.18 (https://askubuntu.com/a/1527884/307523)
+To install the python2.7 package from the Ubuntu 22.04 default repositories in Ubuntu 24.04 open the terminal and type:
+
+sudo apt update
+wget http://security.ubuntu.com/ubuntu/pool/universe/p/python2.7/python2.7_2.7.18-13ubuntu1.5_amd64.deb http://security.ubuntu.com/ubuntu/pool/universe/p/python2.7/libpython2.7-stdlib_2.7.18-13ubuntu1.5_amd64.deb http://security.ubuntu.com/ubuntu/pool/universe/p/python2.7/python2.7-minimal_2.7.18-13ubuntu1.5_amd64.deb http://security.ubuntu.com/ubuntu/pool/universe/p/python2.7/libpython2.7-minimal_2.7.18-13ubuntu1.5_amd64.deb  
+sudo apt install ./libpython2.7-minimal_2.7.18-13ubuntu1.5_amd64.deb ./libpython2.7-stdlib_2.7.18-13ubuntu1.5_amd64.deb ./python2.7-minimal_2.7.18-13ubuntu1.5_amd64.deb ./python2.7_2.7.18-13ubuntu1.5_amd64.deb
+
+python2.7 --version
+whereis python2.7
+
+------------------
+
+Ubuntu 24.04 Python 3.14.2 (google ai search)
+
+sudo apt update
+sudo add-apt-repository ppa:deadsnakes/ppa
+sudo apt install python3.14-full
+
+python3.14 --version
+whereis python3.14
+
+------------------
+
+    TODO: DisplayArps(), DisplayHosts(), DisplayDevices()
+          configArps(), configGUI()
 
     REQUIRES:
     
     python(3)-appdirs
+    python(3)-tk  # Tkinter might not install with regular python 3.12
+    python(3)-pil.imagetk  # Pillow might not install with tkinter
     python(3)-xlib  # imported as Xlib.X
     python(3)-ttkwidgets  # Also stored as subdirectory in ~/HomA/ttkwidgets
-    trionesControl   # Also stored as subdirectory in ~/HomA/ttkwidgets 
-    gatttool   # Also stored as subdirectory in ~/HomA/ttkwidgets 
-    audio   # Stored as subdirectory in ~/HomA/audio 
-    pulsectl   # Stored as subdirectory in ~/HomA/pulsectl 
+    trionesControl  # Also stored as subdirectory in ~/HomA/ttkwidgets 
+    gatttool  # Also stored as subdirectory in ~/HomA/ttkwidgets 
+    python(3)-serial  # Required by gatttool
+    audio  # Stored as subdirectory in ~/HomA/audio 
+    pulsectl  # Stored as subdirectory in ~/HomA/pulsectl 
 
     xdotool  # To minimize window
     systemctl  # To suspend. Or suitable replacement like `suspend` external command
@@ -54,14 +81,9 @@ warnings.filterwarnings("ignore", "ResourceWarning")  # PIL python 3 unclosed fi
     bluez-tools  # For bluetooth communications including hci tools
     wmctrl  # Get list of windows. To be removed in favour of Wnck
 
-    Gatttool REQUIRES:
-    python(3)-serial
-
-    2025-03-01 LONG TERM (3 tasks completed by 2025-06-17):
+    2025-03-01 LONG TERM TO-DO:
         TODO: Sensors: Add average CPU Mhz and Load %.
                        Add Top 20 programs with Top 3 displayed.
-                       Consolidate fan and temperature changes per minute with
-                        up / down arrows on trend for each temp and fan 
               Dimmer (movie.sh) features where wakeup is based on mouse
                 passing over monitor for five seconds.
               xrandr monitor details - geometry & resolution.
@@ -3014,10 +3036,15 @@ Application().Rediscover(): FOUND NEW INSTANCE or REDISCOVERED LOST INSTANCE:
 
     def getPower(self, forgive=False):
         """ Return "ON", "OFF" or "?".
-            Calls 'timeout 2.0 adb shell dumpsys input_method | grep -i screenon'
+            Calls 'timeout 2.0 adb shell dumpsys input_method | grep -i screenOn'
                 which replies with 'true' or 'false'.
 
-2025-04-22 broken in morning: screenOn no longer appears. Worked in afternoon
+            adb shell dumpsys input_method | grep -i screenOn - 0.834s
+            adb shell dumpsys power | grep -i "Display Power" - 0.471s
+            adb shell dumpsys display| grep -i mScreenState - 0.097s
+
+
+2025-04-22 Broken in the morning and "screenOn" no longer works. Worked in afternoon
 
 adb shell dumpsys input_method | grep -i "screenOn"
     screenOn = true
@@ -3030,6 +3057,12 @@ adb shell dumpsys display| grep -i mScreenState
 
 2025-11-21 "screenOn" broken again - "Display Power" and "mScreenState" are working.
 2025-11-22 "screenOn" working again after suspend / resume. Other two working still.
+
+2025-12-15 "screenOn" broken again - "Display Power" and "mScreenState" are working.
+2025-12-15 "screenOn" working again after using menu: Turn Off and Turn On twice.
+
+2026-01-21 "screenOn" broken again for a couple of days now. Other two are working.
+2026-01-21 Works first time after using right-click menu's "Turn Off" option.
         """
 
         _who = self.who + "getPower():"
@@ -4143,7 +4176,8 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
         v1_print(_who, msg + "\n")
         if self.app is not None:
             if not self.app.suspending and not self.app.resuming and \
-                    GLO['APP_RESTART_TIME'] < time.time() - 60:
+                    GLO['APP_RESTART_TIME'] < time.time() - 60 and \
+                    GLO['LED_LIGHTS_STARTUP'] is True:  # 2026-01-02 Added
                 self.app.showInfoMsg("Not connected", msg, "error", align="left")
             else:
                 v0_print(_who, "\nCannot display message when starting,",
@@ -4522,8 +4556,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.runCommand(command_line_list)
             self.updateDropdown()
 
-        mb = tk.Menu(self)
-        self.config(menu=mb)
+        _menubar = tk.Menu(self)
+        self.config(menu=_menubar)
 
         ''' Full option name is referenced to enable and disable the option. '''
         # File Dropdown Menu
@@ -4546,7 +4580,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.file_menu.add_command(label="Exit", font=g.FONT, underline=1,
                                    command=self.exitApp, state=tk.DISABLED)
 
-        mb.add_cascade(label="File", font=g.FONT, underline=0, menu=self.file_menu)
+        _menubar.add_cascade(label="File", font=g.FONT, underline=0, menu=self.file_menu)
         self.file_menu.config(activebackground="SkyBlue3", activeforeground="black")
 
         # Edit Dropdown Menu
@@ -4558,7 +4592,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                                    font=g.FONT, state=tk.DISABLED,
                                    command=self.exitApp)
 
-        mb.add_cascade(label="Edit", font=g.FONT, underline=0, menu=self.edit_menu)
+        _menubar.add_cascade(label="Edit", font=g.FONT, underline=0, menu=self.edit_menu)
         self.edit_menu.config(activebackground="SkyBlue3", activeforeground="black")
 
         # View Dropdown Menu
@@ -4578,34 +4612,34 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.view_menu.add_command(label="Breathing stats", font=g.FONT, underline=10,
                                    command=self.DisplayBreathing, state=tk.DISABLED)
 
-        mb.add_cascade(label="View", font=g.FONT, underline=0, menu=self.view_menu)
+        _menubar.add_cascade(label="View", font=g.FONT, underline=0, menu=self.view_menu)
         self.view_menu.config(activebackground="SkyBlue3", activeforeground="black")
 
         # Tools Dropdown Menu
         self.tools_menu = tk.Menu(mb, tearoff=0)
-        lights_menu = tk.Menu(self.tools_menu, tearoff=0)
-        lights_menu.add_command(label='ON', font=g.FONT, underline=1, background="green",
-                                command=lambda: self.turnAllPower(
-                                    'ON', fade=True, type_code=GLO['HS1_SP']))
-        lights_menu.add_command(label='OFF', font=g.FONT, underline=1, background="red",
-                                command=lambda: self.turnAllPower(
-                                    'OFF', fade=True, type_code=GLO['HS1_SP']))
+        _lights = tk.Menu(self.tools_menu, tearoff=0)
+        _lights.add_command(label='ON', font=g.FONT, underline=1, background="green",
+                            command=lambda: self.turnAllPower(
+                                'ON', fade=True, type_code=GLO['HS1_SP']))
+        _lights.add_command(label='OFF', font=g.FONT, underline=1, background="red",
+                            command=lambda: self.turnAllPower(
+                                'OFF', fade=True, type_code=GLO['HS1_SP']))
         self.tools_menu.add_cascade(label="Turn all lights power", font=g.FONT,
-                                    underline=0, menu=lights_menu)
-        lights_menu.config(activebackground="SkyBlue3", activeforeground="black")
+                                    underline=0, menu=_lights)
+        _lights.config(activebackground="SkyBlue3", activeforeground="black")
         self.tools_menu.add_command(label="Forget sudo password", underline=0,
                                     font=g.FONT, command=forgetPassword, state=tk.DISABLED)
 
-        volume_menu = tk.Menu(self.tools_menu, tearoff=0)
-        volume_menu.add_command(label='Normal', font=g.FONT, underline=1, background="green",
-                                command=lambda: self.sonySaveInst.setVolume(
-                                    GLO['NORMAL_VOLUME']), state=tk.NORMAL)
-        volume_menu.add_command(label='Quiet', font=g.FONT, underline=1, background="red",
-                                command=lambda: self.sonySaveInst.setVolume(
-                                    GLO['QUIET_VOLUME']), state=tk.NORMAL)
+        _volume = tk.Menu(self.tools_menu, tearoff=0)
+        _volume.add_command(label='Normal', font=g.FONT, underline=1, background="green",
+                            command=lambda: self.sonySaveInst.setVolume(
+                                GLO['NORMAL_VOLUME']), state=tk.NORMAL)
+        _volume.add_command(label='Quiet', font=g.FONT, underline=1, background="red",
+                            command=lambda: self.sonySaveInst.setVolume(
+                                GLO['QUIET_VOLUME']), state=tk.NORMAL)
         self.tools_menu.add_cascade(label="Sony TV volume level", font=g.FONT,
-                                    underline=0, menu=volume_menu, state=tk.DISABLED)
-        volume_menu.config(activebackground="SkyBlue3", activeforeground="black")
+                                    underline=0, menu=_volume, state=tk.DISABLED)
+        _volume.config(activebackground="SkyBlue3", activeforeground="black")
 
         self.tools_menu.add_separator()
         self.tools_menu.add_command(label="Configure YouTube Ads", font=g.FONT,
@@ -4619,27 +4653,27 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.tools_menu.add_command(label="Timer " + str(GLO['TIMER_SEC']) + " seconds",
                                     font=g.FONT, underline=0,
                                     command=lambda: self.resumeWait(timer=GLO['TIMER_SEC']))
-        theme_menu = tk.Menu(self.tools_menu, tearoff=0)
+        _themes = tk.Menu(self.tools_menu, tearoff=0)
         #     # background="LemonChiffon"    VERY NICE Debug information
         #     # background="NavajoWhite"     VERY NICE
         #     # background="LightSalmon"     BEST at night
-        theme_menu.add_command(label='WhiteSmoke', font=g.FONT, underline=0,
-                               background="WhiteSmoke",
-                               command=lambda: self.setColorScheme('WhiteSmoke'))
-        theme_menu.add_command(label='LemonChiffon', font=g.FONT, underline=0,
-                               background="LemonChiffon",
-                               command=lambda: self.setColorScheme('LemonChiffon'))
-        theme_menu.add_command(label='NavajoWhite', font=g.FONT, underline=0,
-                               background="NavajoWhite",
-                               command=lambda: self.setColorScheme('NavajoWhite'))
-        theme_menu.add_command(label='LightSalmon', font=g.FONT, underline=5,
-                               background="LightSalmon",
-                               command=lambda: self.setColorScheme('LightSalmon'))
+        _themes.add_command(label='WhiteSmoke', font=g.FONT, underline=0, 
+                            background="WhiteSmoke",
+                            command=lambda: self.setColorScheme('WhiteSmoke'))
+        _themes.add_command(label='LemonChiffon', font=g.FONT, underline=0,
+                            background="LemonChiffon",
+                            command=lambda: self.setColorScheme('LemonChiffon'))
+        _themes.add_command(label='NavajoWhite', font=g.FONT, underline=0,
+                            background="NavajoWhite",
+                            command=lambda: self.setColorScheme('NavajoWhite'))
+        _themes.add_command(label='LightSalmon', font=g.FONT, underline=5,
+                            background="LightSalmon",
+                            command=lambda: self.setColorScheme('LightSalmon'))
         self.tools_menu.add_cascade(label="Color scheme", font=g.FONT,
-                                    underline=0, menu=theme_menu)
-        theme_menu.config(activebackground="SkyBlue3", activeforeground="black")
-        mb.add_cascade(label="Tools", font=g.FONT, underline=0,
-                       menu=self.tools_menu)
+                                    underline=0, menu=_themes)
+        _themes.config(activebackground="SkyBlue3", activeforeground="black")
+        _menubar.add_cascade(label="Tools", font=g.FONT, underline=0,
+                             menu=self.tools_menu)
         self.tools_menu.config(activebackground="SkyBlue3", activeforeground="black")
 
     def updateDropdown(self):
@@ -5444,7 +5478,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.update_idletasks()
 
         if not self.winfo_exists():  # Application window destroyed?
-            return False  # self.close() has destroyed window
+            return False  # self.exitApp() has destroyed window
 
         if killer.kill_now:  # Is system shutting down?
             v0_print('\nhoma.py refresh() closed by SIGTERM')
@@ -5459,7 +5493,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.resumeFromSuspend()  # Resume Wait + Conditionally Power on devices
 
         if not self.winfo_exists():  # Application window destroyed?
-            return False  # self.close() has set to None
+            return False  # self.exitApp() has set to None
 
         if self.sonySaveInst:  # Check Sony TV special features if enabled
             self.sonySaveInst.checkSonyEvents()  # 2025-06-01 new method
@@ -5470,7 +5504,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 self.sony_suspended_system = False  # not needed but insurance
 
             if not self.winfo_exists():  # Application window destroyed?
-                return False  # self.close() has set to None
+                return False  # self.exitApp() has set to None
 
         self.tt.poll_tips()  # Tooltips fade in and out
         self.update()  # process pending tk events in queue
@@ -5482,7 +5516,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.refreshAllPowerStatuses()  # Display "ON", "OFF" or "?"
 
         if not self.winfo_exists():  # Application window destroyed?
-            return False  # self.close() has set to None
+            return False  # self.exitApp() has set to None
 
         if self.bleSaveInst and self.bleScrollbox:  # Statistics for breathing colors?
             self.DisplayBreathing()  # Display single step in Bluetooth LEDs
