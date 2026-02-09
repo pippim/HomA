@@ -4561,7 +4561,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         ''' Full option name is referenced to enable and disable the option. '''
         # File Dropdown Menu
-        self.file_menu = tk.Menu(mb, tearoff=0)
+        self.file_menu = tk.Menu(_menubar, tearoff=0)
 
         # "Rediscover now" - argument count error: lambda _:
         self.file_menu.add_command(label="Rediscover now", font=g.FONT,
@@ -4584,7 +4584,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.file_menu.config(activebackground="SkyBlue3", activeforeground="black")
 
         # Edit Dropdown Menu
-        self.edit_menu = tk.Menu(mb, tearoff=0)
+        self.edit_menu = tk.Menu(_menubar, tearoff=0)
         self.edit_menu.add_command(label="Preferences", font=g.FONT, underline=0,
                                    command=self.Preferences, state=tk.NORMAL)
         self.edit_menu.add_separator()
@@ -4596,7 +4596,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.edit_menu.config(activebackground="SkyBlue3", activeforeground="black")
 
         # View Dropdown Menu
-        self.view_menu = tk.Menu(mb, tearoff=0)
+        self.view_menu = tk.Menu(_menubar, tearoff=0)
         self.view_menu.add_command(label="Sensors", font=g.FONT, underline=0,
                                    command=self.toggleSensorsDevices, state=tk.DISABLED)
         self.view_menu.add_separator()
@@ -4616,7 +4616,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.view_menu.config(activebackground="SkyBlue3", activeforeground="black")
 
         # Tools Dropdown Menu
-        self.tools_menu = tk.Menu(mb, tearoff=0)
+        self.tools_menu = tk.Menu(_menubar, tearoff=0)
         _lights = tk.Menu(self.tools_menu, tearoff=0)
         _lights.add_command(label='ON', font=g.FONT, underline=1, background="green",
                             command=lambda: self.turnAllPower(
