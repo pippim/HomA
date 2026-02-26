@@ -23,6 +23,7 @@ warnings.filterwarnings("ignore", "ResourceWarning")  # PIL python 3 unclosed fi
 #       2025-06-13 - CheckRunning() convert from wmctrl to Wnck methods.
 #       2025-07-19 - Add "YT Ad Skip" (yt-skip.py) to menu.
 #       2025-11-09 - Fix check for no window returned from CheckRunning().
+#       2026-02-25 - Use homa configuration sudo password when available.
 #
 # ==============================================================================
 
@@ -41,6 +42,7 @@ https://gist.github.com/candidtim/5663cc76aa329b2ddfb5
 import os
 import signal
 import time
+from cryptography.fernet import Fernet  # Decrypt homa cfg sudo password using MAC
 
 try:
     import subprocess32 as sp
@@ -64,7 +66,8 @@ except NameError:  # name 'reload' is not defined
 
 import global_variables as g
 g.init(appname="homa")
-import homa_common as hc  # hc.GetSudoPassword() and hc.GetMouseLocation()
+import homa_common as hc  # hc.Computer() class & hc.GetMouseLocation() function
+from homa_common import DeviceCommonSelf, Globals  # classes to open config file
 
 APP_ID = "homa-indicator"  # Unique application name used for app indicator id
 APP_ICON = "/usr/share/icons/gnome/32x32/devices/display.png"
@@ -73,19 +76,44 @@ HOMA_TITLE = "HomA - Home Automation"  # Window title must match program's title
 SKIP_TITLE = "YouTube Ad Mute and Skip"  # Window title must match program's title bar
 EYESOME_TITLE = "eyesome setup"  # Move by window title under application indicator
 SUDO_PASSWORD = None  # Sudo required for running eyesome
-MOVE_WINDOW_RIGHT_ADJUST = -40  # Move Window Top Right Adjustment
+SYSTRAY_ADJUST = -40  # New Window Position Adjustment
+
+glo = Globals()  # Global variables instance used everywhere
+GLO = glo.dictGlobals  # Default global dictionary. Live read in glo.open_file()
+cp = hc.Computer()  # cp = Computer Platform instance required for crypto key
 
 
 def Main():
     """ Main loop """
 
     global SAVE_CWD  # Saved current working directory to restore on exit
+    global GLO  # HomA configuration file's saved global variables dictionary
 
     ''' Save current working directory '''
     SAVE_CWD = os.getcwd()  # Bad habit from old code in mserve.py
     if SAVE_CWD != g.PROGRAM_DIR:
         #print("Changing from:", SAVE_CWD, "to g.PROGRAM_DIR:", g.PROGRAM_DIR)
         os.chdir(g.PROGRAM_DIR)
+
+    if glo.openFile():
+
+        ''' Decrypt SUDO PASSWORD using ethernet or wifi MAC crypto key '''
+        with warnings.catch_warnings():
+            # Deprecation Warning:
+            # /usr/lib/python2.7/dist-packages/cryptography/x509/__init__.py:32:
+            #   PendingDeprecationWarning: CRLExtensionOID has been renamed to
+            #                              CRLEntryExtensionOID
+            #   from cryptography.x509.oid import (
+            warnings.simplefilter("ignore", category=PendingDeprecationWarning)
+            f = Fernet(cp.crypto_key)  # Encrypt sudo password when storing
+
+            if glo.dictGlobals['SUDO_PASSWORD'] is not None:
+                glo.dictGlobals['SUDO_PASSWORD'] = \
+                    f.decrypt(glo.dictGlobals['SUDO_PASSWORD'].encode())
+                pass
+        GLO = glo.dictGlobals
+        global SYSTRAY_ADJUST
+        SYSTRAY_ADJUST = GLO['SYSTRAY_ADJUST']
 
     # https://lazka.github.io/pgi-docs/AyatanaAppIndicator3-0.1/classes/Indicator.html
     indicator = AppIndicator3.Indicator.new(
@@ -136,7 +164,7 @@ def HomA(_):
         time.sleep(1.0)
 
     # Move opened window to current mouse location
-    hc.MoveHere(HOMA_TITLE, new_window=new_window, adjust=MOVE_WINDOW_RIGHT_ADJUST)
+    hc.MoveHere(HOMA_TITLE, new_window=new_window, adjust=SYSTRAY_ADJUST)
 
 
 def Skip(_):
@@ -151,7 +179,7 @@ def Skip(_):
         time.sleep(1.0)
 
     # Move opened window to current mouse location
-    hc.MoveHere(SKIP_TITLE, new_window=new_window, adjust=MOVE_WINDOW_RIGHT_ADJUST)
+    hc.MoveHere(SKIP_TITLE, new_window=new_window, adjust=SYSTRAY_ADJUST)
 
 
 def Eyesome(_):
@@ -160,6 +188,24 @@ def Eyesome(_):
         Requires sudo permissions to change laptop display.
 
         Move Eyesome Window to current monitor at mouse location.
+
+
+        # Has HomA saved a newer version of the configuration file?
+        self.this_stat = os.stat(glo.config_fname)
+        if self.this_stat.st_mtime != self.last_stat.st_mtime:
+            self.insertYtSB("Read newer preferences: " +
+                            self.formatTime(self.this_stat.st_mtime))
+            if not glo.openFile():
+                return  # TODO: Give an error message
+            global GLO
+            GLO = glo.dictGlobals
+            GLO['APP_RESTART_TIME'] = time.time()
+
+            self.resetSpam(1)
+            v1_print(self.printTime(1), _who, "New configuration time:",
+                     self.formatTime(self.this_stat.st_mtime))
+            self.last_stat = self.this_stat
+
     """
 
     window = hc.CheckRunning(EYESOME_TITLE)
@@ -172,6 +218,8 @@ def Eyesome(_):
 
         global SUDO_PASSWORD
 
+        if GLO['SUDO_PASSWORD'] is not None:
+            SUDO_PASSWORD = GLO['SUDO_PASSWORD']
         if SUDO_PASSWORD is None:
             SUDO_PASSWORD = hc.GetSudoPassword()  # Get valid sudo password
             if SUDO_PASSWORD is None:
@@ -190,7 +238,7 @@ def Eyesome(_):
         new_window = False
 
     # Move opened window to current mouse location under the app indicator
-    hc.MoveHere(EYESOME_TITLE, new_window=new_window, adjust=MOVE_WINDOW_RIGHT_ADJUST)
+    hc.MoveHere(EYESOME_TITLE, new_window=new_window, adjust=SYSTRAY_ADJUST)
 
 
 def Quit(_):

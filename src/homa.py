@@ -30,6 +30,7 @@ warnings.filterwarnings("ignore", "ResourceWarning")  # PIL python 3 unclosed fi
 #       2025-07-18 - Move DeviceCommonSelf and Globals classes to homa-common.py
 #       2025-08-08 - Disable auto-rediscovery. Too flakey.
 #       2025-08-10 - yt-skip.py coordinates outside Ad Skip Button triangle.
+#       2026-02-25 - New configuration "key: value" pair "SYSTRAY_ADJUST: -40"
 #
 # ==============================================================================
 
@@ -189,7 +190,6 @@ import toolkit  # Various tkinter functions common to Pippim apps
 import message  # For dtb (Delayed Text Box)
 import image as img  # Image processing. E.G. Create Taskbar icon
 import timefmt as tmf  # Time formatting, ago(), days(), mm_ss(), etc.
-#import vu_pulse_audio  # Volume Pulse Audio class pulsectl.Pulse()
 import external as ext  # Call external functions, programs, etc.
 import homa_common as hc  # hc.ValidateSudoPassword()
 from homa_common import DeviceCommonSelf, glo, GLO, Globals, AudioControl
@@ -388,398 +388,6 @@ SHAW-8298B0-5G      bfce8167-18fc-4646-bec3-868c097a3f4a  802-11-wireless  -- ''
         self.cmdDuration = time.time() - self.cmdStart
         self.logEvent(who, forgive=forgive, log=True)
         self.powerStatus = status
-
-
-class Computer(DeviceCommonSelf):
-    """ Computer (from ifconfig, iwconfig, socket, /etc/hosts (NOT in arp))
-
-        Read chassis type. If laptop there are two images - laptop_b (base)
-        and laptop_d (display) which is akin to a monitor / tv with extra
-        features. If a computer (not a laptop) then use one image.
-
-        All desktops and laptops have Ethernet. The ethernet MAC address
-        is used to identify the computer in mac_dicts dictionaries.
-
-        All laptops have WiFi. The WiFi MAC address is used to identify
-        the laptop display in mac_dicts dictionaries.
-
-        A desktop with ethernet and WiFi will only have it's ethernet
-        MAC address stored in mac_dicts dictionaries.
-
-    """
-
-    def __init__(self, mac=None, ip=None, name=None, alias=None):
-        """ DeviceCommonSelf(): Variables used by all classes """
-        DeviceCommonSelf.__init__(self, "Computer().")  # Define self.who
-        _who = self.who + "__init()__:"
-
-        # 192.168.0.10    Alien AW 17R3 WiFi 9c:b6:d0:10:37:f7
-        # 192.168.0.12    Alien AW 17R3 Ethernet 28:f1:0e:2a:1a:ed
-        self.mac = mac      # 28:f1:0e:2a:1a:ed
-        self.ip = ip        # 192.168.0.12
-        self.name = name    # Alien Base
-        self.alias = alias  # AW 17R3 Ethernet
-
-        self.edid = []      # Remains empty until requested. See homa-common.py
-        self.xrandr = []    # Remains empty until requested. See homa-common.py
-
-        self.nightlight_active = False  # Most popular color temperature app.
-        self.redshift_active = False  # 2024-11-15 Not supported yet.
-        self.eyesome_active = False  # Pippim color temperature & brightness.
-        self.sunlight_percent = 0  # Percentage of sunlight, 0 = nighttime.
-
-        self.requires = ['ip', 'getent', 'hostnamectl', 'gsettings',
-                         'get-edid', 'parse-edid', 'xrandr']
-        self.installed = []
-        self.checkDependencies(self.requires, self.installed)
-        v2_print(self.who, "Dependencies:", self.requires)
-        v2_print(self.who, "Installed?  :", self.installed)
-
-        self.chassis = ""  # "desktop", "laptop", "convertible", "server",
-        # "tablet", "handset", "watch", "embedded", "vm" and "container"
-
-        if self.checkInstalled('hostnamectl'):
-            # 2024-12-16 TODO: convert to self.runCommand()
-            #   universal_newlines: https://stackoverflow.com/a/38182530/6929343
-            # 2024-12-16 TODO: convert to self.runCommand()
-            machine_info = sp.check_output(
-                ["hostnamectl", "status"], universal_newlines=True)
-            m = re.search('Chassis: (.+?)\n', machine_info)
-            self.chassis = m.group(1)  # TODO: Use this for Dell Virtual temp/fan driver
-        else:
-            self.chassis = "desktop"  # "desktop", "laptop", "convertible", "server",
-            # "tablet", "handset", "watch", "embedded", "vm" and "container"
-
-        if self.chassis == "laptop":
-            if self.name is not None:  # self.name can be passed as None
-                self.name += " (Base)"  # There will be two rows, the other is ' (Display)'
-            self.type = "Laptop Computer"
-            self.type_code = GLO['LAPTOP_B']
-        else:
-            self.type = "Desktop Computer"
-            self.type_code = GLO['DESKTOP']
-        v2_print(self.who, "chassis:", self.chassis, " | type:", self.type)
-
-        # /etc/hosts is read for alias matching on MAC address if available
-        # or Static IP address if MAC address not available.
-        if self.name is None:
-            self.name = ""  # Computer name from /etc/hosts
-        if self.alias is None:
-            self.alias = ""  # Computer alias from /etc/hosts
-
-        self.ether_name = ""  # eth0, enp59s0, etc
-        self.ether_mac = ""  # aa:bb:cc:dd:ee:ff
-        self.ether_ip = ""  # 192.168.0.999
-        self.wifi_name = ""  # wlan0, wlp60s0, etc
-        self.wifi_mac = ""  # aa:bb:cc:dd:ee:ff
-        self.wifi_ip = ""  # 192.168.0.999
-
-        # noinspection SpellCheckingInspection
-        ''' `socket` doesn't serve any useful purpose
-        import socket
-        _socks = [i[4][0] for i in socket.getaddrinfo(socket.gethostname(), None)]
-        v0_print("socks:", _socks)  
-        # socks: ['127.0.1.1', '127.0.1.1', '127.0.1.1',
-        # '192.168.0.12', '192.168.0.12', '192.168.0.12',
-        # '192.168.0.10', '192.168.0.10', '192.168.0.10']
-        '''
-
-        self.Interface()  # Initial values using `ip a show dynamic`
-
-        self.crypto_key = self.generateCryptoKey()
-        v3_print(_who, "BEFORE self.crypto_key:", self.crypto_key, "\n  length:",
-                 len(self.crypto_key), type(self.crypto_key))
-        b = bytearray()
-        ''' Convert string to bytes
-            Python2:
-                s = "ABCD"
-                b = bytearray()
-                b.extend(s)
-            Python3:
-                s = "ABCD"
-                b = bytearray()
-                b.extend(map(ord, s)) '''
-        b.extend(self.crypto_key)
-        self.crypto_key = b
-        v3_print(_who, " AFTER self.crypto_key:", self.crypto_key, "\n  length:",
-                 len(self.crypto_key), type(self.crypto_key))
-        self.getNightLightStatus()
-
-    def Interface(self, forgive=False):
-        """ Return name of interface that is up. Either ethernet first or
-            wifi second. If there is no interface return blank.
-        """
-
-        _who = self.who + "Interface():"
-        v2_print(_who, "Test if Ethernet and/or WiFi interface is up.")
-
-        name = mac = ip = ""
-        self.ether_name = ""  # eth0, enp59s0, etc
-        self.ether_mac = ""  # aa:bb:cc:dd:ee:ff
-        self.ether_ip = ""  # 192.168.0.999
-        self.wifi_name = ""  # wlan0, wlp60s0, etc
-        self.wifi_mac = ""  # aa:bb:cc:dd:ee:ff
-        self.wifi_ip = ""  # 192.168.0.999
-
-        if not self.checkInstalled('ip'):
-            return ""  # Return null string = False
-
-        command_line_list = ["ip", "a", "show", "dynamic"]
-        event = self.runCommand(command_line_list, _who, forgive=forgive)
-
-        if not event['returncode'] == 0:
-            if forgive is False:
-                v0_print(_who, "pipe.returncode:", pipe.returncode)
-            return ""  # Return null string = False
-
-        interface = event['output'].splitlines()
-
-        # noinspection SpellCheckingInspection
-        ''' CONCISE ALL METHOD: $ ip a show dynamic
-2: enp59s0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq state UP group default qlen 1000
-    link/ether 28:f1:0e:2a:1a:ed brd ff:ff:ff:ff:ff:ff
-    inet 192.168.0.12/24 brd 192.168.0.255 scope global dynamic enp59s0
-       valid_lft 588250sec preferred_lft 588250sec
-3: wlp60s0: <BROADCAST,MULTICAST> mtu 1500 qdisc mq state DOWN group default qlen 1000
-    link/ether 9c:b6:d0:10:37:f7 brd ff:ff:ff:ff:ff:ff
-        '''
-
-        def tally_found():
-            """ Process last group of name, mac and ip """
-            if name and name.startswith("e"):  # Ethernet
-                self.ether_name = name  # eth0, enp59s0, etc
-                self.ether_mac = mac  # aa:bb:cc:dd:ee:ff
-                self.ether_ip = ip  # 192.168.0.999
-
-            elif name and name.startswith("w"):  # WiFi
-                self.wifi_name = name  # eth0, enp59s0, etc
-                self.wifi_mac = mac  # aa:bb:cc:dd:ee:ff
-                self.wifi_ip = ip  # 192.168.0.999
-            else:
-                v0_print(_who, "Error parsing name:", name, "mac:", mac, "ip:", ip)
-
-        for line in interface:
-
-            parts = line.split(":")
-            if len(parts) == 3:  # Heading line "9: NAME: blah blah blah"
-                if not name == "":  # First time skip blank name
-                    tally_found()
-                name = parts[1].strip()
-                mac = ip = ""
-                continue
-
-            if not mac:  # First detail line has MAC address
-                r = re.search("(?:[0-9a-fA-F]:?){12}", line)
-                if r:
-                    mac = r.group(0)
-
-            elif not ip:  # Optional second detail line has IP address
-                r = re.search("[0-9]+(?:\.[0-9]+){3}", line)
-                if r:
-                    ip = r.group(0)
-
-        tally_found()  # Process last group of interface lines fields found.
-
-        v3_print(_who, "self.ether_name:", self.ether_name, " | self.ether_mac:",
-                 self.ether_mac, " | self.ether_ip:", self.ether_ip)
-        v3_print(_who, "self.wifi_name :", self.wifi_name,  " | self.wifi_mac :",
-                 self.wifi_mac,  " | self.wifi_ip :", self.wifi_ip)
-
-        if self.ether_ip:  # Ethernet IP is preferred if available.
-            return self.ether_ip
-
-        if self.wifi_ip:  # Ethernet IP unavailable, use WiFi IP if available
-            return self.wifi_ip
-
-        return ""  # Return null string = False
-
-    def isDevice(self, forgive=False):
-        """ Test if passed ip == ethernet ip or WiFi ip.
-            Initially a laptop base could be assigned with IP but now it
-            is assigned as a laptop display. A laptop will have two on/off
-            settings - one for the base and one for the display. It will have
-            two images in the treeview.
-
-            A desktop will only have a single image and desktop on/off option.
-
-        """
-        _who = self.who + "isDevice():"
-        v2_print(_who, "Test if device is a Computer:", self.ip)
-
-        if forgive:
-            pass
-
-        if self.ip == self.ether_ip or self.ip == self.wifi_ip:
-            return True
-
-        return False
-
-    def turnOn(self, forgive=False):
-        """ Not needed because computer is always turned on. Defined for
-            right click menu conformity reasons.
-        """
-        _who = self.who + "turnOn():"
-        v2_print(_who, "Turn On Computer:", self.ip)
-
-        if forgive:
-            pass
-
-        self.powerStatus = "ON"  # Can be "ON", "OFF" or "?"
-        return self.powerStatus  # Really it is "AWAKE"
-
-    def turnOff(self, forgive=False):
-        """ Turn off computer with GLO['POWER_OFF_CMD_LIST'] which contains:
-                systemctl suspend
-
-            Prior to calling cp.turnOff(), Application().turnOff() calls
-            turnAllPower("OFF") to turn off all other devices. If rebooting, rather
-            than suspending, then devices are left powered up.
-
-            If Dell BIOS "Fan Performance Mode" is turned on suspend can fail.
-
-        """
-        _who = self.who + "turnOff():"
-        v2_print(_who, "Turn Off Computer:", self.ip)
-
-        if forgive:
-            pass
-
-        command_line_list = GLO['POWER_OFF_CMD_LIST']  # systemctl suspend
-        v1_print(_who, ext.ch(), "Suspend command:", command_line_list)
-        _event = self.runCommand(command_line_list, _who, forgive=forgive)
-        # NOTE: this point is still reached because suspend pauses a bit
-        # v0_print(_who, ext.ch(), "Command finished.")
-        # Computer().turnOff(): 13:27:45.472045 Suspend command: ['systemctl', 'suspend']
-        # Computer().turnOff(): 13:27:45.551357 Command finished.
-
-        self.powerStatus = "OFF"  # Can be "ON", "OFF" or "?"
-        return self.powerStatus  # Really it is "SLEEP"
-
-    def getPower(self, forgive=False):
-        """ The computer is always "ON" """
-
-        _who = self.who + "getPower():"
-        v2_print(_who, "Test if computer is powered on:", self.ip)
-
-        if forgive:
-            pass
-
-        self.powerStatus = "ON"
-        return self.powerStatus
-
-    def generateCryptoKey(self, key=None):
-        """ 32 byte key can be passed or generated based on device. """
-        _who = self.who + "generateCryptoKey():"
-        if key is None:
-            if self.ether_mac is not None:
-                key = self.ether_mac + ":" + self.ether_mac
-            elif self.wifi_mac is not None:
-                key = self.wifi_mac + ":" + self.wifi_mac
-
-        key = key + " "*32
-        v3_print(_who, "key[32]", key[:32])
-        # Computer().generateCryptoKey(): key[32] 28:f1:0e:2a:1a:ed:28:f1:0e:2a:1a:
-        # Computer().__init()__: self.crypto_key: Mjg6ZjE6MGU6MmE6MWE6ZWQ6Mjg6ZjE6MGU6MmE6MWE6
-
-        # https://www.microfocus.com/documentation/visual-cobol/vc80/CSWin/BKCJCJDEFNS009.html
-        # The resulting base64-encoded data is approximately 33% longer than the
-        # original data, and typically appears as seemingly random characters.
-        # Base64 encoding is specified in full in RFC 1421 and RFC 2045.
-
-        #return base64.urlsafe_b64encode(key[:32])  # Python 2
-        return base64.urlsafe_b64encode(key[:32].encode('utf-8'))  # Python 3
-
-    def getNightLightStatus(self, forgive=False):
-        """ Return "ON" if night or "OFF" if daytime
-
-            Run `gsettings get org.gnome.settings-daemon.plugins.color`
-            Returns: 'night-light-enabled=True' - nighttime
-                     'night-light-enabled=False' - daytime
-                     error code - GNOME Nightlight not installed
-
-            Percent found in GLO['SUNLIGHT_PERCENT'] containing '0 %' to '100 %'.
-            if percent < 100 then Nightlight is "ON". As of 2025-05-18,
-            GLO['SUNLIGHT_PERCENT'] = '/usr/local/bin/.eyesome-percent'
-
-            Percentage is also used for sunlight boost in LED breathe colors
-
-            If Nightlight is "ON" then, resume and startup will turn on bias lights
-
-        """
-
-        _who = self.who + "getNightLightStatus():"
-        v2_print(_who, "Test if GNOME Night Light is active:", self.ip)
-
-        if forgive:
-            pass
-
-        self.nightlight_active = True  # Default is nighttime to turn on lights.
-        self.sunlight_percent = 0  # Percentage of sunlight, 0 = nighttime.
-
-        if self.checkInstalled('gsettings'):
-            command_line_list = ["gsettings", "get",
-                                 "org.gnome.settings-daemon.plugins.color",
-                                 "night-light-enabled"]
-            command_line_str = ' '.join(command_line_list)
-            pipe = sp.Popen(command_line_list, stdout=sp.PIPE, stderr=sp.PIPE)
-            text, err = pipe.communicate()  # This performs .wait() too
-
-            v3_print(_who, "Results from '" + command_line_str + "':")
-            # 2025-02-09 add .decode() for Python 3
-            v3_print(_who, "text: '" + text.decode().strip() + "'")
-            v3_print(_who, "err: '" + err.decode().strip() + "'  | pipe.returncode:",
-                     pipe.returncode)
-
-            if pipe.returncode == 0:
-                # GNOME Nightlight is installed and gsettings was found
-                night_light = text.strip()
-                if night_light == "True":
-                    return "ON"
-                elif night_light == "False":
-                    self.nightlight_active = False
-                    self.sunlight_percent = 100  # LED light sunlight percentage boost
-                    return "OFF"
-                else:
-                    v1_print(_who, "night_light is NOT 'True' or 'False':", night_light)
-                    return "ON"
-        else:
-            pass  # if no `gsettings` then no GNOME Nightlight
-
-        # GNOME Nightlight is not running. Check if eyesome is running.
-        fname = GLO['SUNLIGHT_PERCENT']
-        if not os.path.isfile(fname):
-            v0_print(_who, GLO['SUNLIGHT_PERCENT'], "file not found.")
-            return "ON"  # Default to always turn bias lights on
-
-        text = ext.read_into_string(fname)
-        text = text.rstrip("\n") if text else ""  # Sometimes 'OFF\n'
-        v3_print("\n" + _who, "SUNLIGHT_PERCENT string:", text, "\n")
-
-        try:
-            percent_str = text.split("%")[0]  # If no "%" gets all text
-        except IndexError:
-            v0_print(_who, GLO['SUNLIGHT_PERCENT'], "line 1 missing '%' character:",
-                     "'" + text + "'.")
-            return "ON"  # Default to always turn bias lights on
-
-        if percent_str is None:
-            v0_print(_who, GLO['SUNLIGHT_PERCENT'], "Invalid text file:",
-                     "'" + text + "'.")
-            return "ON"
-
-        try:
-            percent = int(percent_str)
-            v3_print(_who, "eyesome percent:", percent)
-            self.sunlight_percent = percent  # LED light sunlight percentage boost
-            if percent == 100:
-                self.nightlight_active = False
-                return "OFF"  # = '100 %' sunlight
-        except ValueError:
-            v0_print(_who, "eyesome percent VALUE ERROR",
-                     "'percent_str': '" + percent_str + "'.")
-
-        self.nightlight_active = True
-        return "ON"  # Default to always turn bias lights on
 
 
 class NetworkInfo(DeviceCommonSelf):
@@ -7441,7 +7049,8 @@ ble = BluetoothLedLightStrip()  # Must follow GLO dictionary and before ni insta
 #vum = toolkit.VolumeMeters('homa', master_frm)  # Display Stereo LED Volume Meters
 pav = None  # PulseAudio sinks. Initialize in Application() -> AudioControl()
 
-cp = Computer()  # cp = Computer Platform instance used everywhere
+#cp = Computer()  # 2026-02-25 Computer() class is in homa_common.py now.
+cp = hc.Computer()  # cp = Computer Platform instance used everywhere
 ni = NetworkInfo()  # ni = global class instance used everywhere
 ni.adb_reset(background=True)  # Sometimes necessary when TCL TV isn't communicating
 rd = None  # rd = Rediscovery instance for app.Rediscover() & app.Discover()
@@ -7510,9 +7119,9 @@ def open_files():
         elif type_code == GLO['BLE_LS']:  # Bluetooth Low Energy LED Light Strip
             inst = BluetoothLedLightStrip(arp['mac'], arp['ip'], arp['name'], arp['alias'])
         elif type_code == GLO['DESKTOP']:  # Desktop computer image
-            inst = Computer(arp['mac'], arp['ip'], arp['name'], arp['alias'])
+            inst = hc.Computer(arp['mac'], arp['ip'], arp['name'], arp['alias'])
         elif type_code == GLO['LAPTOP_B']:  # Laptop Base image
-            inst = Computer(arp['mac'], arp['ip'], arp['name'], arp['alias'])
+            inst = hc.Computer(arp['mac'], arp['ip'], arp['name'], arp['alias'])
         elif type_code == GLO['LAPTOP_D']:  # Laptop Display image
             inst = LaptopDisplay(arp['mac'], arp['ip'], arp['name'], arp['alias'])
         elif type_code == GLO['ROUTER_M']:  # Router Modem image
@@ -7590,7 +7199,7 @@ def main():
 
     glo.openFile()
 
-    ''' Decrypt SUDO PASSWORD '''
+    ''' Decrypt SUDO PASSWORD using ethernet or wifi MAC crypto key '''
     with warnings.catch_warnings():
         # Deprecation Warning:
         # /usr/lib/python2.7/dist-packages/cryptography/x509/__init__.py:32:
