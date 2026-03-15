@@ -27,10 +27,11 @@ warnings.filterwarnings("ignore", "ResourceWarning")  # PIL python 3 unclosed fi
 #       2025-04-18 - Spam Sony TV Remote. Refresh from 16ms to 33ms for CPU %.
 #       2025-05-28 - Enhanced error checking and reporting.
 #       2025-06-13 - Convert wmctrl to Wnck used in monitor.py - mon.wn_list[].
-#       2025-07-18 - Move DeviceCommonSelf and Globals classes to homa-common.py
+#       2025-07-18 - Move DeviceCommonSelf & Globals classes to homa_common.py.
 #       2025-08-08 - Disable auto-rediscovery. Too flakey.
 #       2025-08-10 - yt-skip.py coordinates outside Ad Skip Button triangle.
-#       2026-02-25 - New configuration "key: value" pair "SYSTRAY_ADJUST: -40"
+#       2026-02-25 - New configuration "key: value" pair "SYSTRAY_ADJUST: -40".
+#       2026-03-15 - Thermal Cruise fan speed use "↑", "↓", or "━" (unchanged).
 #
 # ==============================================================================
 
@@ -1187,6 +1188,9 @@ class SystemMonitor(DeviceCommonSelf):
             Call `sensors` (if installed), else return.
             If not dell machine with `sensors` output, then return.
             Record CPU & GPU temperatures and fan speeds to self.sensors_log.
+
+            2026-03-14 - If fan speed > last use "↑", if fan speed < last use "↓"
+                else use "━" as temperature / fan speed separator.
         """
 
         _who = self.who + "Sensors():"
@@ -1220,13 +1224,27 @@ class SystemMonitor(DeviceCommonSelf):
         dell_found = False
         self.curr_sensor = {}
 
-        # Check one fan's RPM speed change
+        # Check a single fan's RPM speed change
         def CheckFanChange(key):
             """ If fan speed changed by more than GLO['FAN_GRANULAR'] RPM, force logging.
                 Called for "Processor Fan" and "Video Fan" A.K.A. "fan3".
-            :param key: 'Processor Fan' or 'Video Fan', etc.
-            :return: True of curr_sensor == last_sensor
+
+                All sensor.log Keys: 'delta', 'CPU', 'SEP1', 'Processor Fan',
+                                     'GPU', 'SEP2', 'Video Fan', 'time'
+
+                SEPx is "↑" (up), "↓" (down) or "━" (unchanged from last speed).
+
+            :param key: 'Processor Fan' or 'Video Fan'
+            :return: True when curr_sensor != last_sensor
             """
+            _sep_key = ""
+            if "processor" in key.lower():  # "Processor Fan"
+                _sep_key = "SEP1"
+            elif "video" in key.lower():  # "Video Fan" (also renamed "fan3")
+                _sep_key = "SEP2"
+            else:
+                v0_print(_who, "Key is not 'Processor Fan' nor 'Video Fan':", key)
+
             try:
                 if self.curr_sensor[key] == self.last_sensor[key]:
                     self.skipped_fan_same += 1
@@ -1242,7 +1260,14 @@ class SystemMonitor(DeviceCommonSelf):
             curr = float(self.curr_sensor[key].split(" ")[0])
             last = float(self.last_sensor[key].split(" ")[0])
             diff = abs(curr - last)
-            # Only report fan speed differences > 200 RPM
+            if _sep_key and curr > last:
+                self.curr_sensor[_sep_key] = "↑"  # indicate temp up
+            elif _sep_key and curr < last:
+                self.curr_sensor[_sep_key] = "↓"  # indicate temp down
+            elif _sep_key:
+                self.curr_sensor[_sep_key] = "━"  # indicate temp same
+
+            # Override to only report fan speed differences > 200 RPM
             if diff <= GLO['FAN_GRANULAR']:
                 # v0_print("skipping diff:", diff)
                 self.skipped_fan_diff += 1
@@ -1252,6 +1277,9 @@ class SystemMonitor(DeviceCommonSelf):
             self.last_sensor_log = time.time() - GLO['SENSOR_LOG'] * 2
             return True
 
+        # Default xPU / Temp separator = "━"
+        self.curr_sensor["SEP1"] = "━"
+        self.curr_sensor["SEP2"] = "━"
         # Process `sensors` output lines
         for res in result.split("\n"):
             parts = res.split(":")
@@ -1260,14 +1288,14 @@ class SystemMonitor(DeviceCommonSelf):
                 if "dell_smm-virtual-0" in res:
                     dell_found = True
                 continue  # Line doesn't have Key/Value pair
-            if "fan" in parts[0].lower():
+            if "fan" in parts[0].lower():  # processor fan / video fan / fan3
                 if "fan3" in parts[0]:
                     # 2024-11-12 - Glitch "Video Fan" was replaced with "fan3" today.
                     # 2025-01-26 noticed that "Video Fan" has returned and "fan3" gone.
                     parts[0] = "Video Fan"
                 self.curr_sensor[parts[0]] = parts[1].strip()
                 CheckFanChange(parts[0])  # Over 200 RPM change will be logged.
-            if "PU" in parts[0]:
+            if "PU" in parts[0]:  # CPU or GPU
                 # 2025-02-09 For python 3 degree in bytes use str(+66.0°C)
                 self.curr_sensor[parts[0]] = \
                     str(parts[1].strip()).replace("+", "").replace(".0", "")
@@ -1297,7 +1325,7 @@ class SystemMonitor(DeviceCommonSelf):
             2024-11-22 - Now homa.py called from homa-indicator.py with no console.
             2024-11-24 - Enhance with treeview to show sensors.
 
-            2025-05-11 - Need summary because too many changes per minute:
+            TODO: Need summary because too many changes per minute:
 
  5526.53 |  64°C / 5100 RPM |  68°C / 5000 RPM | 11:56 AM (1)
  8573.30 |  77°C / 5400 RPM |  73°C / 5300 RPM | 12:46 PM (5)
@@ -1348,7 +1376,9 @@ Later:
             v0_print("-------- | ---------------- | ---------------- | --------")
 
         def opt(key):
-            """ Return optional key or N/A if not found. """
+            """ Return optional key or N/A if not found. 
+                Keys: 'CPU', 'SEP1', 'Processor Fan', 'GPU', 'SEP2', 'Video Fan'
+            """
             try:
                 return sensor[key]
             except KeyError:
@@ -1362,8 +1392,8 @@ Later:
             # When tree_only is True, printing has already been done to console
             if not tree_only:
                 v0_print("{0:>8.2f}".format(sensor['delta']),  # "999.99" format
-                         '|', opt('CPU').rjust(6) + " /", opt('Processor Fan').rjust(8),
-                         '|', opt('GPU').rjust(6) + " /", opt('Video Fan').rjust(8),
+                         '|', opt('CPU').rjust(6), opt('SEP1'), opt('Processor Fan').rjust(8),
+                         '|', opt('GPU').rjust(6), opt('SEP2'), opt('Video Fan').rjust(8),
                          '|', dt.datetime.now().strftime('%I:%M %p').strip('0').rjust(8))
 
             if self.treeview_active:
@@ -1493,8 +1523,10 @@ Later:
             self.tree.insert(
                 '', 'end', iid=None,  # iid=sec_str,  2025-03-26 auto assign
                 value=(sec_str,
-                       opt('CPU').rjust(7) + " / " + opt('Processor Fan').rjust(8),
-                       opt('GPU').rjust(7) + " / " + opt('Video Fan').rjust(8),
+                       opt('CPU').rjust(7) + " " + opt('SEP1') +
+                       " " + opt('Processor Fan').rjust(8),
+                       opt('GPU').rjust(7) + " " + opt('SEP2') +
+                       " " + opt('Video Fan').rjust(8),
                        dt.datetime.fromtimestamp(sensor['time']).
                        strftime('%I:%M %p').strip('0').rjust(8)))
         except tk.TclError:
