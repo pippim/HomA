@@ -41,8 +41,16 @@ Ubuntu 24.04 Python 2.7.18 (https://askubuntu.com/a/1527884/307523)
 To install the python2.7 package from the Ubuntu 22.04 default repositories in Ubuntu 24.04 open the terminal and type:
 
 sudo apt update
-wget http://security.ubuntu.com/ubuntu/pool/universe/p/python2.7/python2.7_2.7.18-13ubuntu1.5_amd64.deb http://security.ubuntu.com/ubuntu/pool/universe/p/python2.7/libpython2.7-stdlib_2.7.18-13ubuntu1.5_amd64.deb http://security.ubuntu.com/ubuntu/pool/universe/p/python2.7/python2.7-minimal_2.7.18-13ubuntu1.5_amd64.deb http://security.ubuntu.com/ubuntu/pool/universe/p/python2.7/libpython2.7-minimal_2.7.18-13ubuntu1.5_amd64.deb  
-sudo apt install ./libpython2.7-minimal_2.7.18-13ubuntu1.5_amd64.deb ./libpython2.7-stdlib_2.7.18-13ubuntu1.5_amd64.deb ./python2.7-minimal_2.7.18-13ubuntu1.5_amd64.deb ./python2.7_2.7.18-13ubuntu1.5_amd64.deb
+wget http://security.ubuntu.com/ubuntu/pool/universe/p/python2.7/
+    python2.7_2.7.18-13ubuntu1.5_amd64.deb 
+    http://security.ubuntu.com/ubuntu/pool/universe/p/python2.7/
+        libpython2.7-stdlib_2.7.18-13ubuntu1.5_amd64.deb http://security.ubuntu.com/
+        ubuntu/pool/universe/p/python2.7/python2.7-minimal_2.7.18-13ubuntu1.5_amd64.deb 
+        http://security.ubuntu.com/ubuntu/pool/universe/p/python2.7/
+        libpython2.7-minimal_2.7.18-13ubuntu1.5_amd64.deb  
+sudo apt install ./libpython2.7-minimal_2.7.18-13ubuntu1.5_amd64.deb ./
+    libpython2.7-stdlib_2.7.18-13ubuntu1.5_amd64.deb 
+    ./python2.7-minimal_2.7.18-13ubuntu1.5_amd64.deb ./python2.7_2.7.18-13ubuntu1.5_amd64.deb
 
 python2.7 --version
 whereis python2.7
@@ -890,17 +898,19 @@ class TreeviewRow(DeviceCommonSelf):
         """
         DeviceCommonSelf.__init__(self, "TreeviewRow().")  # Define self.who
 
-        self.top = top  # 2025-01-13 top is not passed as argument???
-        self.tree = self.top.tree  # Shortcut
-        self.photos = self.top.photos  # Shortcut
+        self.top = top  # tk.Toplevel that is holding the menus, treeview, buttons
+        self.tree = self.top.tree  # self.tree shorthand for self.top.tree
+        self.photos = self.top.photos  # self.photos shorthand for self.top.photos
         self.isActive = self.top.isActive  # If False, HomA is shutting down
         self.item = None  # Treeview Row iid
         self.photo = None  # Photo image
-        self.text = None  # Row text, E.G. "ON", "OFF"
+        self.power_state = None  # Row text, E.G. "ON", "OFF"
 
-        self.values = None  # Row values - Name lines, Attribute lines, MAC
-        self.name_column = None  # Device Name & IP address - values[0]
-        self.attribute_column = None  # 3 line device Attributes - values[1]
+        self.values = None  # TV Row values[] - Name lines, Attribute lines, MAC
+        self.name_column = None  # TV name[] Device Name & IP address - values[0]
+        # - etc/hosts device name, etc/hosts static IP address
+        self.attribute_column = None  # TV attribute_column[] - values[1]
+        # - etc/hosts optional description, MAC address, Pippim Instance Type code
         self.mac = None  # MAC address - hidden column values[-1] / values[2]
         # self.mac - mac_dict['mac'] - is non-displayed treeview column
         # used to reread mac_dict
@@ -916,10 +926,10 @@ class TreeviewRow(DeviceCommonSelf):
         if not self.isActive:
             return  # Shutting down
 
-        self.item = str(item)  # iid - Corrupted after swapping rows!
+        self.item = str(item)  # iid - Becomes invalid when swapping rows!
         # CANNOT USE: self.photo = self.top.tree.item(item)['image']
         self.photo = self.photos[int(item)]
-        self.text = self.top.tree.item(self.item)['text']
+        self.power_state = self.top.tree.item(self.item)['text']
 
         self.values = self.top.tree.item(self.item)['values']
         self.name_column = self.values[0]  # Host name / IP address
@@ -959,7 +969,7 @@ class TreeviewRow(DeviceCommonSelf):
 
         self.top.photos[int(item)] = self.photo  # changes if swapping rows
         self.top.tree.item(
-            str(item), image=self.photo, text=self.text, values=self.values)
+            str(item), image=self.photo, text=self.power_state, values=self.values)
 
         if self.item != str(item):  # Swapping rows
             v1_print(_who, "NOT resetting iid from self.item:", self.item,
@@ -1027,9 +1037,9 @@ class TreeviewRow(DeviceCommonSelf):
         # Did program just start, or is power status already known?
         # if self.inst.powerStatus == "?":  # Initial boot  # 2025-01-12
         if status == "?":  # Initial boot
-            self.text = "Wait..."  # Power status checked when updating treeview
+            self.power_state = "Wait..."  # Power status checked when updating treeview
         else:
-            self.text = "  " + self.inst.powerStatus  # Power state already known
+            self.power_state = "  " + self.inst.powerStatus  # Power state already known
         self.name_column = name  # inst.name or "?" if not found
         self.name_column += "\nIP: " + self.mac_dict['ip']
         self.attribute_column = self.mac_dict['alias']
@@ -1054,17 +1064,17 @@ class TreeviewRow(DeviceCommonSelf):
 
         ''' 2024-11-29 - Use faster method for repainting devices treeview '''
         if p_args.fast:
-            text = "Wait..."  # Wait for idle loop
+            _power_state = "Wait..."  # Wait for idle loop
         elif self.inst is not None:  # 2025-01-12 new error self.inst is None
             self.inst.getPower()
-            text = "  " + self.inst.powerStatus
+            _power_state = "  " + self.inst.powerStatus
         else:
-            text = " Error!"
+            _power_state = " Error!"
 
-        self.text = text
+        self.power_state = _power_state
 
         self.top.tree.insert(
-            '', 'end', iid=trg_iid, text=self.text,
+            '', 'end', iid=trg_iid, text=self.power_state,
             image=self.top.photos[-1], value=self.values)
 
     def fadeIn(self, item):
@@ -1141,7 +1151,7 @@ class SystemMonitor(DeviceCommonSelf):
         self.isActive = self.top.isActive
         self.item = None  # Applications() Treeview Row iid
         self.photo = None  # Applications() Photo image
-        self.text = None  # Applications() Row text, E.G. "ON", "OFF"
+        self.power_state = None  # Applications() Row text, E.G. "ON", "OFF"
 
         self.values = None  # Applications() Row values - Name lines, Attribute lines, MAC
         self.name_column = None  # Applications() Device Name & IP address - values[0]
@@ -1189,7 +1199,7 @@ class SystemMonitor(DeviceCommonSelf):
             If not dell machine with `sensors` output, then return.
             Record CPU & GPU temperatures and fan speeds to self.sensors_log.
 
-            2026-03-14 - If fan speed > last use "↑", if fan speed < last use "↓"
+            2026-03-15 - If fan speed > last use "↑", if fan speed < last use "↓"
                 else use "━" as temperature / fan speed separator.
         """
 
@@ -1232,7 +1242,8 @@ class SystemMonitor(DeviceCommonSelf):
                 All sensor.log Keys: 'delta', 'CPU', 'SEP1', 'Processor Fan',
                                      'GPU', 'SEP2', 'Video Fan', 'time'
 
-                SEPx is "↑" (up), "↓" (down) or "━" (unchanged from last speed).
+                TK 8.6 SEPx is "↑" (up), "↓" (down) or "━" (unchanged from last speed).
+                TK 9.0 SEPx is "🡹🢁" (up), "🡻🢃" (down) or "━" (unchanged from last speed).
 
             :param key: 'Processor Fan' or 'Video Fan'
             :return: True when curr_sensor != last_sensor
@@ -4237,7 +4248,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         # View Dropdown Menu
         self.view_menu = tk.Menu(_menubar, tearoff=0)
-        self.view_menu.add_command(label="Sensors", font=g.FONT, underline=0,
+        self.view_menu.add_command(label="Thermal cruise", font=g.FONT, underline=0,
                                    command=self.toggleSensorsDevices, state=tk.DISABLED)
         self.view_menu.add_separator()
         self.view_menu.add_command(label="Network devices", font=g.FONT, underline=0,
@@ -4350,9 +4361,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         # Enable options depending on Sensors Treeview or Devices Treeview mounted
         if self.usingDevicesTreeview:  # Devices Treeview is displayed
             self.view_menu.entryconfig("Network devices", state=tk.DISABLED)
-            self.view_menu.entryconfig("Sensors", state=tk.NORMAL)
+            self.view_menu.entryconfig("Thermal cruise", state=tk.NORMAL)
         else:  # Sensors Treeview is displayed
-            self.view_menu.entryconfig("Sensors", state=tk.DISABLED)
+            self.view_menu.entryconfig("Thermal cruise", state=tk.DISABLED)
             self.view_menu.entryconfig("Network devices", state=tk.NORMAL)
 
         if GLO['EVENT_ERROR_COUNT'] == 0:
@@ -4674,7 +4685,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
     def toggleSensorsDevices(self):
         """ Sensors / Devices toggle button clicked.
-            If button text == "Sensors" then active sm.tree.
+            If button text == "Thermal cruise" then active sm.tree.
             If button text == "Devices" then active Applications.tree.
 
         """
@@ -4710,7 +4721,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.updateDropdown()  # NORMAL/DISABLED options for view Sensors/Devices
 
     def RightClick(self, event):
-        """ Mouse right button click. Popup menu on selected treeview row.
+        """ Mouse right button (context menu) click. Mount Popup menu.
+            Class TreeviewRow is initiated to get current row values:
+
 
             NOTE: Sub windows are designed to steal focus and lift however,
                   multiple right clicks will eventually cause menu to appear.
@@ -4735,7 +4748,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         ''' Highlight selected treeview row '''
         cr = TreeviewRow(self)  # Make current row instances
-        cr.Get(item)  # Get current row
+        cr.Get(item)  # Get current row into instance variables
         name = cr.mac_dict['name']  # name is used in menu option text
         cr.inst.powerStatus = "?" if cr.inst.powerStatus is None else cr.inst.powerStatus
         cr.text = "  " + str(cr.inst.powerStatus)  # Display treeview row new power state

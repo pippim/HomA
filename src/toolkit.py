@@ -32,6 +32,7 @@ from __future__ import with_statement       # Error handling for file opens
 #       Feb. 02 2025 - Child Windows auto-assign key when <None> registered
 #       Feb. 05 2025 - Create Tooltips().zap_tip_window() call before suspend
 #       June 14 2025 - Create VolumeMeters() ported from mserve for use in HomA
+#       Apr. 19 2026 - Create class Tot "Thing of Things" ported from mmm.py
 #
 #==============================================================================
 
@@ -3645,32 +3646,7 @@ class SearchText:
             self.tt.add_tip(but2, "Close search bar.", anchor="nw")
 
     def search_changed(self, *_args):
-        """ Callback as string variable changes in TK entry
-2025-09-15 - Intel processor code name abbreviations
-https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/i915
-
-adlp Alder Lake - 12th Generation
-adls Alder Lake - 12th Generation
-bmg Battlemage architecture, successor to Alchemist (Arc) GPUs
-bxt Broxton, Cancelled in 2016, successor to Cherry Trail
-cml Comet Lake - 10th Generation
-COFFEE Lake (Desktop) - 8th Generation. Same Gen 9.5 graphics technology
-    as Comet Lake. They are supported by the same driver infrastructure?
-COFFEE Lake Refresh - 9th Generation
-cnl Cannon Lake (Mobile) - 8th Generation
-dg1 Entry Level Discrete Graphics Card Xe-LP architecture
-dg2 "Alchemist" - 1st generation of Intel Arc GPU
-ehl Elkhart Lake - Intel Atom x6000E, Celeron, Pentium N / J Series
-glk Gemini Lake - Apollo Lake lower-power replacement
-icl Ice Lake - 10th Generation
-kbl Kaby Lake - 7th Generation
-mtl Meteor Lake - Core Ultra Series 1 mobile late 2023
-rkl Rocket Lake - 11th Generation desktop March 2021
-skl Sky Lake - 6th Generation
-tgl Tiger Lake - 11th Generation Core mobile Willow Cove Core
-xe2lpd
-xe3lpd
-        """
+        """ Callback as string variable changes in TK entry """
         #if self.keypress_waiting:
         #    print("if self.keypress_waiting:")
         #    # Never executed because can't type faster than search 0.0055580139
@@ -4974,6 +4950,88 @@ class VolumeMeters:
             Cannot name this method "continue" because that's a Python builtin.
         """
         os.kill(self.pid, signal.SIGCONT)
+
+
+class ThingOfThings(tk.Canvas):
+    """ Tot = ThingOfThings() Primarily for internet, but could be for OS windows.
+        Subclass of Canvas for dealing with resizing of images on canvas
+        2026-04-15 copied from mmm.py and remove support for multiple monitors
+        Add support for adding image with text overlap.
+        Devine hover and context menu button callbacks.
+        Select button will make hand cursor to move image or cursor to resize.
+
+    """
+    def __init__(self, parent, photos, fills, **kwargs):
+        tk.Canvas.__init__(self, parent, **kwargs)
+
+        self.bind("<Configure>", self.on_resize)
+        self.height = self.winfo_reqheight()
+        self.width = self.winfo_reqwidth()
+        # Starting width & height for images resizing device (Internet "Thing") photos
+        self.start_wid = self.width
+        self.start_hgt = self.height
+        # 2026-04-19 Initial design supports homa.py TreeviewRow() photos[], inst_dict[]
+        self.photos = []  # device images on the canvas, immune from Garbage collection
+        self.texts = []  # text names for images (overlays)
+        # Perhaps self.text{} s/b defined in caller and a call back is used for hover? 
+        self.text = {"name": "", "long_name": "", "host_name": "",  # s/b "name3" instead?
+                     "host_optional": "", "MAC": "", "IP": "", "dev_type": 0,
+                     "power_state": "?"}
+
+        self.fills = []  # fill color and alpha that overlays images
+        self.devices = []  # list of devices, same index as photos[], texts[], fills[]
+        # Device coordinate is percentage of canvas. "inst" is instance of device.
+        self.dev = {"xp": 0.0, "yp": 0.0, "wp": 0.0, "hp": 0.0, "inst": None}
+        self.IX = self.IY = 0.01  # Minimum x and y percentage points on canvas
+        self.AX = self.AY = 0.99  # Maximum x and y percentage points on canvas
+        self.IW = self.IH = 0.05  # Minimum width and height percentage size in canvas
+        self.AW = self.AH = 0.99  # Maximum width and height percentage size in canvas
+        self.geom = {"x": 0, "y": 0, "w": 0, "h": 0}  # geometry within canvas
+        # self.calc_geom sets self.geom{} using percentages in self.dev{}
+
+    def add_image(self, _image, name=None, name_shadow=True, tooltip_text=None,
+                  inst=None, context_menu=None):
+        """ Add an tkinter photo image.
+            Overlay the image with name in white text with black shadow when
+                `name_shadow=True` or black text with white shadow when False.
+            return widget for caller to manipulate if required.
+
+            When adding an image it is scaled to 10% of canvas. Afterwards
+            left clicking on image edge can resize and left clicking on image
+            can move.
+            
+            Right clicking on an image invokes "context_menu" callback. 
+        """
+        print("self.IX:", self.IX, "self.IY:", self.IY)
+        self.dev["inst"] = inst
+        pass
+
+    def on_resize(self, event):
+        """ determine the ratio of previous width/height to new width/height """
+        _wid_adj_factor = float(event.width)/self.width
+        _hgt_adj_factor = float(event.height)/self.height
+        # Save new values as old values
+        self.width = event.width
+        self.height = event.height
+        # images use ratio of original width/height to new width/height
+        _wid_scale = float(event.width)/self.start_wid
+        _hgt_scale = float(event.height)/self.start_hgt
+
+        # resize _images
+        for _idx, _image in enumerate(self.images):
+            fill = self.fills[_idx]
+            _new_w = int(_image.width()*_wid_scale)
+            _new_h = int(_image.height()*_hgt_scale)
+            # Window _image
+            _image = Image.new('RGBA', (_new_w, _new_h), fill)
+            _image = ImageTk.PhotoImage(_image)
+            self.itemconfig(items[_idx], image=_image)
+            resized[_idx] = _image  # stop garbage collector from removing _image
+
+        # resize the canvas
+        self.config(width=self.width, height=self.height)
+        # rescale all objects with the "all" tag
+        self.scale("all", 0, 0, _wid_adj_factor, _hgt_adj_factor)
 
 
 # ==============================================================================
