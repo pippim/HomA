@@ -2759,7 +2759,7 @@ Application().Rediscover(): FOUND NEW INSTANCE or REDISCOVERED LOST INSTANCE:
             command_line_list = ["adb", "connect", self.ip]  # can take 6 seconds
             _start = time.time()
             _event = self.runCommand(command_line_list, _who, forgive=forgive)
-            v1_print(_who, "`adb connect` time:", round(time.time() - _start, 2))
+            v0_print(_who, "`adb connect` time:", round(time.time() - _start, 2))
 
             # Reply = "connected to 192.168.0.17:5555"
             # Reply = "already connected to 192.168.0.17:5555"
@@ -2799,7 +2799,7 @@ Application().Rediscover(): FOUND NEW INSTANCE or REDISCOVERED LOST INSTANCE:
             o   Async/Efficient Polling: Instead of rapid polling, consider using 
                 blocking calls to reduce resource usage. 
         '''
-        return True  # isDevice() returned True ("connected" in reply)
+        return True
 
     def getPower(self, forgive=False):
         """ Return "ON", "OFF" or "?" using ppadb.
