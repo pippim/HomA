@@ -401,7 +401,7 @@ class Globals(DeviceCommonSelf):
             # Device type global identifier hard-coded in "inst.type_code"
             "HS1_SP": 10,  # TP-Link Kasa WiFi Smart Plug HS100, HS103 or HS110 using hs100.sh
             "KDL_TV": 20,  # Sony Bravia KDL Android TV using REST API (curl)
-            "TCL_TV": 30,  # TCL Google Android TV using adb (after wakeonlan)
+            "ADB_TV": 30,  # Google Android TV using adb (after wakeonlan)
             "BLE_LS": 40,  # Bluetooth Low Energy LED Light Strip
             "DESKTOP": 100,  # Desktop Computer, Tower, NUC, Raspberry Pi, etc.
             "LAPTOP_B": 110,  # Laptop base (CPU, GPU, Keyboard, Fans, Ports, etc.)
@@ -650,8 +650,8 @@ class Globals(DeviceCommonSelf):
              "TP-Link Kasa WiFi Smart Plug HS100,\nHS103 or HS110 using hs100.sh"),  #
             ("KDL_TV", 1, RO, INT, INT, 2, DEC, MIN, MAX, CB,
              "Sony Bravia KDL Android TV using REST API `curl`"),
-            ("TCL_TV", 2, RO, INT, INT, 2, DEC, MIN, MAX, CB,
-             "TCL Google Android TV using adb after `wakeonlan`"),
+            ("ADB_TV", 2, RO, INT, INT, 2, DEC, MIN, MAX, CB,
+             "Google Android TV using adb after `wakeonlan`"),
             ("BLE_LS", 4, RO, INT, INT, 2, DEC, MIN, MAX, CB,
              "Bluetooth LED Light Strip"),
             ("CONFIG_FNAME", 6, RO, STR, STR, WID, DEC, MIN, MAX, CB,

@@ -32,6 +32,8 @@ warnings.filterwarnings("ignore", "ResourceWarning")  # PIL python 3 unclosed fi
 #       2025-08-10 - yt-skip.py coordinates outside Ad Skip Button triangle.
 #       2026-02-25 - New configuration "key: value" pair "SYSTRAY_ADJUST: -40".
 #       2026-03-15 - Thermal Cruise fan speed use "↑", "↓", or "━" (unchanged).
+#       2026-04-25 - Calling `adb shell` in loop burns out Xorg. Use ppadb.py.
+#       2026-04-26 - Throttle Sony KDL REST API calls to 1/second.
 #
 # ==============================================================================
 
@@ -191,6 +193,7 @@ except ImportError:
 import pygatt  # Bluetooth Low Energy (BLE) low-level communication
 import pygatt.exceptions  # pygatt error messages also used by trionesControl
 import trionesControl.trionesControl as tc  # Bluetooth LED Light pygatt wrapper
+from ppadb.client import Client as AdbClient  # Android TV ADB optimized shell
 
 # Pippim libraries
 import sql  # For color options - Lots of irrelevant mserve.py code though
@@ -414,7 +417,7 @@ class NetworkInfo(DeviceCommonSelf):
 
         LISTS of DICTIONARIES
         self.device_dicts First time discovered, thereafter read from disk
-        self.instances    TclGoogleAndroidTV, SonyBraviaKdlTV, etc. instances
+        self.instances    GoogleAndroidTV, SonyBraviaKdlTV, etc. instances
 
         # Miscellaneous - nmap takes 10 seconds so call on demand with wait cursor
         # nmap 192.168.0.0/24
@@ -556,7 +559,7 @@ class NetworkInfo(DeviceCommonSelf):
         v3_print("\n=========================  arp MACs  ===========================")
         v3_print("MAC address".ljust(18), "IP".ljust(14), "Name".ljust(15), "Alias\n")
         self.mac_dicts = []  # First time discovered, thereafter read from disk
-        self.instances = []  # TclGoogleAndroidTV, SonyBraviaKdlTV, etc. instances
+        self.instances = []  # GoogleAndroidTV, SonyBraviaKdlTV, etc. instances
         self.view_order = []  # Sortable list of MAC addresses matching instances
         for device in self.arp_results:
             # e.g. "SONY.light (192.168.0.15) at 50:d4:f7:eb:41:35 [ether] on enp59s0"
@@ -870,7 +873,7 @@ class NetworkInfo(DeviceCommonSelf):
         if test_one(SonyBraviaKdlTV):
             return instance
 
-        if test_one(TclGoogleAndroidTV):
+        if test_one(GoogleAndroidTV):
             v0_print(_who, "Android TV found:", arp['ip'])
             v0_print("instance:", instance, "\n")
             return instance
@@ -904,7 +907,7 @@ class TreeviewRow(DeviceCommonSelf):
         self.isActive = self.top.isActive  # If False, HomA is shutting down
         self.item = None  # Treeview Row iid
         self.photo = None  # Photo image
-        self.power_state = None  # Row text, E.G. "ON", "OFF"
+        self.power_text = None  # Row text, E.G. "ON", "OFF"
 
         self.values = None  # TV Row values[] - Name lines, Attribute lines, MAC
         self.name_column = None  # TV name[] Device Name & IP address - values[0]
@@ -929,7 +932,7 @@ class TreeviewRow(DeviceCommonSelf):
         self.item = str(item)  # iid - Becomes invalid when swapping rows!
         # CANNOT USE: self.photo = self.top.tree.item(item)['image']
         self.photo = self.photos[int(item)]
-        self.power_state = self.top.tree.item(self.item)['text']
+        self.power_text = self.top.tree.item(self.item)['text']
 
         self.values = self.top.tree.item(self.item)['values']
         self.name_column = self.values[0]  # Host name / IP address
@@ -969,7 +972,7 @@ class TreeviewRow(DeviceCommonSelf):
 
         self.top.photos[int(item)] = self.photo  # changes if swapping rows
         self.top.tree.item(
-            str(item), image=self.photo, text=self.power_state, values=self.values)
+            str(item), image=self.photo, text=self.power_text, values=self.values)
 
         if self.item != str(item):  # Swapping rows
             v1_print(_who, "NOT resetting iid from self.item:", self.item,
@@ -1006,7 +1009,7 @@ class TreeviewRow(DeviceCommonSelf):
             photo = img.tk_image("bias.jpg", 300, 180)
         elif type_code == GLO['KDL_TV']:  # Sony Bravia KDL TV image
             photo = img.tk_image("sony.jpg", 300, 180)
-        elif type_code == GLO['TCL_TV']:  # TCL / Google Android TV image
+        elif type_code == GLO['ADB_TV']:  # TCL / Google Android TV image
             photo = img.tk_image("tcl.jpg", 300, 180)
         elif type_code == GLO['BLE_LS']:  # Bluetooth Low Energy LED Light Strip
             photo = img.tk_image("led_lights.jpg", 300, 180)
@@ -1020,7 +1023,7 @@ class TreeviewRow(DeviceCommonSelf):
             photo = img.tk_image("router2.jpg", 300, 180)
         else:
             v0_print(_who, "Unknown 'type_code':", type_code)
-            photo = None
+            photo = img.tk_image("router2.jpg", 300, 180)
 
         self.photo = photo
 
@@ -1037,9 +1040,9 @@ class TreeviewRow(DeviceCommonSelf):
         # Did program just start, or is power status already known?
         # if self.inst.powerStatus == "?":  # Initial boot  # 2025-01-12
         if status == "?":  # Initial boot
-            self.power_state = "Wait..."  # Power status checked when updating treeview
+            self.power_text = "Wait..."  # Power status checked when updating treeview
         else:
-            self.power_state = "  " + self.inst.powerStatus  # Power state already known
+            self.power_text = "  " + self.inst.powerStatus  # Power state already known
         self.name_column = name  # inst.name or "?" if not found
         self.name_column += "\nIP: " + self.mac_dict['ip']
         self.attribute_column = self.mac_dict['alias']
@@ -1064,17 +1067,17 @@ class TreeviewRow(DeviceCommonSelf):
 
         ''' 2024-11-29 - Use faster method for repainting devices treeview '''
         if p_args.fast:
-            _power_state = "Wait..."  # Wait for idle loop
+            _power_text = "Wait..."  # Wait for idle loop
         elif self.inst is not None:  # 2025-01-12 new error self.inst is None
             self.inst.getPower()
-            _power_state = "  " + self.inst.powerStatus
+            _power_text = "  " + self.inst.powerStatus
         else:
-            _power_state = " Error!"
+            _power_text = " Error!"
 
-        self.power_state = _power_state
+        self.power_text = _power_text
 
         self.top.tree.insert(
-            '', 'end', iid=trg_iid, text=self.power_state,
+            '', 'end', iid=trg_iid, text=self.power_text,
             image=self.top.photos[-1], value=self.values)
 
     def fadeIn(self, item):
@@ -1151,7 +1154,7 @@ class SystemMonitor(DeviceCommonSelf):
         self.isActive = self.top.isActive
         self.item = None  # Applications() Treeview Row iid
         self.photo = None  # Applications() Photo image
-        self.power_state = None  # Applications() Row text, E.G. "ON", "OFF"
+        self.power_text = None  # Applications() Row text, E.G. "ON", "OFF"
 
         self.values = None  # Applications() Row values - Name lines, Attribute lines, MAC
         self.name_column = None  # Applications() Device Name & IP address - values[0]
@@ -1930,6 +1933,8 @@ https://stackoverflow.com/questions/2829613/how-do-you-tell-if-a-string-contains
         self.type_code = GLO['KDL_TV']
 
         self.powerSavingMode = "?"  # set with getPowerSavingMode()
+        self.lastEventTime = 0.0  # Last time checkEvents() called
+        self.lastVolumeChange = 0.0  # Last checkVolumeChange() using TV remote
         self.hasVolumeSet = False  # On Startup check quiet/normal volume
         self.volume = "?"  # Set with getVolume()  # 28
         self.volumeLast = "?"  # Last recorded volume for spamming notify-send
@@ -1997,22 +2002,31 @@ https://stackoverflow.com/questions/2829613/how-do-you-tell-if-a-string-contains
             Check one-time to set Sony TV volume to normal or quiet.
 
             2025-06-01 Originally in Application() moved to SonyBraviaKdlTV()
+            2026-04-26 Limit checks to 1 per second unless spamming volume.
+
         """
         _who = self.who + "checkSonyEvents():"
+        _delta = time.time() - self.lastEventTime
 
-        if self.powerStatus == "?":
+        if self.powerStatus == "?" and _delta > 1.0:
             v1_print(_who, "old self.powerStatus:", self.powerStatus)
             self.getPower()  # "?" when network down or resuming
             v1_print(_who, "new self.powerStatus:", self.powerStatus)
             # 2025-05-31 TODO: If "ON" update treeview and dropdown menu
 
+        # Note "Rediscover now" resets APP_RESTART_TIME
         life_span = time.time() - GLO['APP_RESTART_TIME'] \
             if self.powerStatus == "ON" else 0.0
+
+        if life_span < 2.0:
+            return  # TV has to be turned on for at least 2 seconds
+
         log_status = GLO['LOG_EVENTS']  # Current event logging status
         GLO['LOG_EVENTS'] = False  # Turn off logging during Sony checks
 
         ''' Sony TV monitored for TV Remote power off suspends system? '''
-        if GLO['ALLOW_REMOTE_TO_SUSPEND'] and life_span > 2.0:
+        if GLO['ALLOW_REMOTE_TO_SUSPEND'] and _delta > 1.0:
+            self.lastEventTime = time.time()  # reset for another second
             self.powerStatus = "?"  # Default if network down
             if self.checkPowerOffSuspend(forgive=True):  # check "OFF"
                 self.app.sony_suspended_system = True  # Sony TV initiated suspend
@@ -2021,7 +2035,11 @@ https://stackoverflow.com/questions/2829613/how-do-you-tell-if-a-string-contains
                 # Will not return until Suspend finishes and resume finishes
 
         ''' Sony TV audio channel monitored for volume up/down display? '''
-        if GLO['ALLOW_VOLUME_CONTROL'] and life_span > 2.0:
+        # If less than 3 seconds since last volume change with TV remote
+        _spam = time.time() - self.lastVolumeChange  # Set in checkVolumeChange()
+
+        if GLO['ALLOW_VOLUME_CONTROL'] and (_delta > 1.0 or _spam < 3.0):
+            self.lastEventTime = time.time()  # reset for another second
             if self.checkVolumeChange(forgive=True):
                 self.app.last_rediscover_time = time.time()  # 2025-05-27 review need
 
@@ -2031,6 +2049,7 @@ https://stackoverflow.com/questions/2829613/how-do-you-tell-if-a-string-contains
                 self.hasVolumeSet = True  # Don't check again
 
         GLO['LOG_EVENTS'] = True if log_status else False  # Sony done, restore logging
+
 
     def checkPowerOffSuspend(self, forgive=False):
         """ If TV powered off with remote control. If so suspend system.
@@ -2047,51 +2066,6 @@ https://stackoverflow.com/questions/2829613/how-do-you-tell-if-a-string-contains
         self.getPower(forgive=forgive)
         if self.powerStatus != "OFF":
             return False  # Sony power status is "ON" or "?" or "Error:"
-
-        # noinspection SpellCheckingInspection
-        ''' 2025-09-03 Error after 991 jobs cleared in GATTToolJobs()
-Traceback (most recent call last):
-  File "./homa.py", line 7613, in <module>
-    main()
-  File "./homa.py", line 7607, in main
-    app = Application(root)  # Treeview of ni.discovered[{}, {}...{}]
-  File "./homa.py", line 4427, in __init__
-    while self.refreshApp():  # Run forever until quit
-  File "./homa.py", line 5434, in refreshApp
-    self.refreshAllPowerStatuses()  # Display "ON", "OFF" or "?"
-  File "./homa.py", line 5863, in refreshAllPowerStatuses
-    inst.getPower()  # Get the power status for device
-  File "./homa.py", line 4122, in getPower
-    self.startDevice()  # Will test self.BluetoothStatus attribute.
-  File "./homa.py", line 3227, in startDevice
-    self.turnOn()
-  File "./homa.py", line 4163, in turnOn
-    self.breatheColors()  # Start breathing
-  File "./homa.py", line 3868, in breatheColors
-    if not processStep():
-  File "./homa.py", line 3861, in processStep
-    refresh(sleep_ms)  # Normal / Fast Refresh in loop
-  File "./homa.py", line 3784, in refresh
-    self.app.refreshApp(tk_after=tk_after)
-  File "./homa.py", line 5417, in refreshApp
-    self.sonySaveInst.checkSonyEvents()  # 2025-06-01 new method
-  File "./homa.py", line 2344, in checkSonyEvents
-    if self.checkPowerOffSuspend(forgive=True):  # check "OFF"
-  File "./homa.py", line 2374, in checkPowerOffSuspend
-    self.getPower(forgive=forgive)
-  File "./homa.py", line 2428, in getPower
-    reply_dict = ni.curl(JSON_str, "system", self.ip, RESTid, forgive=forgive)
-  File "./homa.py", line 1049, in curl
-    event = self.runCommand(command_line_list, _who, forgive=forgive)
-  File "/home/rick/HomA/homa_common.py", line 242, in runCommand
-    pipe = sp.Popen(self.cmdCommand, stdout=sp.PIPE, stderr=sp.PIPE)
-  File "/usr/lib/python2.7/dist-packages/subprocess32.py", line 789, in __init__
-    errread, errwrite) = self._get_handles(stdin, stdout, stderr)
-  File "/usr/lib/python2.7/dist-packages/subprocess32.py", line 1276, in _get_handles
-    errread, errwrite = _create_pipe()
-OSError: [Errno 24] Too many open files
-        
-        '''
         v1_print(_who, "Suspending due to Sony TV powerStatus:", self.powerStatus)
 
         return True  # app.refreshApp will suspend system now
@@ -2111,7 +2085,11 @@ OSError: [Errno 24] Too many open files
         self.getVolume(forgive=forgive)  # Occasionally get curl error 124 timeout
         if self.volume == self.volumeLast:
             return False
+
+        if not self.volumeLast == "?":  # first time
+            self.lastVolumeChange = time.time()  # Volume changed by TV remote
         self.volumeLast = self.volume
+
         if not self.checkInstalled('notify-send'):
             v3_print(_who, "Volume changed but `notify-send` not installed.")
             return False
@@ -2560,8 +2538,455 @@ Running via Tools Dropdown Menu doesn't cause a problem though?
         return False
 
 
+class GoogleAndroidTV(DeviceCommonSelf):
+    """ 2026-04-25 GoogleAndroidTV() copied from TclGoogleAndroidTV() class.
+
+        If Android devices aren't automatically discovered:
+
+            adb kill-server && adb start-server
+            devices -l
+            # if android device missing:
+                adb connect <IP address>
+            # Run File Dropdown Menu option "Rediscover now"
+
+$ adb devices -l
+List of devices attached
+192.168.0.17:5555      device product:G03_4K_US_NF model:Smart_TV device:BeyondTV4
+
+        Reference:
+            https://developer.android.com/reference/android/view/KeyEvent
+
+        Methods:
+
+            AdbReset() - adb kill-server && adb start-server
+            getPower() - timeout 2.0 adb shell dumpsys input_method | grep -i screen on
+            isDevice() - timeout 0.1 adb connect <ip>
+            Connect() - Call isDevice followed by wakeonlan up to 60 times
+            turnOn() - timeout 0.5 adb shell input key event KEYCODE_WAKEUP
+            turnOff() - timeout 0.5 adb shell input key event KEYCODE_SLEEP
+
+    """
+
+    def __init__(self, mac, ip, name, alias):
+        """ DeviceCommonSelf(): Variables used by all classes
+
+            ppadb (Pure Python ADB) device.shell is often more efficient than
+            standard adb shell for Linux Xorg automation because it maintains
+            a persistent socket connection, eliminating the high overhead of
+            starting a new adb process for every command. It reduces
+            latency by communicating directly with the adb daemon on the
+            device. Key points:
+
+            o   Persistent Connection: ppadb maintains a long-lived socket
+                connection, avoiding the repetitive overhead of spawning
+                new adb processes for each command, which is critical for
+                fast Xorg interactions.
+            o   Latency: By directly interacting with the Android Debug
+                Bridge protocol, ppadb skips the command-line parsing and
+                shell overhead of the standard adb shell command.
+            o   Execution: Using ppadb inside a Python script allows for
+                tighter loops and direct manipulation of inputs compared
+                to invoking system commands externally, making it faster
+                for tasks like automated screen tapping.
+            o   Protocol Interaction: ppadb allows direct communication
+                with the Android device's adb daemon, streamlining data
+                transfer compared to using the standard adb CLI tool.
+        """
+
+        DeviceCommonSelf.__init__(self, "GoogleAndroidTV().")  # Define self.who
+
+        # 192.168.0.17    TCL.LAN TCL / Google TV Ethernet c0:79:82:41:2f:1f
+        # 192.168.0.18    TCL.WiFi TCL / Google TV WiFi fc:d4:36:ea:82:36
+        # Assume above `/etc/hosts` contents when reading comments below:
+        self.mac = mac      # c0:79:82:41:2f:1f
+        self.ip = ip        # 192.168.0.17
+        self.name = name    # TCL.LAN
+        self.alias = alias  # TCL / Google TV Ethernet
+
+        self.AdbClient = self.AdbDevices = self.AdbDevice = None
+        self.AdbFound = False
+
+        self.type = "GoogleAndroidTV"
+        self.type_code = GLO['ADB_TV']
+        self.requires = ['wakeonlan', 'adb', 'ppadb']
+        self.installed = []
+        self.checkDependencies(self.requires, self.installed)
+        _who = self.who + "__init__():"
+        v3_print(_who, "Dependencies:", self.requires)
+        v3_print(_who, "Installed?  :", self.installed)
+
+        if not self.dependencies_installed:
+            v1_print(_who, "Google Android TV dependencies are not installed.")
+            return
+
+        command_line_list = ["adb", "devices", "-l"]
+        self.runCommand(command_line_list, _who)  # Will force 'adb' daemon to run
+        # Will not connect any devices. Devices must be connected manually
+
+        # Default is "127.0.0.1" and 5037
+        self.AdbClient = AdbClient(host="127.0.0.1", port=5037)
+        self.AdbDevices = self.AdbClient.devices()
+
+        for self.AdbDevice in self.AdbDevices:
+            _state = self.AdbDevice.get_state()
+            print(_who, "self.AdbDevice.get_state():", _state)
+            print(_who, "self.AdbDevice.serial:", self.AdbDevice.serial)
+            if not _state or _state != "device":
+                print(_who, "device not connected.")
+                continue
+
+            # 2. Check responsiveness with a quick command
+            try:
+                self.AdbDevice.shell("echo 1", timeout=2)
+            except Exception as _e:
+                print(_who, "Device frozen or inaccessible:\n ", _e)
+                continue
+
+            # Get screen status - Locks up if TV turned off
+            _res1 = self.AdbDevice.shell("dumpsys input | grep -i screenOn",
+                                         timeout=2)
+            _res2 = self.AdbDevice.shell("dumpsys power | grep -i 'Display Power'",
+                                         timeout=2)
+            _res3 = self.AdbDevice.shell("dumpsys display | grep -i mScreenState",
+                                         timeout=2)
+            v0_print("input_method | grep -i screenOn:", _res1)
+            v0_print("power | grep -i 'Display Power':", _res2)
+            v0_print("display | grep -i mScreenState:", _res3)
+
+    def getAdbDeviceByIP(self):
+        """ match ppadb device to existing connections use IP address """
+        _who = self.who + "getAdbDeviceByIP():"
+
+        for self.AdbDevice in self.AdbDevices:
+            if not self.recheckConnection():
+                continue
+            _ip = self.AdbDevice.serial.split(":")[0]
+            if _ip == self.ip:
+                self.AdbFound = True
+                return True
+
+        self.AdbDevice = None
+        self.AdbFound = False
+
+    def recheckConnection(self):
+        """ Quick check to see if device is still connected in ppadb. """
+        _who = self.who + "recheckConnection():"
+
+        if self.AdbDevice is None:
+            v0_print(_who, "AdbDevice is None for IP:", self.ip)
+            return False  # 2026-04-26 hasn't happened yet...
+
+        # Check responsiveness with a quick command
+        try:
+            _start = time.time()
+            self.AdbDevice.shell("echo 1", timeout=2)
+            v1_print(_who, "No error using ppadb after seconds:",
+                     round(time.time() - _start, 2))
+            return True
+        except Exception as _e:
+            v1_print(_who, "Device frozen or inaccessible:\n ", _e)
+            return False
+
+    def Connect(self, forgive=False):
+        """ Wakeonlan and Connect to TCL / Google Android TV in a loop until
+            isDevice() returns True.
+            Called on startup. Also called from turnOff() and turnOn().
+            Cannot use ppadb to connect, must use OS call to `adb shell... <IP>`.
+
+        DEBUGGING:
+
+        $ time adb connect 192.168.0.17
+
+* daemon not running. starting it now on port 5037 *
+* daemon started successfully *
+connected to 192.168.0.17:5555
+
+real	0m3.010s
+user	0m0.003s
+sys	    0m0.000s
+
+        Next, run Rediscover Now from Dropdown File menu.
+
+        Command line will show:
+
+Application().Rediscover(): FOUND NEW INSTANCE or REDISCOVERED LOST INSTANCE:
+{'instance': <__main__.GoogleAndroidTV instance at 0x7f59af94d3f8>,
+'mac': u'c0:79:82:41:2f:1f'}
+
+        Now restart HomA and missing TV will reappear.
+
+        """
+
+        _who = self.who + "Connect():"
+        if not self.checkInstalled('ppadb'):
+            v3_print(_who, "`ppadb.py` not installed.")
+            return False
+        v2_print(_who, "Attempt to connect to:", self.ip)
+
+        # $ time adb connect 192.168.0.17
+        # * daemon not running. starting it now on port 5037 *
+        # * daemon started successfully *
+        # connected to 192.168.0.17:5555
+        #
+        # real	0m3.010s
+        # user	0m0.001s
+        # sys	0m0.005s
+
+        command_line_list = ["adb", "devices", "-l"]
+        self.runCommand(command_line_list, _who)  # Will force 'adb' daemon to run
+        #self.AdbClient = AdbClient(host="127.0.0.1", port=5037)
+        #v2_print("self.AdbClient.version:", self.AdbClient.version())
+        #self.AdbDevices = self.AdbClient.devices()
+        #v2_print(_who, "Number of devices connected:", len(self.AdbDevices))
+        #self.getAdbDeviceByIP()
+
+        cnt = 1
+        # while not self.isDevice(forgive=True, timeout=GLO['ADB_MAGIC_TIME']):
+        while not self.AdbFound:
+            # 2026-04-26 MAGIC_TIME is 0.2 which is useless for Connect
+
+            v1_print(_who, "Attempt #:", cnt, "Call 'wakeonlan' for MAC:", self.mac)
+            command_line_list = ["wakeonlan", self.mac]  # 0.2 seconds
+
+            _start = time.time()
+            event = self.runCommand(command_line_list, _who, forgive=forgive)
+            v1_print(_who, "wakeonlan time:", round(time.time() - _start, 2))
+            if event['returncode'] != 0:
+                return False
+
+            # 2025-01-13 Added but should not be needed except isDevice timeout is
+            #   now too short.
+            command_line_list = ["adb", "connect", self.ip]  # can take 6 seconds
+            _start = time.time()
+            _event = self.runCommand(command_line_list, _who, forgive=forgive)
+            v1_print(_who, "`adb connect` time:", round(time.time() - _start, 2))
+
+            # Reply = "connected to 192.168.0.17:5555"
+            # Reply = "already connected to 192.168.0.17:5555"
+            # Reply = "unable to connect to 192.168.0.17:5555"
+            # Reply = "error: device offline"
+
+            self.AdbDevices = self.AdbClient.devices()  # Reread after wakeup
+            v1_print(_who, "Number of devices connected:", len(self.AdbDevices))
+            self.getAdbDeviceByIP()
+
+            cnt += 1
+            if cnt > 5:
+                v0_print(_who, "Timeout after", cnt, "attempts")
+                return False
+        '''
+        For Python ppadb (pure-python-adb) in a loop on Android TVs, a suitable, 
+        stable polling rate is 1 to 2 seconds for responsive automation (like 
+        state tracking), while 200ms to 500ms is more suitable for fast input 
+        emulation or screen monitoring. Key points:
+        
+            o   Slow Polling: The default ADB state monitoring for many 
+                integrations is 10 seconds, which is generally too slow.
+            o   Optimal High-Responsiveness Loop: Setting a custom interval 
+                of 1 to 5 seconds is generally reliable.
+            o   Fast Action/Input Loop: If performing rapid clicks or screen 
+                analysis, a 200ms to 500ms delay is achievable without 
+                overwhelming the device's CPU. 
+        
+        Key Considerations for Android TV Loops:
+        
+            o   Resource Usage: Constant, rapid polling in a tight while True loop 
+                can consume excessive CPU on the Android TV, causing lagging, 
+                particularly on lower-end devices.
+            o   Use time.sleep(): Always include a time.sleep(interval) within 
+                your loop to avoid 100% CPU usage on the controlling machine and 
+                to prevent overwhelming the adb service on the TV.
+            o   Async/Efficient Polling: Instead of rapid polling, consider using 
+                blocking calls to reduce resource usage. 
+        '''
+        return True  # isDevice() returned True ("connected" in reply)
+
+    def getPower(self, forgive=False):
+        """ Return "ON", "OFF" or "?" using ppadb.
+        """
+
+        _who = self.who + "getPower():"
+        self.powerStatus = "?"  # Can be "ON", "OFF" or "?"
+        if not self.checkInstalled('ppadb'):
+            v3_print(_who, "`ppadb.py` not installed.")
+            return self.powerStatus
+
+        if self.AdbDevice is None or not self.recheckConnection():
+            v1_print(_who, "No connection to:", self.ip)
+            if self.Connect(forgive=forgive):  # TODO else: error message
+                self.getAdbDeviceByIP()
+                if self.AdbFound:
+                    v1_print(_who, "Connection established to IP:", self.ip)
+                else:
+                    return self.powerStatus
+            else:
+                return self.powerStatus
+
+        v2_print("\n" + _who, "Get Power Status for:", self.ip)
+        #self.Connect()  # 2024-12-02 - constant reconnection seems to be required
+        # 2026-04-25 horrendous Xorg ever-growing CPU load requiring reboot
+
+        #command_line_list = ["timeout", GLO['ADB_PWR_TIME'], "adb",
+        #                     "shell", "dumpsys", "input_method",
+        #                     "|", "grep", "-i", "screenOn"]
+        #event = self.runCommand(command_line_list, _who, forgive=forgive)
+        # 2026-04-25 adb shell in loop is horrendous Xorg resource drain
+
+        # Get screen status - Locks up if TV turned off
+        _res1 = _res2 = _res3 = ""
+        _res1 = self.AdbDevice.shell("dumpsys input | grep -i screenOn",
+                                     timeout=2)  # screenOn = true
+        v1_print(_who, "input_method | grep -i screenOn:", _res1)
+
+        if "true" in _res1:
+            self.powerStatus = "ON"  # Can be "ON", "OFF" or "?"
+            return self.powerStatus
+        elif "false" in _res1:
+            self.powerStatus = "OFF"  # Can be "ON", "OFF" or "?"
+            return self.powerStatus
+
+        _res2 = self.AdbDevice.shell("dumpsys power | grep -i 'Display Power'",
+                                     timeout=2)  # Display Power: state=ON
+        v1_print(_who, "power | grep -i 'Display Power':", _res2)
+
+        if "ON" in _res2:
+            self.powerStatus = "ON"  # Can be "ON", "OFF" or "?"
+            return self.powerStatus
+        elif "OFF" in _res2:
+            self.powerStatus = "OFF"  # Can be "ON", "OFF" or "?"
+            return self.powerStatus
+
+        _res3 = self.AdbDevice.shell("dumpsys display | grep -i mScreenState",
+                                     timeout=2)  # mScreenState=ON
+        v1_print(_who, "display | grep -i mScreenState:", _res3)
+
+        if "ON" in _res3:
+            self.powerStatus = "ON"  # Can be "ON", "OFF" or "?"
+            return self.powerStatus
+        elif "OFF" in _res3:
+            self.powerStatus = "OFF"  # Can be "ON", "OFF" or "?"
+            return self.powerStatus
+
+        self.powerStatus = "?"  # Can be "ON", "OFF" or "?"
+        if not forgive:
+            v0_print(_who, "Power status unknown.")
+
+        #v0_print(_who, "SPECIAL self.mac", self.mac, "self.name:", self.name)
+        #  SPECIAL self.mac c0:79:82:41:2f:1f self.name: TCL.LAN
+        #  above is working for this inst. class but not for LED Lights inst. class
+
+        return self.powerStatus
+
+    def turnOn(self, forgive=False):
+        """ Turn On Google Android TV.
+            Send KEYCODE_WAKEUP 5 times until screenOn = true. It takes
+                14 seconds to turn on TV.
+        """
+
+        _who = self.who + "turnOn():"
+        if not self.checkInstalled('ppadb'):
+            v3_print(_who, "`ppadb.py` not installed.")
+            return False
+        v2_print("\n" + _who, "Send KEYCODE_WAKEUP to:", self.ip)
+
+        # Connect() will try 60 times with wakeonlan and isDevice check.
+        if self.AdbDevice is None or not self.recheckConnection():
+            v1_print(_who, "ppadb not connected to IP:", self.ip)
+            if not self.Connect(forgive=forgive):  # TODO else: error message
+                v0_print(_who, "ADB unable to connect to IP:", self.ip)
+                return self.getPower()
+
+        cnt = 1
+        self.powerStatus = "?"
+        while not self.powerStatus == "ON":
+
+            v1_print(_who, "Attempt #:", cnt, "Send 'KEYCODE_WAKEUP' to IP:", self.ip)
+
+            try:
+                _start = time.time()
+                self.AdbDevice.shell("input keyevent KEYCODE_WAKEUP",
+                                     timeout=float(GLO['ADB_KEY_TIME']))
+                v1_print(_who, "No error using ppadb after seconds:",
+                         round(time.time() - _start, 2))
+            except Exception as e:
+                v0_print(_who, "input keyevent ERROR:\n ", e)
+
+            self.getPower()
+            if self.powerStatus == "ON" or cnt >= 5:
+                return self.powerStatus
+
+            cnt += 1
+
+        return self.powerStatus
+
+    def turnOff(self, forgive=False):
+        """ Send 'KEYCODE_SLEEP' """
+
+        _who = self.who + "turnOff():"
+        if not self.checkInstalled('ppadb'):
+            v3_print(_who, "`ppadb.py` not installed.")
+            return False
+        v2_print(_who, "Send KEYCODE_SLEEP to:", self.ip)
+
+        try:
+            _start = time.time()
+            self.AdbDevice.shell("input keyevent KEYCODE_SLEEP",
+                                 timeout=float(GLO['ADB_KEY_TIME']))
+            v1_print(_who, "No error using ppadb after seconds:",
+                     round(time.time() - _start, 2))
+        except Exception as e:
+            v0_print(_who, "input keyevent ERROR:\n ", e)
+
+        time.sleep(0.5)  # Required to get "OFF" into treeview
+        return self.getPower(forgive=forgive)
+
+    def isDevice(self, forgive=False, timeout=None):
+        """ Return True if adb connection for Android device (using IP address).
+            If forgive=True then don't report pipe.returncode != 0
+        """
+
+        _who = self.who + "isDevice():"
+        if not self.checkInstalled('ppadb'):
+            v3_print(_who, "`ppadb.py` not installed.")
+            return False
+
+        v2_print(_who, "Test if device is a Google Android TV:", self.ip)
+
+        if timeout is None:
+            timeout = GLO['ADB_CON_TIME']  # CON time is .3 which is useless
+        command_line_list = ["timeout", timeout, "adb", "connect", self.ip]
+
+        # 2025-04-22 upgrade to self.runCommand to log events
+        _start = time.time()
+        event = self.runCommand(command_line_list, _who, forgive=forgive)
+        v1_print(_who, "short connect time:", round(time.time() - _start, 2))
+        v2_print(_who, "reply 'adp connect {}':".format(self.ip),
+                 event['output'], event['error'])
+
+        self.AdbDevices = self.AdbClient.devices()  # Reread after connect
+        if self.getAdbDeviceByIP():
+            v2_print(_who, "IP address {}' is an Android Device:".format(self.ip))
+
+        if event['returncode'] != 0:
+            if forgive is False:
+                if event['returncode'] == 124:
+                    v0_print(_who, self.ip, "timeout after:", timeout)
+                else:
+                    v0_print(_who, self.ip, "Return Code:", event['returncode'])
+                    v0_print(_who, self.ip, "Error:", self.cmdError)
+            return False
+
+        Reply = event['output']
+
+        # Reply = "connected to 192.168.0.17:5555"
+        # Reply = "already connected to 192.168.0.17:5555"
+        # Reply = "unable to connect to 192.168.0.17:5555"
+        # Reply = "error: device offline"
+        return "connected" in Reply
+
+
 class TclGoogleAndroidTV(DeviceCommonSelf):
-    """ TCL Google Android TV
+    """ DEPRECATED: TCL Google Android TV - Replaced by GoogleAndroidTV()
 
         If Android devices aren't automatically discovered:
 
@@ -2604,7 +3029,7 @@ List of devices attached
         self.alias = alias  # TCL / Google TV Ethernet
 
         self.type = "TclGoogleAndroidTV"
-        self.type_code = GLO['TCL_TV']
+        self.type_code = GLO['ADB_TV']
         self.requires = ['wakeonlan', 'adb']
         self.installed = []
         self.checkDependencies(self.requires, self.installed)
@@ -2682,7 +3107,6 @@ Application().Rediscover(): FOUND NEW INSTANCE or REDISCOVERED LOST INSTANCE:
             if cnt > 60:
                 v0_print(_who, "Timeout after", cnt, "attempts")
                 return False
-
         return True  # isDevice() returned True ("connected" in reply)
 
     def getPower(self, forgive=False):
@@ -3794,7 +4218,7 @@ class BluetoothLedLightStrip(DeviceCommonSelf):
 
         if "cannot start" in msg:
             # gatttool could not find computer's bluetooth adapter (driver not running)
-            msg += "Wait a minute to see if LED light strips turn on.\n\n"
+            msg += "Wait a minute to see BLE Bluetooth connection established.\n\n"
             msg += "Ensure LED lights can be controlled by your smartphone.\n\n"
             msg += "In HomA, right-click on LED light strips and select:\n"
             msg += "\t'Reset Bluetooth'.\n"
@@ -4865,6 +5289,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                          compound=tk.LEFT, command=lambda: self.forgetDevice(cr))
 
         menu.add_separator()
+        menu.add_command(label="Details", font=g.FONT, command=lambda: self.Details(cr),
+                         image=self.img_close, compound=tk.LEFT)
         menu.add_command(label="Help", font=g.FONT, command=lambda: g.web_help(help_id),
                          image=self.img_mag_glass, compound=tk.LEFT)
         menu.add_command(label="Close menu", font=g.FONT, command=_closePopup,
@@ -5049,7 +5475,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         LISTS of DICTIONARIES
         ni.mac_dicts   First time discovered, thereafter read from disk
-        ni.instances   [{mac:99, instance:TclGoogleAndroidTV}...{}]
+        ni.instances   [{mac:99, instance:GoogleAndroidTV}...{}]
 
         """
         _who = self.who + "forgetDevice():"
@@ -5111,6 +5537,60 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         cr.tree.delete(str(new_count))  # Delete the last treeview row moved
         self.photos.pop(new_count)  # Delete the last photo moved
 
+    def Details(self, cr):
+        """ Details - set photos and name for device.
+            2026-04-25 Add
+        """
+        _who = self.who + "Details():"
+
+        # Code below can become a boilerplate function
+        for arp_ndx, mac_dict in enumerate(ni.mac_dicts):
+            if mac_dict['mac'] == cr.mac:
+                v1_print(_who, "Found existing ni.mac_dict:", mac_dict['name'],
+                         "arp_ndx:", arp_ndx)
+                break
+        else:
+            v0_print(_who, "Not found ni.mac_dict!")
+            return
+
+        for inst_ndx, inst_dict in enumerate(ni.instances):
+            if inst_dict['mac'] == cr.mac:
+                v1_print(_who, "Found existing ni.instances:", inst_dict['mac'],
+                         "inst_ndx:", inst_ndx)
+                break
+        else:
+            v0_print(_who, "Not found ni.instances!")
+            return
+
+        for iid, view in enumerate(ni.view_order):
+            if view == cr.mac:
+                v1_print(_who, "Found existing ni.view_order 'iid':", iid)
+                break
+        else:
+            v0_print(_who, "Not found ni.view_order!")
+            return
+
+        # Need new file ni.config ? to hold photos and name
+        # or simply add new key/value pairs to ni.mac_dicts?
+
+        '''
+        ni.mac_dicts.pop(arp_ndx)
+        ni.instances.pop(inst_ndx)
+
+        # renumber iid for following treeview rows
+        last_item = int(cr.item)
+        new_count = len(cr.tree.get_children()) - 1
+        v1_print(_who, "last_item:", last_item, "new_count:", new_count)
+        while last_item < new_count:
+            cr.Get(str(last_item + 1))  # Get source row values
+            cr.Update(str(last_item))  # Update current row with source row
+            v0_print(_who, "Reassigned iid:", cr.item, "to:", last_item)
+            last_item += 1
+
+        cr.tree.delete(str(new_count))  # Delete the last treeview row moved
+        self.photos.pop(new_count)  # Delete the last photo moved
+        '''
+
     def refreshApp(self, tk_after=True):
         """ Sleeping loop until need to do something. Fade tooltips. Resume from
             suspend. Monitor Sony TV settings. Rediscover devices.
@@ -5162,7 +5642,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.tt.poll_tips()  # Tooltips fade in and out
         self.update()  # process pending tk events in queue
 
-        ''' 1 minute after restart, refresh lagging power statuses '''
+        ''' 1 minute after restart, refresh unknown power statuses '''
         if self.force_refresh_power_time and now > self.force_refresh_power_time:
             self.force_refresh_power_time = 0.0  # Don't do it again
             self.GATTToolJobs(found_inst=self.bleSaveInst)
@@ -5521,11 +6001,11 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             if iid is None:
                 continue  # Instance not in Devices Treeview, perhaps a smartphone?
 
-            old_text = cr.text  # Treeview row old power state "  ON", etc.
-            cr.text = "  " + str(inst.powerStatus)  # Display treeview row new power state
-            if cr.text != old_text:
-                v1_print(_who, inst.name, "Power status changed from: '"
-                         + old_text.strip() + "' to: '" + cr.text.strip() + "'.")
+            old_text = cr.power_text  # Treeview row old power state "  ON", etc.
+            cr.power_text = "  " + str(inst.powerStatus)  # Display treeview row new power state
+            if cr.power_text != old_text:
+                v1_print(_who, inst.name, "\n  Power status changed from: '"
+                         + old_text.strip() + "' to: '" + cr.power_text.strip() + "'.")
             cr.Update(iid)  # Update iid with new ['text']
 
             # Display row by row when there is processing lag
@@ -5590,8 +6070,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 # Get treeview row based on matching MAC address + device_type
                 iid = cr.getIidForInst(inst)  # Get iid number and set instance
                 if iid is not None:
-                    # When cr.text is "Wait..." fast startup so highlight each row
-                    if auto is False or cr.text == "Wait...":
+                    # When cr.power_text is "Wait..." fast startup so highlight each row
+                    if auto is False or cr.power_text == "Wait...":
                         self.tree.see(iid)
                         cr.fadeIn(iid)
 
@@ -5605,11 +6085,11 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             if iid is None:
                 continue  # Instance not in Devices Treeview or treeview not mounted
 
-            old_text = cr.text  # Treeview row's old power state "  ON", etc.
-            cr.text = "  " + inst.powerStatus  # Display treeview row's new power state
-            if cr.text != old_text:
-                v1_print(_who, cr.mac, "Power status changed from: '"
-                         + old_text.strip() + "' to: '" + cr.text.strip() + "'.")
+            old_text = cr.power_text  # Treeview row's old power state "  ON", etc.
+            cr.power_text = "  " + inst.powerStatus  # Display treeview row's new power state
+            if cr.power_text != old_text:
+                v1_print(_who, cr.mac, "\n  Power status changed from: '"
+                         + old_text.strip() + "' to: '" + cr.power_text.strip() + "'.")
             cr.Update(iid)  # Update row with new ['text']
             if auto is False or old_text == "Wait...":
                 # Fade in/out performed when called from Dropdown Menu (auto=False).
@@ -5847,11 +6327,11 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.tree.see(iid)
         cr.fadeIn(iid)
 
-        old_text = cr.text  # Treeview row's old power state "  ON", etc.
-        cr.text = "  " + inst.powerStatus  # Display treeview row's new power state
-        if cr.text != old_text:
-            v1_print(_who, cr.mac, "Power status changed from: '"
-                     + old_text.strip() + "' to: '" + cr.text.strip() + "'.")
+        old_text = cr.power_text  # Treeview row's old power state "  ON", etc.
+        cr.power_text = "  " + inst.powerStatus  # Display treeview row's new power state
+        if cr.power_text != old_text:
+            v1_print(_who, cr.mac, "\n  Power status changed from: '"
+                     + old_text.strip() + "' to: '" + cr.power_text.strip() + "'.")
         cr.Update(iid)  # Update row with new ['text']
         cr.fadeOut(iid)
 
@@ -7159,8 +7639,9 @@ def open_files():
             inst = SmartPlugHS100(arp['mac'], arp['ip'], arp['name'], arp['alias'])
         elif type_code == GLO['KDL_TV']:  # Sony Bravia KDL TV supporting REST API?
             inst = SonyBraviaKdlTV(arp['mac'], arp['ip'], arp['name'], arp['alias'])
-        elif type_code == GLO['TCL_TV']:  # TCL / Google Android TV supporting adb?
-            inst = TclGoogleAndroidTV(arp['mac'], arp['ip'], arp['name'], arp['alias'])
+        elif type_code == GLO['ADB_TV']:  # TCL / Google Android TV supporting adb?
+            #inst = TclGoogleAndroidTV(arp['mac'], arp['ip'], arp['name'], arp['alias'])
+            inst = GoogleAndroidTV(arp['mac'], arp['ip'], arp['name'], arp['alias'])
         elif type_code == GLO['BLE_LS']:  # Bluetooth Low Energy LED Light Strip
             inst = BluetoothLedLightStrip(arp['mac'], arp['ip'], arp['name'], arp['alias'])
         elif type_code == GLO['DESKTOP']:  # Desktop computer image

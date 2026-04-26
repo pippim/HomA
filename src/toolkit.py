@@ -4961,33 +4961,55 @@ class ThingOfThings(tk.Canvas):
         Select button will make hand cursor to move image or cursor to resize.
 
     """
-    def __init__(self, parent, photos, fills, **kwargs):
+
+    # Mins and Maxes to prevent photo coming too close to canvas edge
+    IX = IY = 0.01  # Minimum x and y percentage offset on canvas
+    AX = AY = 0.99  # Maximum x and y percentage offset on canvas
+    # Mins and Maxes to prevent photo size too small or too large for canvas
+    IW = IH = 0.05  # Minimum width and height percentage size in canvas
+    AW = AH = 0.99  # Maximum width and height percentage size in canvas
+
+    def __init__(self, parent, photos=[], things=[], resizeCB=None, hoverCB=None,
+                 contextCB=None, **kwargs):
         tk.Canvas.__init__(self, parent, **kwargs)
 
         self.bind("<Configure>", self.on_resize)
         self.height = self.winfo_reqheight()
         self.width = self.winfo_reqwidth()
-        # Starting width & height for images resizing device (Internet "Thing") photos
+        # Starting width & height for images resizing Things photo images
         self.start_wid = self.width
         self.start_hgt = self.height
+
         # 2026-04-19 Initial design supports homa.py TreeviewRow() photos[], inst_dict[]
-        self.photos = []  # device images on the canvas, immune from Garbage collection
-        self.texts = []  # text names for images (overlays)
-        # Perhaps self.text{} s/b defined in caller and a call back is used for hover? 
+        #   so self.photos is duplicate of existing HomA. In the future, instead of generic
+        #   photo image based on `dev_type`, each device can have `map_dev_photo` to be
+        #   used here and `net_dev_photo` to be used in HomA Network Devices treeview.
+        #   It's up to the caller to provide TK photo images and it's beyond the scope of
+        #   this class to select the images. There is a callback for right-click menu
+        #   where the caller would provide an option to change TK photo image and save it.
+        self.photos = photos  # Thing images on the canvas, immune from Garbage collection
+        self.texts = []  # text name overlays for Thing photo images
+        # Example of self.text{} defined in caller and callback is used for hover excluding
+        #   edges of image.
         self.text = {"name": "", "long_name": "", "host_name": "",  # s/b "name3" instead?
                      "host_optional": "", "MAC": "", "IP": "", "dev_type": 0,
                      "power_state": "?"}
 
-        self.fills = []  # fill color and alpha that overlays images
-        self.devices = []  # list of devices, same index as photos[], texts[], fills[]
-        # Device coordinate is percentage of canvas. "inst" is instance of device.
-        self.dev = {"xp": 0.0, "yp": 0.0, "wp": 0.0, "hp": 0.0, "inst": None}
-        self.IX = self.IY = 0.01  # Minimum x and y percentage points on canvas
-        self.AX = self.AY = 0.99  # Maximum x and y percentage points on canvas
-        self.IW = self.IH = 0.05  # Minimum width and height percentage size in canvas
-        self.AW = self.AH = 0.99  # Maximum width and height percentage size in canvas
+        self.things = things  # list of devices, index corresponds to photos[] & texts[]
+        # Thing geometry is percentage of canvas. "inst" is instance of a thing in caller
+        # A thing can contain more than dictionary fields below, but this is minimum:
+        self.thing = {"xp": 0.0, "yp": 0.0, "wp": 0.0, "hp": 0.0, "inst": None}
+        # self.calc_geom() function sets self.geom{} using percentages in self.dev{}
         self.geom = {"x": 0, "y": 0, "w": 0, "h": 0}  # geometry within canvas
-        # self.calc_geom sets self.geom{} using percentages in self.dev{}
+
+        self.resizeCB = resizeCB  # resizing or moving photo image of device
+        self.hoverCB = hoverCB  # Hovering x pixels from edge of photo image of device
+        self.contextCB = contextCB  # Right-click menu
+        self.idx = 0  # Current photo image of device set by <Enter> / <Leave>
+        self.entered_idx = None  # Thing entered using real <Enter> event
+        self.resize_idx = None  # Thing <5px entered using <Motion> after real <Enter>
+        self.move_idx = None  # Thing >=5px entered using <Motion> after real <Enter>
+        self.left_idx = None  # Thing left from <Leave> event
 
     def add_image(self, _image, name=None, name_shadow=True, tooltip_text=None,
                   inst=None, context_menu=None):
@@ -5002,9 +5024,24 @@ class ThingOfThings(tk.Canvas):
             
             Right clicking on an image invokes "context_menu" callback. 
         """
-        print("self.IX:", self.IX, "self.IY:", self.IY)
-        self.dev["inst"] = inst
-        pass
+        print("self.IX:", self.IX, "self.IY:", self.IY)  # Min x-offset, y-offset %
+
+    def update_image(self, _image, name=None, name_shadow=True, tooltip_text=None,
+                     inst=None, context_menu=None):
+        """ Image has been resized or moved. Update mutable list of dictionaries
+            for caller.
+        """
+        print("self.IW:", self.IW, "self.IH:", self.IH)  # Min width, height %
+
+    def call_hover(self, _action):
+        """ Mouse is inside thing and suitable distance from edge to inform caller that
+            it is hovering and passes _action of "ENTER" to callback. <Motion> is tracked
+            and in this event exact coordinates are calculated from edge.
+
+            :param _action: Either "ENTER" or "LEAVE".
+        """
+        print("self.IW:", self.IW, "self.IH:", self.IH)  # Min width, height %
+        self.hoverCB(_action, self.idx)
 
     def on_resize(self, event):
         """ determine the ratio of previous width/height to new width/height """
