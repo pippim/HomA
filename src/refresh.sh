@@ -62,6 +62,7 @@ fi
 echo
 echo "=== UPDATING: $PWD"
 
+cp -r ~/HomA/3lines4.png .
 cp -r ~/HomA/Alarm_01.wav .
 cp -r ~/python/audio/ .  # Subdirectory with files and subdirectories
 cp -r ~/HomA/bias.jpg .
@@ -86,6 +87,7 @@ cp -r ~/HomA/lightning_bolt.png .
 cp -L ~/HomA/message.py .  # symlink
 cp -L ~/HomA/monitor.py .  # symlink
 cp -r ~/HomA/nighttime.png .
+cp -r ~/HomA/pa_listen.py .
 cp -r ~/HomA/picture_off.png .
 cp -r ~/HomA/picture_on.png .
 cp -L ~/HomA/pimtube.py .  # Youtube video controller / ad skipper
@@ -114,6 +116,7 @@ cp -r ~/HomA/yt-skip.py .
 find . -name "*.pyc" -exec rm -f "{}" \;
 git rm -r --cached *.pyc
 
+git add 3lines4.png
 git add Alarm_01.wav
 git add audio/
 git add bias.jpg
@@ -138,6 +141,7 @@ git add lightning_bolt.png
 git add message.py
 git add monitor.py
 git add nighttime.png
+git add pa_listen.py
 git add picture_off.png
 git add picture_on.png
 git add pimtube.py

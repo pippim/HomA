@@ -416,8 +416,8 @@ class NetworkInfo(DeviceCommonSelf):
         self.view_order  Treeview list of MAC addresses
 
         LISTS of DICTIONARIES
-        self.device_dicts First time discovered, thereafter read from disk
-        self.instances    GoogleAndroidTV, SonyBraviaKdlTV, etc. instances
+        self.mac_dicts  First time discovered, thereafter read from disk
+        self.instances  GoogleAndroidTV, SonyBraviaKdlTV, etc. instances
 
         # Miscellaneous - nmap takes 10 seconds so call on demand with wait cursor
         # nmap 192.168.0.0/24
@@ -2643,12 +2643,17 @@ List of devices attached
                 continue
 
             # Get screen status - Locks up if TV turned off
-            _res1 = self.AdbDevice.shell("dumpsys input | grep -i screenOn",
-                                         timeout=2)
-            _res2 = self.AdbDevice.shell("dumpsys power | grep -i 'Display Power'",
-                                         timeout=2)
-            _res3 = self.AdbDevice.shell("dumpsys display | grep -i mScreenState",
-                                         timeout=2)
+            _res1 = _res2 = _res3 = None
+            try:
+                _res1 = self.AdbDevice.shell("dumpsys input | grep -i screenOn",
+                                             timeout=2)
+                _res2 = self.AdbDevice.shell("dumpsys power | grep -i 'Display Power'",
+                                             timeout=2)
+                _res3 = self.AdbDevice.shell("dumpsys display | grep -i mScreenState",
+                                             timeout=2)
+            except Exception as e:
+                v0_print(_who, "AdbDevice.shell('dumpsys ____ | grep -i ____')",
+                         " ERROR:", "\n ", e)
             v0_print("input_method | grep -i screenOn:", _res1)
             v0_print("power | grep -i 'Display Power':", _res2)
             v0_print("display | grep -i mScreenState:", _res3)
@@ -2688,8 +2693,8 @@ List of devices attached
             return False
 
     def Connect(self, forgive=False):
-        """ Wakeonlan and Connect to TCL / Google Android TV in a loop until
-            isDevice() returns True.
+        """ Wakeonlan and Connect to Google Android TV in a loop until
+                isDevice() returns True.
             Called on startup. Also called from turnOff() and turnOn().
             Cannot use ppadb to connect, must use OS call to `adb shell... <IP>`.
 
@@ -2721,6 +2726,7 @@ Application().Rediscover(): FOUND NEW INSTANCE or REDISCOVERED LOST INSTANCE:
         if not self.checkInstalled('ppadb'):
             v3_print(_who, "`ppadb.py` not installed.")
             return False
+
         v2_print(_who, "Attempt to connect to:", self.ip)
 
         # $ time adb connect 192.168.0.17
@@ -2734,44 +2740,35 @@ Application().Rediscover(): FOUND NEW INSTANCE or REDISCOVERED LOST INSTANCE:
 
         command_line_list = ["adb", "devices", "-l"]
         self.runCommand(command_line_list, _who)  # Will force 'adb' daemon to run
-        #self.AdbClient = AdbClient(host="127.0.0.1", port=5037)
-        #v2_print("self.AdbClient.version:", self.AdbClient.version())
-        #self.AdbDevices = self.AdbClient.devices()
-        #v2_print(_who, "Number of devices connected:", len(self.AdbDevices))
-        #self.getAdbDeviceByIP()
 
         cnt = 1
-        # while not self.isDevice(forgive=True, timeout=GLO['ADB_MAGIC_TIME']):
         while not self.AdbFound:
-            # 2026-04-26 MAGIC_TIME is 0.2 which is useless for Connect
-
-            v1_print(_who, "Attempt #:", cnt, "Call 'wakeonlan' for MAC:", self.mac)
-            command_line_list = ["wakeonlan", self.mac]  # 0.2 seconds
 
             _start = time.time()
+            v1_print(_who, "Attempt #:", cnt, "Call 'wakeonlan' for MAC:", self.mac)
+            command_line_list = ["wakeonlan", self.mac]  # 0.2 seconds
             event = self.runCommand(command_line_list, _who, forgive=forgive)
             v1_print(_who, "wakeonlan time:", round(time.time() - _start, 2))
             if event['returncode'] != 0:
                 return False
 
-            # 2025-01-13 Added but should not be needed except isDevice timeout is
-            #   now too short.
-            command_line_list = ["adb", "connect", self.ip]  # can take 6 seconds
+            # 2025-01-13 Added because isDevice timeout is now too short.
             _start = time.time()
+            command_line_list = ["adb", "connect", self.ip]  # can take 6 seconds
             _event = self.runCommand(command_line_list, _who, forgive=forgive)
-            v0_print(_who, "`adb connect` time:", round(time.time() - _start, 2))
+            v1_print(_who, "`adb connect` time:", round(time.time() - _start, 2))
 
             # Reply = "connected to 192.168.0.17:5555"
             # Reply = "already connected to 192.168.0.17:5555"
             # Reply = "unable to connect to 192.168.0.17:5555"
             # Reply = "error: device offline"
 
-            self.AdbDevices = self.AdbClient.devices()  # Reread after wakeup
+            self.AdbDevices = self.AdbClient.devices()  # Reread after connect
             v1_print(_who, "Number of devices connected:", len(self.AdbDevices))
             self.getAdbDeviceByIP()
 
             cnt += 1
-            if cnt > 5:
+            if cnt > 10:
                 v0_print(_who, "Timeout after", cnt, "attempts")
                 return False
         '''
@@ -2802,8 +2799,7 @@ Application().Rediscover(): FOUND NEW INSTANCE or REDISCOVERED LOST INSTANCE:
         return True
 
     def getPower(self, forgive=False):
-        """ Return "ON", "OFF" or "?" using ppadb.
-        """
+        """ Set self.powerStatus to "ON", "OFF" or "?" using ppadb. """
 
         _who = self.who + "getPower():"
         self.powerStatus = "?"  # Can be "ON", "OFF" or "?"
@@ -2823,58 +2819,42 @@ Application().Rediscover(): FOUND NEW INSTANCE or REDISCOVERED LOST INSTANCE:
                 return self.powerStatus
 
         v2_print("\n" + _who, "Get Power Status for:", self.ip)
-        #self.Connect()  # 2024-12-02 - constant reconnection seems to be required
-        # 2026-04-25 horrendous Xorg ever-growing CPU load requiring reboot
+        _txt1 = "dumpsys input | grep -i screenOn"
+        _txt2 = "dumpsys power | grep -i 'Display Power'"
+        _txt3 = "dumpsys display | grep -i mScreenState"
 
-        #command_line_list = ["timeout", GLO['ADB_PWR_TIME'], "adb",
-        #                     "shell", "dumpsys", "input_method",
-        #                     "|", "grep", "-i", "screenOn"]
-        #event = self.runCommand(command_line_list, _who, forgive=forgive)
-        # 2026-04-25 adb shell in loop is horrendous Xorg resource drain
+        def checkOnOff(_txt, _on, _off, _set_power=True):
+            """ Check results from ppadb.shell for _on or _off or None.
+            :param _txt: ppadb.shell command to execute
+            :param _on: check string of "ON" or "true"
+            :param _off: check string of "OFF" or "false"
+            :param _set_power: Set self.powerStatus to found value.
+            :return: "ON" or "OFF" or None
+            """
+            try:  # dumpsys: input / power / display
+                _res = self.AdbDevice.shell(_txt, timeout=2)
+            except Exception as e:
+                v0_print(_who, _txt, "ERROR:", "\n ", e)
 
-        # Get screen status - Locks up if TV turned off
-        _res1 = _res2 = _res3 = ""
-        _res1 = self.AdbDevice.shell("dumpsys input | grep -i screenOn",
-                                     timeout=2)  # screenOn = true
-        v1_print(_who, "input_method | grep -i screenOn:", _res1)
+            v1_print("{} {}: '{}'.".format(_who, _txt, _res))
+            _return = None  # Neither "ON" nor "OFF"
+            _return = "ON" if _on in _res else _return
+            _return = "OFF" if _off in _res else _return
 
-        if "true" in _res1:
-            self.powerStatus = "ON"  # Can be "ON", "OFF" or "?"
-            return self.powerStatus
-        elif "false" in _res1:
-            self.powerStatus = "OFF"  # Can be "ON", "OFF" or "?"
-            return self.powerStatus
+            if _set_power and _return:  # if _return is None do NOT set powerStatus
+                self.powerStatus = _return
+            return _return
 
-        _res2 = self.AdbDevice.shell("dumpsys power | grep -i 'Display Power'",
-                                     timeout=2)  # Display Power: state=ON
-        v1_print(_who, "power | grep -i 'Display Power':", _res2)
+        if checkOnOff(_txt1, "true", "false"):
+            return self.powerStatus  # dumpsys input = "screenOn = true" or "false"
+        if checkOnOff(_txt2, "ON", "OFF"):
+            return self.powerStatus  # dumpsys power = Display Power: state=ON or OFF
+        if checkOnOff(_txt3, "ON", "OFF"):
+            return self.powerStatus  # dumpsys display = "mScreenState=ON" or "OFF"
 
-        if "ON" in _res2:
-            self.powerStatus = "ON"  # Can be "ON", "OFF" or "?"
-            return self.powerStatus
-        elif "OFF" in _res2:
-            self.powerStatus = "OFF"  # Can be "ON", "OFF" or "?"
-            return self.powerStatus
-
-        _res3 = self.AdbDevice.shell("dumpsys display | grep -i mScreenState",
-                                     timeout=2)  # mScreenState=ON
-        v1_print(_who, "display | grep -i mScreenState:", _res3)
-
-        if "ON" in _res3:
-            self.powerStatus = "ON"  # Can be "ON", "OFF" or "?"
-            return self.powerStatus
-        elif "OFF" in _res3:
-            self.powerStatus = "OFF"  # Can be "ON", "OFF" or "?"
-            return self.powerStatus
-
-        self.powerStatus = "?"  # Can be "ON", "OFF" or "?"
+        self.powerStatus = "?"  # Already set to "?" but purchase extra insurance
         if not forgive:
             v0_print(_who, "Power status unknown.")
-
-        #v0_print(_who, "SPECIAL self.mac", self.mac, "self.name:", self.name)
-        #  SPECIAL self.mac c0:79:82:41:2f:1f self.name: TCL.LAN
-        #  above is working for this inst. class but not for LED Lights inst. class
-
         return self.powerStatus
 
     def turnOn(self, forgive=False):
@@ -2901,15 +2881,17 @@ Application().Rediscover(): FOUND NEW INSTANCE or REDISCOVERED LOST INSTANCE:
         while not self.powerStatus == "ON":
 
             v1_print(_who, "Attempt #:", cnt, "Send 'KEYCODE_WAKEUP' to IP:", self.ip)
-
+            _start = time.time()
             try:
-                _start = time.time()
                 self.AdbDevice.shell("input keyevent KEYCODE_WAKEUP",
                                      timeout=float(GLO['ADB_KEY_TIME']))
                 v1_print(_who, "No error using ppadb after seconds:",
                          round(time.time() - _start, 2))
             except Exception as e:
-                v0_print(_who, "input keyevent ERROR:\n ", e)
+                # timed out
+                # 'NoneType' object has no attribute 'shell'
+                v1_print(_who, round(time.time() - _start, 2),
+                         "seconds for input keyevent ERROR:\n ", e)
 
             self.getPower()
             if self.powerStatus == "ON" or cnt >= 5:
@@ -4432,14 +4414,18 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             v0_print(self.requires)
             v0_print(self.installed)
 
-        ''' TkDefaultFont changes default font everywhere except tk.Entry in Color Chooser '''
-        default_font = font.nametofont("TkDefaultFont")
-        default_font.configure(size=g.MON_FONT)
-        text_font = font.nametofont("TkTextFont")  # tk.Entry fonts in Color Chooser
-        text_font.configure(size=g.MON_FONT)
+        ''' TkDefaultFont changes default font everywhere except tk.Entry in 
+            Color Chooser and folder names in filedialog.askdirectory() '''
+        #default_font = font.nametofont("TkDefaultFont")  # comment out 2026-04-27
+        #default_font.configure(size=g.MON_FONT)
+        #text_font = font.nametofont("TkTextFont")  # tk.Entry fonts in Color Chooser
+        #text_font.configure(size=g.MON_FONT)
         ''' TkFixedFont, TkMenuFont, TkHeadingFont, TkCaptionFont, TkSmallCaptionFont,
             TkIconFont and TkTooltipFont - It is not advised to change these fonts.
             https://www.tcl-lang.org/man/tcl8.6/TkCmd/font.htm '''
+
+        ''' 2026-04-27 Set font style for all fonts including tkSimpleDialog.py '''
+        img.set_font_style()  # Make messagebox text larger for HDPI monitors
 
         self.sony_suspended_system = False  # If TV powered off suspended system
         self.suspend_time = 0.0  # last time system suspended
@@ -4462,6 +4448,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.last_rediscover_time = time.time() - GLO['REDISCOVER_SECONDS'] + 3
         self.tree = None  # Painted in populateDevicesTree()
         self.photos = None  # Protect populateDevicesTree() images from recycling
+        self.mapPhotos = None  # Protect populateDevicesMap() images from recycling
 
         # Button Bar button images
         self.img_minimize = img.tk_image("minimize.png", 26, 26)
@@ -4476,6 +4463,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.img_turn_on = img.tk_image("turn_on.png", 42, 26)
         self.img_up = img.tk_image("up.png", 22, 26)
         self.img_down = img.tk_image("down.png", 22, 26)  # Move down & Minimize
+        self.img_details = img.tk_image("3lines4.png", 26, 26)  # Details (settings)
         self.img_close = img.tk_image("close.png", 26, 26)  # Also close button
 
         # Right-click popup menu images for Sony TV Picture On/Off
@@ -4543,6 +4531,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.close_btn = None  # Close button on button bar to control tooltip
         self.main_help_id = "HelpNetworkDevices"  # Toggles to HelpSensors and HelpDevices
         self.usingDevicesTreeview = True  # Startup uses Devices Treeview
+        self.usingDevicesCanvas = False  # 2026-05-01 addition
+        self.usingThermalCruise = False  # Used to be self.usingDevicesTreeview is False
         self.buildButtonBar(self.sensors_btn_text)
 
         # Experiments to delay rediscover when there is GUI activity
@@ -5290,7 +5280,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         menu.add_separator()
         menu.add_command(label="Details", font=g.FONT, command=lambda: self.Details(cr),
-                         image=self.img_close, compound=tk.LEFT)
+                         image=self.img_details, compound=tk.LEFT)
         menu.add_command(label="Help", font=g.FONT, command=lambda: g.web_help(help_id),
                          image=self.img_mag_glass, compound=tk.LEFT)
         menu.add_command(label="Close menu", font=g.FONT, command=_closePopup,
@@ -5572,6 +5562,33 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         # Need new file ni.config ? to hold photos and name
         # or simply add new key/value pairs to ni.mac_dicts?
+
+        # Open dialog to pick a directory  # TODO: need last used dirname
+        #cls = message.AskDirectory(
+        #    self, title="Select Folder containing Images",
+        #    thread=self.refreshThreadSafe, win_grp=self.win_grp)
+
+        #v0_print(_who, "cls.directory:", cls.directory)
+        #v0_print(dir(cls), "\n")
+        #if cls.directory:
+        #    # List all .jpg files in the selected folder
+        #    images = [f for f in os.listdir(cls.directory)
+        #              if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+        #    v0_print("Found {} images in {}".format(len(images), cls.directory))
+
+        # askdirectory because AskDirectory() requires rewrite
+        new_topdir = filedialog.askdirectory(
+            parent=self, title="Select Images Directory")
+        v0_print("new_topdir:", new_topdir)
+
+        # check if directory exists and fallback _this -> _inst -> _all
+        # temporary variables for devices treeview image directory (_tdt_...)
+        _tdt_all = _tdt_inst = _tdt_this  = None  # directory
+        _tft_all = _tft_inst = _tft_this  = None  # filename
+
+        # temporary variables for devices canvas image directory (_tdc_...)
+        _tdc_all = _tdc_inst = _tdc_this = None  # directory
+        _tfc_all = _tfc_inst = _tfc_this = None  # filename
 
         '''
         ni.mac_dicts.pop(arp_ndx)
