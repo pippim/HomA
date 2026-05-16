@@ -34,6 +34,7 @@ warnings.filterwarnings("ignore", "ResourceWarning")  # PIL python 3 unclosed fi
 #       2026-03-15 - Thermal Cruise fan speed use "↑", "↓", or "━" (unchanged).
 #       2026-04-25 - Calling `adb shell` in loop burns out Xorg. Use ppadb.py.
 #       2026-04-26 - Throttle Sony KDL REST API calls to 1/second.
+#       2026-05-16 - Device Layout with moving/resizing and power context menu.
 #
 # ==============================================================================
 
@@ -405,7 +406,6 @@ SHAW-8298B0-5G      bfce8167-18fc-4646-bec3-868c097a3f4a  802-11-wireless  -- ''
 class NetworkInfo(DeviceCommonSelf):
     """ Network Information from arp and getent (/etc/hosts)
 
-
         ni = NetworkInfo() called on startup
         rd = NetworkInfo() rediscovery called every minute
 
@@ -561,6 +561,7 @@ class NetworkInfo(DeviceCommonSelf):
         self.mac_dicts = []  # First time discovered, thereafter read from disk
         self.instances = []  # GoogleAndroidTV, SonyBraviaKdlTV, etc. instances
         self.view_order = []  # Sortable list of MAC addresses matching instances
+        self.layout = []  # Network Device Layout (Canvas) Schematic read from disk
         for device in self.arp_results:
             # e.g. "SONY.light (192.168.0.15) at 50:d4:f7:eb:41:35 [ether] on enp59s0"
             parts = None
@@ -887,24 +888,29 @@ class NetworkInfo(DeviceCommonSelf):
         return {}
 
 
-class TreeviewRow(DeviceCommonSelf):
-    """ Device treeview row variables and methods.
+class EditDetails(DeviceCommonSelf):
+    """ Network Information for every MAC address is stored in devices.json
+        which is read into self.mac_dicts list. Use mac_dtl = EditDetails(self)
+        within Application() class.
 
-        Sensors treeview uses dummy call to TreeviewRow() class in order to call
-        fadeIn() and fadeOut() methods.
+        Application() class self is inherited here as self.app.
+
+        Then to edit (or simply show) details for current self.app.mac call
+        self.mac_dtl.edit() from Application().
 
     """
 
-    def __init__(self, top):
-        """ DeviceCommonSelf(): Variables used by all classes
-        :param top: Toplevel created by Application() class instance.
-        """
-        DeviceCommonSelf.__init__(self, "TreeviewRow().")  # Define self.who
-
-        self.top = top  # tk.Toplevel that is holding the menus, treeview, buttons
+    def __init__(self, ApplicationSelf):
+        """ DeviceCommonSelf(): Variables used by all classes """
+        DeviceCommonSelf.__init__(self, "EditDetails().")  # Define self.who
+        self.app = ApplicationSelf
+        self.top = ApplicationSelf
+        self.mac_dicts = self.app.mac_dicts  # self.mac_dicts for consistency.
         self.tree = self.top.tree  # self.tree shorthand for self.top.tree
         self.photos = self.top.photos  # self.photos shorthand for self.top.photos
         self.isActive = self.top.isActive  # If False, HomA is shutting down
+
+        # Attributes populated by self.Get()
         self.item = None  # Treeview Row iid
         self.photo = None  # Photo image
         self.power_text = None  # Row text, E.G. "ON", "OFF"
@@ -923,7 +929,7 @@ class TreeviewRow(DeviceCommonSelf):
         self.inst_dict = None  # instance dictionary
 
     def Get(self, item):
-        """ Get treeview row """
+        """ Get device information. Based on TreeviewRow.Get() """
 
         _who = self.who + "Get():"
         if not self.isActive:
@@ -935,6 +941,82 @@ class TreeviewRow(DeviceCommonSelf):
         self.power_text = self.top.tree.item(self.item)['text']
 
         self.values = self.top.tree.item(self.item)['values']
+        self.name_column = self.values[0]  # Host name / IP address
+        self.attribute_column = self.values[1]  # Host alias / MAC / Type Code
+        self.mac = self.values[2]  # mac_dict['mac'] is non-displayed value
+
+        try:
+            self.mac_dict = ni.get_mac_dict(self.mac)
+            self.inst_dict = ni.inst_for_mac(self.mac)
+            self.inst = self.inst_dict['instance']
+        except IndexError:
+            v0_print(_who, "Catastrophic Error. MAC not found:", self.mac)
+            v0_print("  Name:", self.name_column)
+
+
+class TreeviewRow(DeviceCommonSelf):
+    """ Device treeview row variables and methods.
+
+        Sensors treeview uses dummy call to TreeviewRow() class in order to call
+        fadeIn() and fadeOut() methods.
+
+    """
+
+    def __init__(self, top):
+        """ DeviceCommonSelf(): Variables used by all classes
+        :param top: Toplevel created by Application() class instance.
+        """
+        DeviceCommonSelf.__init__(self, "TreeviewRow().")  # Define self.who
+
+        self.top = top  # tk.Toplevel that is holding the menus, treeview, buttons
+        self.tree = self.top.tree  # self.tree shorthand for self.top.tree
+        self.photos = self.top.photos  # self.photos shorthand for self.top.photos
+        self.images = self.top.images  # self.images shorthand for self.top.images
+        self.isActive = self.top.isActive  # If False, HomA is shutting down
+        self.item = None  # Treeview Row iid
+        self.image = None  # Image that can be resized and converted to a photo
+        self.photo = None  # Photo image
+
+        self.power_text = None  # Row text, E.G. "ON", "OFF"
+        self.values = None  # TV Row values[] - Name lines, Attribute lines, MAC
+        self.name_column = None  # TV name[] Device Name & IP address - values[0]
+        # - etc/hosts device name, etc/hosts static IP address
+        self.attribute_column = None  # TV attribute_column[] - values[1]
+        # - etc/hosts optional description, MAC address, Pippim Instance Type code
+        self.mac = None  # MAC address - hidden column values[-1] / values[2]
+        # self.mac - mac_dict['mac'] - is non-displayed treeview column
+        # used to reread mac_dict
+
+        self.tree_data = []  # Holds (self.power_text, self.values)
+        self.mac_dict = None  # device dictionary
+        self.inst = None  # device instance
+        self.inst_dict = None  # instance dictionary
+
+    def Get(self, item, treeview=True, all_data=None):
+        """ Get treeview row """
+
+        _who = self.who + "Get():"
+        if not self.isActive:
+            return  # Shutting down
+
+        # CANNOT USE: self.photo = self.top.tree.item(item)['image']
+        self.photo = self.photos[int(item)]
+        #   File "./homa.py", line 1002, in Get
+        #     self.photo = self.photos[int(item)]
+        # AttributeError: TreeviewRow instance has no attribute '__trunc__'
+
+        # The error occurs because item is not a primitive data type like
+        # a string or an integer. Instead, it is an entire object (e.g.,
+        # a TreeviewRow or TreeviewItem instance). Passing the whole object
+        # into int() causes Python to search for a __trunc__ or __int__
+        # method on the object, which doesn't exist.
+
+        self.item = str(item)  # iid - Becomes invalid when swapping rows!
+        if treeview:
+            self.power_text = self.top.tree.item(self.item)['text']
+            self.values = self.top.tree.item(self.item)['values']
+        else:
+            self.power_text, self.values = all_data[int(item)]
         self.name_column = self.values[0]  # Host name / IP address
         self.attribute_column = self.values[1]  # Host alias / MAC / Type Code
         self.mac = self.values[2]  # mac_dict['mac'] is non-displayed value
@@ -1003,29 +1085,31 @@ class TreeviewRow(DeviceCommonSelf):
         except KeyError:
             v0_print(_who, "Key 'type_code' not in 'mac_dict':", self.mac_dict)
             type_code = None
-
         # TV's are 16/9 = 1.8. Treeview uses 300/180 image = 1.7.
         if type_code == GLO['HS1_SP']:  # TP-Line Kasa Smart Plug HS100 image
-            photo = img.tk_image("bias.jpg", 300, 180)
+            raw = Image.open("bias.jpg")
         elif type_code == GLO['KDL_TV']:  # Sony Bravia KDL TV image
-            photo = img.tk_image("sony.jpg", 300, 180)
+            raw = Image.open("sony.jpg")
         elif type_code == GLO['ADB_TV']:  # TCL / Google Android TV image
-            photo = img.tk_image("tcl.jpg", 300, 180)
+            raw = Image.open("tcl.jpg")
         elif type_code == GLO['BLE_LS']:  # Bluetooth Low Energy LED Light Strip
-            photo = img.tk_image("led_lights.jpg", 300, 180)
+            raw = Image.open("led_lights.jpg")
         elif type_code == GLO['DESKTOP']:  # Desktop computer image
-            photo = img.tk_image("computer.jpg", 300, 180)
+            raw = Image.open("computer.jpg")
         elif type_code == GLO['LAPTOP_B']:  # Laptop Base image
-            photo = img.tk_image("laptop_b.jpg", 300, 180)
+            raw = Image.open("laptop_b.jpg")
         elif type_code == GLO['LAPTOP_D']:  # Laptop Display image
-            photo = img.tk_image("laptop_d.jpg", 300, 180)
+            raw = Image.open("laptop_d.jpg")
         elif type_code == GLO['ROUTER_M']:  # Laptop Display image
-            photo = img.tk_image("router2.jpg", 300, 180)
+            raw = Image.open("router2.jpg")
         else:
             v0_print(_who, "Unknown 'type_code':", type_code)
-            photo = img.tk_image("router2.jpg", 300, 180)
+            raw = Image.open("router2.jpg")
 
-        self.photo = photo
+        # Resize "raw" Image.open() and convert to PhotoImage for Tkinter
+        self.image = raw
+        resized_image = raw.resize((300, 180), Image.ANTIALIAS)
+        self.photo = ImageTk.PhotoImage(resized_image)
 
         # 2025-01-12 no instance
         if self.inst is None:
@@ -1050,10 +1134,11 @@ class TreeviewRow(DeviceCommonSelf):
         self.attribute_column += "\n" + type_code  # inst.type or "?" if not found
         self.values = (self.name_column, self.attribute_column, self.mac)
 
-    def Add(self, item):
+    def Add(self, item, treeview=True):
         """ Set treeview row - Must call .New() beforehand.
             Handles item being a str() or an int()
             :param item: Target row can be different than original self.item
+            :param treeview: When False tk.Treeview not used.
             :returns: nothing
         """
         _who = self.who + "Add():"
@@ -1063,7 +1148,8 @@ class TreeviewRow(DeviceCommonSelf):
         # Inserting into treeview must save from garbage collection
         # using self.top.photos in Toplevel instance. Note self.photo is in this
         # TreeviewRow instance and not in Toplevel instance.
-        self.top.photos.append(self.photo)
+        self.photos.append(self.photo)
+        self.images.append(self.image)
 
         ''' 2024-11-29 - Use faster method for repainting devices treeview '''
         if p_args.fast:
@@ -1076,9 +1162,13 @@ class TreeviewRow(DeviceCommonSelf):
 
         self.power_text = _power_text
 
-        self.top.tree.insert(
-            '', 'end', iid=trg_iid, text=self.power_text,
-            image=self.top.photos[-1], value=self.values)
+        if treeview:
+            self.top.tree.insert(
+                '', 'end', iid=trg_iid, text=self.power_text,
+                image=self.top.photos[-1], value=self.values)
+        else:
+            # For Equipment/Device's Layout tkk.Canvas:
+            self.tree_data = (self.power_text, self.values)
 
     def fadeIn(self, item):
         """ Fade In over 10 steps of 30 ms """
@@ -1150,6 +1240,7 @@ class SystemMonitor(DeviceCommonSelf):
 
         self.top = top  # Copy of toplevel for creating treeview
         self.tree = self.top.tree  # Pre-existing Applications() devices tree
+        self.images = self.top.images  # Applications() device raw images
         self.photos = self.top.photos  # Applications() device photos
         self.isActive = self.top.isActive
         self.item = None  # Applications() Treeview Row iid
@@ -2831,6 +2922,7 @@ Application().Rediscover(): FOUND NEW INSTANCE or REDISCOVERED LOST INSTANCE:
             :param _set_power: Set self.powerStatus to found value.
             :return: "ON" or "OFF" or None
             """
+            _res = None  # Make pyCharm happy :)
             try:  # dumpsys: input / power / display
                 _res = self.AdbDevice.shell(_txt, timeout=2)
             except Exception as e:
@@ -4446,14 +4538,22 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         if p_args.fast:
             # Allow 3 seconds to move mouse else start rediscover
             self.last_rediscover_time = time.time() - GLO['REDISCOVER_SECONDS'] + 3
+
         self.tree = None  # Painted in populateDevicesTree()
-        self.photos = None  # Protect populateDevicesTree() images from recycling
+        self.v_scroll = None  # For populateDevicesTree() and populateDevicesCanvas()
+        self.photos = None  # Used by populateDevicesTree()
+        self.images = None  # raw image capable of resizing by populateDevicesCanvas() 
+
+        self.layout = []  # Network Device Layout coordinates by MAC address
+        self.fake_tree = []  # list of (self.power_text, self.values)
+        self.canvas = None  # Painted in populateDevicesCanvas()
         self.mapPhotos = None  # Protect populateDevicesMap() images from recycling
 
         # Button Bar button images
         self.img_minimize = img.tk_image("minimize.png", 26, 26)
         self.img_sensors = img.tk_image("flame.png", 26, 26)
         self.img_devices = img.tk_image("wifi.png", 26, 26)
+        self.img_room_icon = img.tk_image("room_icon.png", 26, 26)
         self.img_suspend = img.tk_image("lightning_bolt.png", 26, 26)
         self.img_mag_glass = img.tk_image("mag_glass.png", 26, 26)
         self.img_checkmark = img.tk_image("checkmark.png", 26, 26)
@@ -4525,15 +4625,17 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         ''' When devices displayed show sensors button and vice versa. '''
         self.sensors_devices_btn = None
+        self.sensors_layout_btn = None  # When layout displayed show sensors button
         self.sensors_btn_text = "Thermal"  # when Network Devices active
         self.devices_btn_text = "Devices"  # when Thermal Cruise active
+        self.layout_btn_text = "Layout"  # when Thermal Cruise active
         self.suspend_btn = None  # Suspend button on button bar to control tooltip
         self.close_btn = None  # Close button on button bar to control tooltip
         self.main_help_id = "HelpNetworkDevices"  # Toggles to HelpSensors and HelpDevices
         self.usingDevicesTreeview = True  # Startup uses Devices Treeview
-        self.usingDevicesCanvas = False  # 2026-05-01 addition
+        self.usingDevicesCanvas = False  # A.K.A. Network Layout or Network Map
         self.usingThermalCruise = False  # Used to be self.usingDevicesTreeview is False
-        self.buildButtonBar(self.sensors_btn_text)
+        self.buildButtonBar(self.sensors_btn_text, self.layout_btn_text)
 
         # Experiments to delay rediscover when there is GUI activity
         self.minimizing = False  # When minimizing, override focusIn()
@@ -4667,6 +4769,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.view_menu.add_separator()
         self.view_menu.add_command(label="Network devices", font=g.FONT, underline=0,
                                    command=self.toggleSensorsDevices, state=tk.DISABLED)
+        self.view_menu.add_separator()
+        self.view_menu.add_command(label="Device Layout", font=g.FONT, underline=0,
+                                   command=self.toggleSensorsLayout, state=tk.DISABLED)
         self.view_menu.add_separator()
         self.view_menu.add_command(label="Bluetooth devices", font=g.FONT, underline=10,
                                    command=self.DisplayBluetooth, state=tk.DISABLED)
@@ -4875,7 +4980,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         if self.winfo_exists():
             self.destroy()  # Destroy toplevel
-        exit()  # exit() required to completely shut down app
+        #root.destroy()  # Required to drop all Xorg resources
+        # self.destroy() already took care of root.destroy()
+        sys.exit()  # recommended by google to drop all Xorg resources
 
     def minimizeApp(self, *_args):
         """ Minimize GUI Application() window using xdotool. """
@@ -4938,17 +5045,18 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                         edge_color=GLO['TREE_EDGE_COLOR'], edge_px=5)
 
         ''' Create treeview frame with scrollbars '''
-        self.photos = []  # list of device images to stop garbage collection
+        self.images = []  # list of device raw images to stop garbage collection
+        self.photos = []  # list of device image photos to stop garbage collection
         # Also once image placed into treeview row, it can't be read from the row.
         self.tree = ttk.Treeview(self, column=('name', 'attributes'),  # mac hidden
                                  selectmode='none', style="Treeview")
 
         self.update()  # Paint something before populating lag
         self.tree.grid(row=0, column=0, sticky='nsew')
-        v_scroll = tk.Scrollbar(self, orient=tk.VERTICAL,
-                                width=14, command=self.tree.yview)
-        v_scroll.grid(row=0, column=1, sticky=tk.NS)
-        self.tree.configure(yscrollcommand=v_scroll.set)
+        self.v_scroll = tk.Scrollbar(self, orient=tk.VERTICAL,
+                                     width=14, command=self.tree.yview)
+        self.v_scroll.grid(row=0, column=1, sticky=tk.NS)
+        self.tree.configure(yscrollcommand=self.v_scroll.set)
 
         # Right-click - reliable works on first click, first time, all the time
         self.tree.bind('<Button-3>', self.RightClick)  # Right-click
@@ -5003,10 +5111,93 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             if not p_args.fast:
                 self.tree.update_idletasks()  # Slow mode display each row.
 
-    def buildButtonBar(self, toggle_text):
+    def populateDevicesCanvas(self):
+        """ Based on Populate treeview using ni.Discovered[{}, {}...{}]
+            Treeview IID is string: "0", "1", "2" ... "99". Advantage is to
+            leverage existing technology for generating images.
+
+            However above technique is too time-consuming. Changes:
+
+                Put image filename into self.layout
+                Generate self.images[] list here rather than taking passed list.
+        """
+        _who = self.who + "populateDevicesCanvas():"
+
+        # Things built from ni.layout[] read from `layout.json` on startup
+        # Key is by MAC address so ni.layout[] order irrelevant
+        self.layout = []
+
+        def read_thing(md):
+            """ Read a thing from ni.layout[] list of things.
+                if it doesn't exist, create an empty thing.
+            """
+            for _thing in ni.layout:  # check what's on file
+                if _thing['mac'] == md['mac']:
+                    return _thing
+
+            _thing = {  # Build default "thing" dictionary
+                "mac": md['mac'], "name": md['name'], "coords_pct": (0.0, 0.0, 0.0, 0.0)}
+
+            return _thing
+
+        # Build self.layout[] in last used MAC Address Order
+        for i, mac in enumerate(ni.view_order):
+            mac_dict = ni.get_mac_dict(mac)
+            if len(mac_dict) < 2:
+                v0_print(_who, "len(mac_dict) < 2 for MAC:", mac)
+                continue
+
+            thing = read_thing(mac_dict)
+            self.layout.append(thing)
+
+        self.fake_tree = []  # list of (self.power_text, self.values)
+        self.v_scroll.grid_remove()  # Real treeview has scrollbar that breaks
+        self.canvas = toolkit.ThingOfThings(
+            self, self.images, things=self.layout, diagonal_cursor=GLO['DIAGONAL_CURSOR'],
+            resizeCB=self.saveLayout, contextCB=self.LayoutRightClickCallback,
+            width=1000, height=600, highlightthickness=3
+        )
+        self.canvas.grid(row=0, column=0, sticky='nsew')
+        self.update()
+
+        # Build treeview in last used MAC Address Order
+        for i, mac in enumerate(ni.view_order):
+            mac_dict = ni.get_mac_dict(mac)
+            if len(mac_dict) < 2:
+                v0_print(_who, "len(mac_dict) < 2 for MAC:", mac)
+                continue
+
+            nr = TreeviewRow(self)  # Setup fake treeview row processing instance
+            nr.New(mac)  # Setup new fake row using .ni() data (NetworkInfo class)
+            nr.Add(i, treeview=False)  # Add new fake row
+            self.fake_tree.append(nr.tree_data)
+            # list of things in same order as self.images
+            thing = read_thing(mac_dict)
+            self.layout.append(thing)
+            self.canvas.add_image(i, "Test " + str(i))
+
+            # Refresh Canvas think by thing for processing lag
+            if not p_args.fast:
+                self.update_idletasks()  # Slow mode display each row.
+
+        self.update()  # Paint something before populating lag
+
+    def saveLayout(self):
+        """ Whenever image moved or resized in Layout Canvas, save the new
+            coordinates stored in ni.layout[] list to file layout.json.
+            FNAME']
+        """
+        global ni
+        ni.layout = self.layout  # self.layout was rebuilt from scratch
+        with open(g.USER_DATA_DIR + os.sep + GLO['LAYOUT_FNAME'], "w") as f:
+            f.write(json.dumps(self.layout))
+        pass
+
+    def buildButtonBar(self, toggle_text, toggle_text2):
         """ Paint button bar below treeview.
             Minimize - Minimize window.
-            Tree Toggle - Button toggles between show Sensors or show Devices.
+            Tree Toggle - Button with show Thermal or show Devices.
+            Canvas Toggle - Button with show Thermal or show Layout.
             Suspend - Power off all devices and suspend system.
             Help - www.pippim.com/HomA.
             Close - Close HomA.
@@ -5075,10 +5266,24 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             0, 1, toggle_text, self.toggleSensorsDevices,
             text, "nw", pic_image)
 
+        ''' Thermal Button  -OR-  Layout Button '''
+        if toggle_text2 == self.sensors_btn_text:
+            text = "View Thermal Cruise."
+            self.main_help_id = "HelpNetworkDevices"
+            pic_image = self.img_sensors
+        else:
+            text = "View Device Layout."
+            self.main_help_id = "HelpSensors"
+            pic_image = self.img_room_icon
+
+        self.sensors_layout_btn = device_button(
+            0, 2, toggle_text2, self.toggleSensorsLayout,
+            text, "nw", pic_image)
+
         ''' Suspend Button U+1F5F2  🗲 '''
         self.suspend_btn = device_button(
             #0, 2, u"🗲 Suspend", self.Suspend,
-            0, 2, "Suspend", self.Suspend,
+            0, 3, "Suspend", self.Suspend,
             "Power off all devices except suspend computer.", "ne", self.img_suspend)
 
         ''' Help Button - ⧉ Help - Videos and explanations on pippim.com
@@ -5087,20 +5292,25 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         help_text += "videos and explanations on using this screen.\n"
         help_text += "https://www.pippim.com/programs/homa.html#\n"
         # Instead of "Introduction" have self.help_id with "HelpSensors" or "HelpDevices"
-        device_button(0, 3, "Help", lambda: g.web_help(self.main_help_id),
+        device_button(0, 4, "Help", lambda: g.web_help(self.main_help_id),
                       help_text, "ne", self.img_mag_glass)
 
         ''' ✘ CLOSE BUTTON  '''
         # noinspection PyTypeChecker
         self.bind("<Escape>", self.exitApp)  # 2025-05-03 pycharm error appeared today
         self.protocol("WM_DELETE_WINDOW", self.exitApp)
-        self.close_btn = device_button(0, 4, "Exit", self.exitApp,
+        self.close_btn = device_button(0, 5, "Exit", self.exitApp,
                                        "Exit HomA.", "ne", pic=self.img_close)
 
     def toggleSensorsDevices(self):
         """ Sensors / Devices toggle button clicked.
-            If button text == "Thermal cruise" then active sm.tree.
+            If button text == "Thermal" then active sm.tree.
             If button text == "Devices" then active Applications.tree.
+
+            Set toggle buttons; self.sensors_devices_btn / self.sensors_layout_btn:
+                if usingDevicesTreeview: Thermal / Layout
+                if usingDevicesCanvas: Devices / Thermal
+                if usingThermalCruise: Devices / Layout
 
         """
         _who = self.who + "toggleSensorsDevices()"
@@ -5115,37 +5325,107 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.sensors_devices_btn['image'] = self.img_devices
             self.tt.set_text(self.sensors_devices_btn, "View Network Devices.")
             self.main_help_id = "HelpSensors"
+            self.usingThermalCruise = True
+            self.usingDevicesCanvas = False
             self.usingDevicesTreeview = False
             self.tree.destroy()  # Destroy Network Devices Treeview
             sm.treeview_active = True
             sm.populateSensorsTree()  # Build Sensors Treeview
-        else:
+        else:  # Was using DevicesCanvas or ThermalCruise
             self.sensors_devices_btn['text'] = \
                 toolkit.normalize_tcl(self.sensors_btn_text)
             self.sensors_devices_btn['image'] = self.img_sensors
             self.tt.set_text(self.sensors_devices_btn, "View Thermal Cruise.")
             self.main_help_id = "HelpNetworkDevices"
+            if self.usingThermalCruise:
+                sm.tree.destroy()  # Destroy Sensors Treeview
+                sm.treeview_active = False
+                self.usingThermalCruise = False
+            if self.usingDevicesCanvas:
+                self.canvas.destroy()
+                # Button text was for Thermal, reset to Layout
+                self.sensors_layout_btn['text'] = \
+                    toolkit.normalize_tcl(self.layout_btn_text)
+                self.sensors_layout_btn['image'] = self.img_room_icon
+                self.tt.set_text(self.sensors_layout_btn, "View Equipment Devices Layout.")
+                self.usingDevicesCanvas = False
             self.usingDevicesTreeview = True
-            sm.tree.destroy()  # Destroy Sensors Treeview
-            sm.treeview_active = False
             self.populateDevicesTree()  # Build Network Devices Treeview
             # 2025-10-29 Devices in "Wait..." state until "Rediscover now" is run.
             self.Rediscover()  # Check for new network devices
 
         self.updateDropdown()  # NORMAL/DISABLED options for view Sensors/Devices
 
-    def RightClick(self, event):
-        """ Mouse right button (context menu) click. Mount Popup menu.
-            Class TreeviewRow is initiated to get current row values:
+    def toggleSensorsLayout(self):
+        """ Sensors / Layout toggle button clicked.
+            If button text == "Thermal" then active sm.tree.
+            If button text == "Layout" then active ___
 
+            Set toggle buttons; self.sensors_devices_btn / self.sensors_layout_btn:
+                if usingDevicesTreeview: Thermal / Layout
+                if usingDevicesCanvas: Devices / Thermal
+                if usingThermalCruise: Devices / Layout
 
-            NOTE: Sub windows are designed to steal focus and lift however,
-                  multiple right clicks will eventually cause menu to appear.
-                  After selecting an option though, the green highlighting
-                  stays in place because fadeOut() never runs.
         """
+        _who = self.who + "toggleSensorsLayout()"
+
+        # Immediately get rid of tooltip
+        self.tt.zap_tip_window(self.sensors_layout_btn)
+
+        # Get current button state and toggle it for next time.
+        if self.usingDevicesCanvas:
+            self.sensors_layout_btn['text'] = \
+                toolkit.normalize_tcl(self.layout_btn_text)
+            self.sensors_layout_btn['image'] = self.img_room_icon
+            self.tt.set_text(self.sensors_layout_btn, "View Equipment Devices Layout.")
+            self.main_help_id = "HelpSensors"
+            self.usingThermalCruise = True  # 2026-05-08 add everywhere
+            self.usingDevicesCanvas = False
+            self.usingDevicesTreeview = False
+            self.canvas.destroy()  # Destroy Equipment Devices Layout
+            sm.treeview_active = True  # Double duty for canvas active
+            sm.populateSensorsTree()  # Build Sensors Treeview
+        else:  # was using DevicesTreeview or ThermalCruise
+            self.sensors_layout_btn['text'] = \
+                toolkit.normalize_tcl(self.sensors_btn_text)
+            self.sensors_layout_btn['image'] = self.img_sensors
+            self.tt.set_text(self.sensors_layout_btn, "View Thermal Cruise.")
+            self.main_help_id = "HelpNetworkDevices"
+            self.usingDevicesCanvas = True
+            if self.usingDevicesTreeview:
+                self.tree.destroy()  # Destroy Network Devices Treeview
+                self.usingDevicesTreeview = False
+                self.sensors_devices_btn['text'] = \
+                    toolkit.normalize_tcl(self.devices_btn_text)
+                self.sensors_devices_btn['image'] = self.img_devices
+                self.tt.set_text(self.sensors_devices_btn, "View Network Devices.")
+            if self.usingThermalCruise:
+                sm.tree.destroy()  # Destroy Sensors Treeview
+                sm.treeview_active = False  # Double duty for canvas active
+                self.usingThermalCruise = False
+            self.populateDevicesCanvas()  # Build Equipment/Network Devices Layout
+
+        self.updateDropdown()  # NORMAL/DISABLED options for view Sensors/Devices
+
+    def RightClick(self, event):
+        """ Mouse right button (context menu) click.
+
+            Call doContextMenu() method shared between Device Treeview and
+            Device Canvas (Layout). Before calling, quickly fade in green
+            row color.
+
+            Pass x and y coordinates to mount Popup menu. Pass green fadeout
+            function to doContextMenu. Finally pass the TreeviewRow row
+            instance. The keyword Treeview=True reveals "Move up", "Move
+            down" and "Forget" options.
+
+            NOTE: calling tk.Menu.post(x, y) indirectly via method ContextMenu()
+                  needs event.x_root, event.y_root rather than event.x, event.y.
+        """
+        _who = self.who + "RightClick():"
+        #print(_who, "x:", event.x, "y:", event.y)
+
         item = self.tree.identify_row(event.y)
-        help_id = "HelpRightClickMenu"  # Default, override for some instances
 
         if item is None:
             return  # Empty row, nothing to do
@@ -5154,41 +5434,102 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         except ValueError:
             return  # Clicked on empty row
 
-        def _closePopup(*_event):
-            """ Close popup menu on focus out or selecting an option """
-            cr.fadeOut(item)
-            menu.unpost()
-            self.last_refresh_time = time.time()
-
         ''' Highlight selected treeview row '''
         cr = TreeviewRow(self)  # Make current row instances
         cr.Get(item)  # Get current row into instance variables
-        name = cr.mac_dict['name']  # name is used in menu option text
         cr.inst.powerStatus = "?" if cr.inst.powerStatus is None else cr.inst.powerStatus
-        cr.text = "  " + str(cr.inst.powerStatus)  # Display treeview row new power state
+        cr.power_text = "  " + str(cr.inst.powerStatus)  # Display treeview row new power state
         cr.Update(item)  # Update iid with new ['text']
         self.tree.update_idletasks()  # Slow mode display each row.
         cr.fadeIn(item)  # Trigger 320 ms row highlighting fade in def fadeIn
 
-        ''' If View Breathing Statistics is running, color options are disabled.
-            Message cannot be displayed when menu painted because it causes focus out. 
-        if self.bleScrollbox and cr.mac_dict['type_code'] == GLO['BLE_LS']:
-            title = "View stats disables colors"  # 2025-02-09 - Doesn't work properly.
-        else:
-            title = None
+        def _closePopup(*_event):
+            """ Close popup menu on focus out or selecting an option """
+            cr.fadeOut(item)
 
-        if title:
-            menu = tk.Menu(self, title=title)  # 2025-02-09 Causes blank selectable bar
-            # Once blank bar is clicked the title appears with window close decoration.
-        else:
-            menu = tk.Menu(self)
-        '''
-        menu = tk.Menu(self)
+        self.ContextMenu(event.x_root, event.y_root, cr, remove_highlight=_closePopup,
+                         item=item)
 
-        menu.bind("<FocusIn>", self.focusIn)
-        menu.bind("<Motion>", self.Motion)
+    def LayoutRightClickCallback(self, idx, event):
+        """ Device Layout Mouse right button (context menu) click callback.
 
-        menu.post(event.x_root, event.y_root)
+            Call doContextMenu() method shared between Device Treeview and
+            Device Canvas (Layout). Before calling, quickly fade in green
+            row color.
+
+            Pass x and y coordinates to mount Popup menu. Pass green fadeout
+            function to doContextMenu. Finally pass the TreeviewRow row
+            instance. The keyword Treeview=True reveals "Move up", "Move
+            down" and "Forget" options.
+
+        cr = TreeviewRow(self.)  # Make current row instances
+        remove_highlight() = popup menu on focus out or selecting an option
+
+
+            NOTE: Sub windows are designed to steal focus and lift however,
+                  multiple right clicks will eventually cause menu to appear.
+                  After selecting an option though, the green highlighting
+                  stays in place because fadeOut() never runs.
+        """
+        _who = self.who + "LayoutRightClickCallback():"
+        #print(_who, "x:", event.x, "y:", event.y)
+
+        ''' Get fake treeview row instance '''
+        cr = TreeviewRow(self)  # Get current row into instance variables
+        cr.Get(idx, treeview=False, all_data=self.fake_tree)
+        cr.inst.powerStatus = "?" if cr.inst.powerStatus is None else cr.inst.powerStatus
+        cr.power_text = "  " + str(cr.inst.powerStatus)  # power enables options
+
+        # 2026-05-15 event.x, event.y are being interpreted as absolute screen/monitor
+        self.ContextMenu(event.x_root, event.y_root, cr, treeview=False)
+
+    def ContextMenu(self, x, y, cr, remove_highlight=None,
+                    treeview=True, item=None):
+        """ Mouse right button (context menu) click.
+
+            Call doContextMenu() method shared between Device Treeview and
+            Device Canvas (Layout). Before calling, quickly fade in green
+            row color.
+
+            Pass x and y coordinates to mount Popup menu. Pass green fadeout
+            function to doContextMenu. Finally pass the TreeviewRow row
+            instance. The keyword Treeview=True reveals "Move up", "Move
+            down" and "Forget" options.
+
+        cr = TreeviewRow(self)  # Make current row instances
+        remove_highlight() = popup menu on focus out or selecting an option
+
+
+            NOTE: Sub windows are designed to steal focus and lift however,
+                  multiple right clicks will eventually cause menu to appear.
+                  After selecting an option though, the green highlighting
+                  stays in place because fadeOut() never runs.
+        """
+        help_id = "HelpRightClickMenu"  # Default, override for some instances
+
+        def _closePopup(*_event):
+            """ Close popup menu on focus out or selecting an option """
+            #cr.fadeOut(item)
+            if remove_highlight:
+                remove_highlight()
+            menu.unpost()
+            self.last_refresh_time = time.time()
+
+        ''' Highlight selected treeview row '''
+        if treeview:
+            cr.Update(item)  # Update iid with new ['text']
+            self.tree.update_idletasks()  # Status "Wait..." now "ON" or "OFF"
+            cr.fadeIn(item)  # 10 steps of 32ms row highlight fade in to green
+
+        menu = tk.Menu(self, tearoff=False)  # tear off = 0: remove first entry with '-'
+
+        if treeview:
+            menu.bind("<FocusIn>", self.focusIn)
+            menu.bind("<Motion>", self.Motion)
+
+        menu.post(x, y)
+
+        name = cr.mac_dict['name']  # name for menu options' text
 
         if cr.mac_dict['type_code'] == GLO['LAPTOP_D']:
             help_id = "HelpRightClickLaptopDisplay"
@@ -5268,15 +5609,16 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                          image=self.img_turn_off, compound=tk.LEFT,
                          command=lambda: self.turnOff(cr))
 
-        menu.add_separator()
-        menu.add_command(label="Move " + name + " Up", font=g.FONT, state=tk.DISABLED,
-                         image=self.img_up, compound=tk.LEFT,
-                         command=lambda: self.moveRowUp(cr))
-        menu.add_command(label="Move " + name + " Down", font=g.FONT, state=tk.DISABLED,
-                         image=self.img_down, compound=tk.LEFT,
-                         command=lambda: self.moveRowDown(cr))
-        menu.add_command(label="Forget " + name, font=g.FONT, image=self.img_close,
-                         compound=tk.LEFT, command=lambda: self.forgetDevice(cr))
+        if treeview:
+            menu.add_separator()
+            menu.add_command(label="Move " + name + " Up", font=g.FONT,
+                             state=tk.DISABLED, image=self.img_up, compound=tk.LEFT,
+                             command=lambda: self.moveRowUp(cr))
+            menu.add_command(label="Move " + name + " Down", font=g.FONT,
+                             state=tk.DISABLED, image=self.img_down, compound=tk.LEFT,
+                             command=lambda: self.moveRowDown(cr))
+            menu.add_command(label="Forget " + name, font=g.FONT, image=self.img_close,
+                             compound=tk.LEFT, command=lambda: self.forgetDevice(cr))
 
         menu.add_separator()
         menu.add_command(label="Details", font=g.FONT, command=lambda: self.Details(cr),
@@ -5286,7 +5628,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         menu.add_command(label="Close menu", font=g.FONT, command=_closePopup,
                          image=self.img_close, compound=tk.LEFT)
 
-        menu.tk_popup(event.x_root, event.y_root)
+        menu.tk_popup(x, y)
 
         menu.bind("<FocusOut>", _closePopup)
 
@@ -5312,17 +5654,18 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             menu.entryconfig("Turn Off " + name, state=tk.DISABLED)
 
         # Enable moving row up and moving row down
-        all_iid = self.tree.get_children()  # Get all item iid in treeview
-        if item != all_iid[0]:  # Enable moving row up if not at top?
-            menu.entryconfig("Move " + name + " Up", state=tk.NORMAL)
-        if item != all_iid[-1]:  # Enable moving row down if not at bottom?
-            menu.entryconfig("Move " + name + " Down", state=tk.NORMAL)
+        if treeview:
+            all_iid = self.tree.get_children()  # Get all item iid in treeview
+            if item != all_iid[0]:  # Enable moving row up if not at top?
+                menu.entryconfig("Move " + name + " Up", state=tk.NORMAL)
+            if item != all_iid[-1]:  # Enable moving row down if not at bottom?
+                menu.entryconfig("Move " + name + " Down", state=tk.NORMAL)
 
         menu.config(activebackground="SkyBlue3", activeforeground="black")
 
         # Reset last rediscovery time. Some methods can take 10 seconds to timeout
         self.last_refresh_time = time.time()
-        menu.update()  # 2025-02-09 will this force title to appear?
+        #menu.update()  # 2025-02-09 will this force title to appear?
 
     def turnPictureOn(self, cr):
         """ Mouse right button click selected "<name> Picture On". """
@@ -5528,67 +5871,43 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.photos.pop(new_count)  # Delete the last photo moved
 
     def Details(self, cr):
-        """ Details - set photos and name for device.
-            2026-04-25 Add
+        """ Details - Edit names and link images for devices treeview and map.
+            Called from device right-click in device treeview and device map.
+            Two buttons "Save" and "Cancel"
+
+            Labels:
+            - Long name (for device list)
+            - Short name (for device map)
+            - three lines with directory name and pencil icon to edit:
+                o All images
+                o Device class (defaults to All images)
+                o This device (defaults to Device Class)
+            - two lines with image name and pencil icon to edit:
+                o Device class (defaults to All images)
+                o This device (defaults to Device Class)
+
+            Saved to memory self.mac_dicts then to file devices.json
         """
         _who = self.who + "Details():"
 
-        # Code below can become a boilerplate function
-        for arp_ndx, mac_dict in enumerate(ni.mac_dicts):
-            if mac_dict['mac'] == cr.mac:
-                v1_print(_who, "Found existing ni.mac_dict:", mac_dict['name'],
-                         "arp_ndx:", arp_ndx)
-                break
-        else:
-            v0_print(_who, "Not found ni.mac_dict!")
-            return
+        mac_dtl = EditDetails(self)
+        mac_dtl.Get(cr.item)
 
-        for inst_ndx, inst_dict in enumerate(ni.instances):
-            if inst_dict['mac'] == cr.mac:
-                v1_print(_who, "Found existing ni.instances:", inst_dict['mac'],
-                         "inst_ndx:", inst_ndx)
-                break
-        else:
-            v0_print(_who, "Not found ni.instances!")
-            return
-
-        for iid, view in enumerate(ni.view_order):
-            if view == cr.mac:
-                v1_print(_who, "Found existing ni.view_order 'iid':", iid)
-                break
-        else:
-            v0_print(_who, "Not found ni.view_order!")
-            return
-
-        # Need new file ni.config ? to hold photos and name
-        # or simply add new key/value pairs to ni.mac_dicts?
-
-        # Open dialog to pick a directory  # TODO: need last used dirname
-        #cls = message.AskDirectory(
-        #    self, title="Select Folder containing Images",
-        #    thread=self.refreshThreadSafe, win_grp=self.win_grp)
-
-        #v0_print(_who, "cls.directory:", cls.directory)
-        #v0_print(dir(cls), "\n")
-        #if cls.directory:
-        #    # List all .jpg files in the selected folder
-        #    images = [f for f in os.listdir(cls.directory)
-        #              if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
-        #    v0_print("Found {} images in {}".format(len(images), cls.directory))
-
-        # askdirectory because AskDirectory() requires rewrite
+        # askdirectory because AskDirectory() requires simpledialog.py rewrite
         new_topdir = filedialog.askdirectory(
             parent=self, title="Select Images Directory")
         v0_print("new_topdir:", new_topdir)
 
+        _short_name = _long_name = ""
         # check if directory exists and fallback _this -> _inst -> _all
         # temporary variables for devices treeview image directory (_tdt_...)
-        _tdt_all = _tdt_inst = _tdt_this  = None  # directory
-        _tft_all = _tft_inst = _tft_this  = None  # filename
+        _tdt_all = _tdt_type = _tdt_this  = None  # directory name
+        _tft_all = _tft_type = _tft_this  = None  # filename
 
+        # Canvas names inherited from changed treeview names if they were same
         # temporary variables for devices canvas image directory (_tdc_...)
-        _tdc_all = _tdc_inst = _tdc_this = None  # directory
-        _tfc_all = _tfc_inst = _tfc_this = None  # filename
+        _tdc_all = _tdc_type = _tdc_this = None  # directory name
+        _tfc_all = _tfc_type = _tfc_this = None  # filename
 
         '''
         ni.mac_dicts.pop(arp_ndx)
@@ -7627,21 +7946,39 @@ def open_files():
     ni.discovered = []  # NetworkInfo() lists
     ni.instances = []
     ni.view_order = []
-    fname = g.USER_DATA_DIR + os.sep + GLO['DEVICES_FNAME']
-    if not os.path.isfile(fname):
+    ni.layout = []  # Layout of Thing of Things Canvas / Network Device Layout
+
+    mac_dicts_fname = g.USER_DATA_DIR + os.sep + GLO['DEVICES_FNAME']
+    if not os.path.isfile(mac_dicts_fname):
         return ni.discovered, ni.instances, ni.view_order
 
-    with open(fname, "r") as f:
-        v2_print("Opening last arp dictionaries file:", fname)
+    with open(mac_dicts_fname, "r") as f:
+        v2_print("Opening last arp dictionaries file:", mac_dicts_fname)
         ni.mac_dicts = json.loads(f.read())
 
-    fname = g.USER_DATA_DIR + os.sep + GLO['VIEW_ORDER_FNAME']
+    view_order_fname = g.USER_DATA_DIR + os.sep + GLO['VIEW_ORDER_FNAME']
     build_view_order = True
-    if os.path.isfile(fname):
-        with open(fname, "r") as f:
-            v2_print("Opening last view order file:", fname)
+    if os.path.isfile(view_order_fname):
+        with open(view_order_fname, "r") as f:
+            v2_print("Opening last view order file:", view_order_fname)
             ni.view_order = json.loads(f.read())
             build_view_order = False
+
+    try:
+        layout_fname = g.USER_DATA_DIR + os.sep + GLO['LAYOUT_FNAME']
+    except KeyError:  # 2026-05-12 temporary code to create new key/value pairs
+        GLO['LAYOUT_FNAME'] = "layout.json"
+        GLO['DIAGONAL_CURSOR'] = False  # Cursors for diagonal resizing? 
+        layout_fname = g.USER_DATA_DIR + os.sep + GLO['LAYOUT_FNAME']
+
+    if os.path.isfile(layout_fname):
+        with open(layout_fname, "r") as f:
+            v2_print("Opening device layout file:", layout_fname)
+            ni.layout = json.loads(f.read())
+            # In list of dictionaries, convert coords[str] to coords(flt)
+            for layout in ni.layout:
+                layout["coords_pct"] = tuple(float(x) for x in layout["coords_pct"])
+
 
     # Assign instances
     for arp in ni.mac_dicts:
@@ -7813,6 +8150,29 @@ def main():
         text += "\nDo you want to kill previous crashed version?"
         v0_print(title + "\n\n" + text)
 
+        # ERROR calling homa.py after fresh boot when it was auto-started.
+
+        # Another copy of HomA is running!
+        #
+        # Cannot start two copies of homa. Switch to the other version.
+        #
+        # If the other version crashed, the process(es) still running can be killed:
+        #
+        # 	'homa.py' (8287) - homa without splash screen
+        #
+        # Do you want to kill previous crashed version?
+        # Traceback (most recent call last):
+        #   File "./homa.py", line 7848, in <module>
+        #     main()
+        #   File "./homa.py", line 7823, in main
+        #     icon='error', thread=dummy_thread)
+        #   File "/home/rick/HomA/message.py", line 786, in __init__
+        #     simpledialog.Dialog.__init__(self, parent, title=title)
+        #   File "/usr/lib/python2.7/lib-tk/tkSimpleDialog.py", line 85, in __init__
+        #     self.grab_set()
+        #   File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 679, in grab_set
+        #     self.tk.call('grab', 'set', self._w)
+        # _tkinter.TclError: grab failed: another application has grab
         def dummy_thread():
             """ Needed for showInfoMsg from root window. """
             root.update()

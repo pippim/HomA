@@ -4953,26 +4953,28 @@ class VolumeMeters:
 
 
 class ThingOfThings(tk.Canvas):
-    """ Tot = ThingOfThings() Primarily for internet, but could be for OS windows.
+    """ Tot = ThingOfThings() Primarily designed for "Internet of Things"
+            in HomA (Home Automation) but can be used for mmm (Multiple
+            Monitor Manager) to manage windows.
+
         Subclass of Canvas for dealing with resizing of images on canvas
+
         2026-04-15 copied from mmm.py and remove support for multiple monitors
+
         Add support for adding image with text overlap.
-        Devine hover and context menu button callbacks.
-        Select button will make hand cursor to move image or cursor to resize.
+        Define hover (tooltips) and context menu (right-click) callbacks.
+        Define geometry callbacks when "thing" is moved or resized.
+        Select button click (left-click) will make hand cursor to move image.
+        Cursor shape automatically changes on border outline to resize.
 
     """
 
-    # Mins and Maxes to prevent photo coming too close to canvas edge
-    IX = IY = 0.01  # Minimum x and y percentage offset on canvas
-    AX = AY = 0.99  # Maximum x and y percentage offset on canvas
-    # Mins and Maxes to prevent photo size too small or too large for canvas
-    IW = IH = 0.05  # Minimum width and height percentage size in canvas
-    AW = AH = 0.99  # Maximum width and height percentage size in canvas
 
-    def __init__(self, parent, photos=[], things=[], resizeCB=None, hoverCB=None,
-                 contextCB=None, **kwargs):
-        tk.Canvas.__init__(self, parent, **kwargs)
+    def __init__(self, parent, images, things, diagonal_cursor=False, resizeCB=None,
+                 contextCB=None, defaultWidth=300, defaultHeight=180, **kwargs):
+        tk.Canvas.__init__(self, parent, **kwargs)  # ttk doesn't exist
 
+        self.who = "ThingOfThings()."  # Class name for error reporting
         self.bind("<Configure>", self.on_resize)
         self.height = self.winfo_reqheight()
         self.width = self.winfo_reqwidth()
@@ -4987,7 +4989,18 @@ class ThingOfThings(tk.Canvas):
         #   It's up to the caller to provide TK photo images and it's beyond the scope of
         #   this class to select the images. There is a callback for right-click menu
         #   where the caller would provide an option to change TK photo image and save it.
-        self.photos = photos  # Thing images on the canvas, immune from Garbage collection
+        self.photos = []  # Thing photos, immune from Garbage collection
+        self.images = images  # Original raw images to create photos
+        self.event_id = None  # to cancel multiple delayed image resizing operations
+
+        # Temporary generate photos to see on canvas until robust version written
+        _start = time.time()
+        for _image in self.images:
+            photo = ImageTk.PhotoImage(
+                _image.resize((defaultWidth, defaultHeight), Image.ANTIALIAS))
+            self.photos.append(photo)
+        #print(self.who, "photo generation time:", time.time() - _start)  # 0.17 for 9 images
+
         self.texts = []  # text name overlays for Thing photo images
         # Example of self.text{} defined in caller and callback is used for hover excluding
         #   edges of image.
@@ -4997,23 +5010,56 @@ class ThingOfThings(tk.Canvas):
 
         self.things = things  # list of devices, index corresponds to photos[] & texts[]
         # Thing geometry is percentage of canvas. "inst" is instance of a thing in caller
+        # inst = (self.power_text, self.values
         # A thing can contain more than dictionary fields below, but this is minimum:
-        self.thing = {"xp": 0.0, "yp": 0.0, "wp": 0.0, "hp": 0.0, "inst": None}
-        # self.calc_geom() function sets self.geom{} using percentages in self.dev{}
-        self.geom = {"x": 0, "y": 0, "w": 0, "h": 0}  # geometry within canvas
+        self.thing = {"mac": "", "name": "", "coords_pct": ()}
+
+        # In Ubuntu, tkinter diagonal cursor (size_ne_sw) may break. True if it works.
+        self.DIAGONAL_CURSOR = diagonal_cursor
 
         self.resizeCB = resizeCB  # resizing or moving photo image of device
-        self.hoverCB = hoverCB  # Hovering x pixels from edge of photo image of device
         self.contextCB = contextCB  # Right-click menu
-        self.idx = 0  # Current photo image of device set by <Enter> / <Leave>
-        self.entered_idx = None  # Thing entered using real <Enter> event
-        self.resize_idx = None  # Thing <5px entered using <Motion> after real <Enter>
-        self.move_idx = None  # Thing >=5px entered using <Motion> after real <Enter>
-        self.left_idx = None  # Thing left from <Leave> event
+        self.defaultWidth = defaultWidth  # Default image display width
+        self.defaultHeight = defaultHeight  # Default image display height
 
-    def add_image(self, _image, name=None, name_shadow=True, tooltip_text=None,
-                  inst=None, context_menu=None):
-        """ Add an tkinter photo image.
+        self.newX = self.newY = 25  # When adding a new image with no saved coords
+        self.lastX = self.lastY = 25
+        self.newMaxX = self.width - 100
+        self.newMaxY = self.height - 200
+
+        # Motion binding on entire canvas, not just image border outlines
+        self.bind("<Motion>", self.check_hover)
+        # Left button to move photo and
+
+        self.bind("<Button-1>", self.left_button_click)
+        self.bind("<ButtonRelease-1>", self.left_button_release)
+
+        # Mouse controls
+        self.meta_dicts = []  # List of every image's geom
+        self.meta_dict = {"idx": 0, "image_id": 0, "border_id": 0, "bbox": (),
+                          "coords:": []}
+        # idx = zero-based idx within self.things[]
+        # image_id = odd number, border_id = even number, both in order created.
+        # bbox = integer bounding box geometry in (x1, y1, x2, y2) format
+        # coords = float geometry in [x1, y1, x2, y2] format more accurate than bbox
+
+        self.active_border_id = 0  # Active Border line ID and canvas image within
+        self.closest_border_id = 0  # Result from .find_closest(x, y) adjusted if image
+        self.resizeable = False  # cursor within 10 pixels of border outline
+        self.resize_mask = [False] * 8  # N, NE, E, SE, S, SW, W, NW
+        self.resize_cursor = ""  # appropriate tkinter cursor type
+        self.over_image = False  # cursor totally inside border outline and on image
+        self.over_border = False  # cursor over border outline
+        self.active_resizing = self.active_moving = self.active_context = False
+        self.move_start_x = self.move_start_y = None
+
+        # Borders of image 8 direction points arranged clockwise like HTML:
+        self.BN = 0; self.BNE = 1; self.BE = 2; self.BSE = 3
+        self.BS = 4; self.BSW = 5; self.BW = 6; self.BNW = 7
+
+    def add_image(self, idx, _name=None, _name_shadow=True, _context_menu=None):
+        """ Add new tkinter image. Called by parent after a "thing" initialized.
+
             Overlay the image with name in white text with black shadow when
                 `name_shadow=True` or black text with white shadow when False.
             return widget for caller to manipulate if required.
@@ -5021,54 +5067,600 @@ class ThingOfThings(tk.Canvas):
             When adding an image it is scaled to 10% of canvas. Afterwards
             left clicking on image edge can resize and left clicking on image
             can move.
-            
-            Right clicking on an image invokes "context_menu" callback. 
-        """
-        print("self.IX:", self.IX, "self.IY:", self.IY)  # Min x-offset, y-offset %
 
-    def update_image(self, _image, name=None, name_shadow=True, tooltip_text=None,
-                     inst=None, context_menu=None):
-        """ Image has been resized or moved. Update mutable list of dictionaries
-            for caller.
+            Right clicking on an image invokes "context_menu" callback.
         """
-        print("self.IW:", self.IW, "self.IH:", self.IH)  # Min width, height %
+        _who = self.who + "add_image():"
+        #print(_who, "idx:", idx, "name:", name, "_image:", self.photos[idx])
+        # 2026-05-09 future support to crop portion of image
+        #_image = raw_desk_img.crop((
+        #    _monitor[MON_X], _monitor[MON_Y], _monitor[MON_X] + _monitor[MON_W],
+        #    _monitor[MON_Y] + _monitor[MON_H]))
 
-    def call_hover(self, _action):
-        """ Mouse is inside thing and suitable distance from edge to inform caller that
-            it is hovering and passes _action of "ENTER" to callback. <Motion> is tracked
-            and in this event exact coordinates are calculated from edge.
+        # Existing Image coordinates or use new?
+        _existing_coords = False
+        x1 = self.newX;  y1 = self.newY
+        try:
+            coords_pct = self.things[idx]["coords_pct"]
+            _coords = self.pct_coords_to_pix(coords_pct)
+            _x1, _y1, _x2, _y2 = _coords
+            if _x2 > _x1 >= 0.0 and _y2 > y1 >= 0.0:
+                _existing_coords = True
+                x1 = _x1; y1 = _y1
+                # Temporary - Make new image
+                _image = self.images[idx]
+                photo = ImageTk.PhotoImage(
+                    _image.resize((_x2 - _x1, _y2 - _y1), Image.ANTIALIAS))
+                self.photos[idx] = photo
 
-            :param _action: Either "ENTER" or "LEAVE".
+        except Exception as e:
+            print(_who, "Exception:\n ", e)
+
+        # TODO: generate photo from image filename
+        image_id = self.create_image(x1, y1, image=self.photos[idx], anchor='nw')
+        # Get bounding box of the image item
+        bbox = self.bbox(image_id)
+        border_id = self.create_rectangle(bbox, outline="", width=0, tags=("all",))
+        coords = self.coords(border_id)
+        # "all" tag used to rescale all border outlines on resize, photos can't resize
+        self.meta_dict = dict()  # Must reinit or all meta_dicts have last meta_dict
+        self.meta_dict["idx"] = idx  # Index into self.things NOT self.meta_dicts
+        self.meta_dict["image_id"] = image_id
+        self.meta_dict["border_id"] = border_id
+        self.meta_dict["bbox"] = bbox  # bbox of image_id
+        self.meta_dict["coords"] = coords  # coords of border_id (float)
+
+        self.meta_dicts.append(self.meta_dict)
+
+        # <Leave> tag_bind() event is invoked before self.tag("<Motion") event
+        self.tag_bind(border_id, "<Leave>", self.on_leave)
+
+        if self.contextCB:  # TODO: Mac is Button-2
+            self.tag_bind(image_id, "<Button-3>", self.right_button_click)
+
+        #print(_who, "Image ID", image_id, type(image_id),  # type 'int'
+        #      " | Border ID:", border_id, type(border_id),  # type 'int'
+        #      " | bbox:", bbox)  # type 'tuple'
+
+        # Deprecated tag_bind()s no longer working
+        # Motion binding on each border outline (sometimes false image hits)
+        #self.tag_bind(border_id, "<Motion>", self.check_hover)
+
+        # Bugs: Cannot bind to image. Entering border and then to image
+        #  causes a fake leave using image_id instead of border_id. As
+        #  such using <Enter> and <Leave> are pretty much useless
+
+        if _existing_coords:
+            return
+
+        print(_who, "border outline coords:", coords)
+        coords_pct = self.pix_coords_to_pct(coords)
+        self.things[idx]["coords_pct"] = coords_pct
+        if self.resizeCB:
+            self.resizeCB()  # Save the new coordinates
+
+        # "idx": 0, "image_id": 0, "border_id": 0, "x": 0, "y": 0, "w": 0, "h": 0}
+        self.newX += 100
+        self.newY += 100
+        if self.newY > self.newMaxY:
+            self.lastX += 300
+            self.lastY += 50
+            self.newX = self.lastX
+            self.newY = self.lastY
+
+    def pix_coords_to_pct(self, coords):
+        """ Convert x1, y1, x2, y2 in pixels to percentage of canvas for
+            saving in "thing". Percentage of canvas is used rather than
+            absolute pixels because next time canvas withdrawn it may be
+            a different size.
         """
-        print("self.IW:", self.IW, "self.IH:", self.IH)  # Min width, height %
-        self.hoverCB(_action, self.idx)
+        _who = self.who
+        x1, y1, x2, y2 = coords[:4]
+        x1p = round(float(x1 / self.width), 3)
+        x2p = round(float(x2 / self.width), 3)
+        y1p = round(float(y1 / self.height), 3)
+        y2p = round(float(y2 / self.height), 3)
+        return x1p, y1p, x2p, y2p  # Always tuple of floats
+
+    def pct_coords_to_pix(self, coords_pct):
+        """ Convert x1p, y1p, x2p, y2p in percentage of canvas to pixels. """
+        _who = self.who
+        x1p, y1p, x2p, y2p = coords_pct[:4]  # Always floating point numbers
+        x1 = int(x1p * self.width)
+        x2 = int(x2p * self.width)
+        y1 = int(y1p * self.height)
+        y2 = int(y2p * self.height)
+        return x1, y1, x2, y2  # Always tuple of ints
+
+    def on_leave(self, event):
+        """ Leaving a border_id.
+            If not entering another border_id the <Motion> event will never
+            fire to remove the active border outline. Do that here.
+        """
+
+        _who = self.who + "on_leave():"
+        # turn off active border if outside
+        if not self.active_border_id:
+            return  # Nothing to test
+
+        if self.active_moving or self.active_resizing:
+            return  # When resizing mouse moves outside saved bbox
+
+        for meta_dict in self.meta_dicts:
+            bbox = meta_dict["bbox"]
+            x1, y1, x2, y2 = bbox
+            if x1 <= event.x <= x2 and y1 <= event.y <= y2:
+                return  # Still within a known border bbox
+
+        #print(_who, "outside all known border outlines.")
+        self.remove_border()
+
+    def left_button_click(self, event):
+        """ Left button clicked. """
+        _who = self.who + "left_button_click():"
+        # print(_who)
+
+        # Must be over image or border outline.
+        if not self.over_border and not self.over_image:
+            #print(_who, "Not over border nor over image!")
+            return
+
+        if self.over_image:
+            self.move_photo_start(event)
+            return
+
+        # if cursor over border outline then resize_mask must be set
+        # self.resize_mask = [False] * 8  # N, NE, E, SE, S, SW, W, NW
+        if not any(self.resize_mask):
+            print(_who, "left click was outside of any widgets")
+            return  # left click was outside of any widgets
+
+        self.active_resizing = True
+        self.move_start_x = event.x  # Used for moving border and moving image
+        self.move_start_y = event.y
+        #print(_who, "ID:", self.active_border_id, "move_start_x:",
+        #      self.move_start_x, "move_start_y:", self.move_start_y)
+
+    def left_button_motion(self, event):
+        """ Motion of moving photo or resizing border.
+            Not called by tkinter motion bind so we know over image or border.
+        """
+        _who = self.who + "left_button_motion():"
+        #print(_who)
+
+        if self.over_image:
+            self.move_photo_motion(event)
+            return
+
+        if not any(self.resize_mask):
+            print(_who, "border outline left click motion without resize_mask!")
+            #return  # left click was outside of any widgets
+
+        if not self.over_border:
+            print(_who, "border left click motion off the border!")
+            #self.active_resizing = False  # Only recovery method to reset processing
+            #return  # left click was outside of any widgets
+
+        self.move_border_motion(event)
+
+    def left_button_release(self, event):
+        """ Left button released. Finish up photo resize or photo move. """
+        _who = self.who + "left_button_release():"
+        #print(_who)
+
+        # Must be over image or border outline.
+        if not self.over_border and not self.over_image:
+            #print(_who, "NOT over border or image")
+            return
+
+        if self.over_image:
+            self.move_photo_finish(event)
+            return
+
+        # Resizing has finished, update new image geometry
+        self.active_resizing = self.over_border = False
+        self.move_start_x = self.move_start_y = None
+
+        # Update image with new position in self.meta_dicts
+        self.update_new_bbox()
+
+    def move_photo_start(self, event):
+        """ Begin moving photo when left-button clicked. """
+        _who = self.who + "move_photo_start():"
+        #print(_who)
+
+        self.config(cursor="hand1")
+        self.active_moving = True
+        self.move_start_x = event.x
+        self.move_start_y = event.y
+        #print(_who, "ID:", self.active_border_id, "move_start_x:",
+        #      self.move_start_x, "move_start_y:", self.move_start_y)
+
+    def move_photo_motion(self, event):
+        """ Motion detected when moving photo. """
+        _who = self.who + "move_photo_motion():"
+        #print(_who)
+
+        shift_x = event.x - self.move_start_x
+        shift_y = event.y - self.move_start_y
+        self.move(self.active_border_id - 1, shift_x, shift_y)
+        self.move(self.active_border_id, shift_x, shift_y)
+        self.move_start_x = event.x
+        self.move_start_y = event.y
+
+    def move_photo_finish(self, _event):
+        """ End moving photo when left-button released. """
+        _who = self.who + "move_photo_finish():"
+        #print(_who)
+
+        self.config(cursor="hand2")
+        self.active_moving = False
+        self.move_start_x = self.move_start_y = None
+
+        # Update new position in self.meta_dicts and layout.json
+        self.update_new_bbox()
+
+    def move_border_motion(self, event):
+        """ Motion detected when moving border outline. """
+        _who = self.who + "move_border_motion():"
+        #print(_who)
+
+        if not self.active_border_id:
+            print(_who, "Lost self.active_border_id!")
+            self.active_resizing = self.over_border = False
+            return
+
+        # noinspection PyTypeChecker
+        cords = self.coords(self.active_border_id)
+        try:
+            x1, y1, x2, y2 = cords
+        except TypeError:  # Happened with losing self.active_border_id above
+            print(_who, "Invalid self.bbox(self.active_border_id):", bbox)
+            print("   self.active_border_id:", self.active_border_id,
+                  " | self.active_resizing:", self.active_resizing,
+                  " | self.over_border:", self.over_border)
+            print("   self.resize_mask:", self.resize_mask)
+            self.active_resizing = self.over_border = False
+            return
+
+        #print("   self.resize_mask:", self.resize_mask)
+        if (self.resize_mask[self.BW] or  # Shifting x1 (West) border
+                self.resize_mask[self.BNW] or self.resize_mask[self.BSW]):
+            x1 += event.x - self.move_start_x
+        if (self.resize_mask[self.BE] or  # Shifting x2 (East) border
+                self.resize_mask[self.BNE] or self.resize_mask[self.BSE]):
+            x2 += event.x - self.move_start_x
+        if (self.resize_mask[self.BN] or  # Shifting y1 (North) border
+                self.resize_mask[self.BNW] or self.resize_mask[self.BNE]):
+            y1 += event.y - self.move_start_y
+        if (self.resize_mask[self.BS] or  # Shifting y2 (South) border
+                self.resize_mask[self.BSE] or self.resize_mask[self.BSW]):
+            y2 += event.y - self.move_start_y
+
+        # Minimum width and height rules for 50 pixels
+        x2 = x1 + 50 if x2 - x1 < 50 else x2
+        y2 = y1 + 50 if y2 - y1 < 50 else y2
+
+        # Resize border outline for now, image resized at button release
+        self.coords(self.active_border_id, x1, y1, x2, y2)
+
+        self.move_start_x = event.x  # Save x & y for next delta calculation
+        self.move_start_y = event.y
+
+    def resize_image_to_border(self, md):
+        """ Update image size to border_id size. Also updates meta_dict's
+                bbox and coords geometry. Consider dropping bbox in future...
+            Called after moving or resizing image and resizing canvas.
+        """
+        bbox = self.bbox(md['border_id'])
+        coords = self.coords(md['border_id'])
+        x1f, y1f, x2f, y2f = coords[:4]  # Only rectangles have 4 element tuple
+        photo = ImageTk.PhotoImage(  # coords are floating point numbers
+            self.images[md['idx']].resize((int(x2f - x1f), int(y2f - y1f)),
+                                          Image.ANTIALIAS))
+        self.photos[md['idx']] = photo  # Consider ditching self.photos[] list...
+        self.itemconfig(md['image_id'], image=photo)
+        self.coords(md['image_id'], x1f, y1f)
+        md.update({'bbox': bbox, 'coords': coords})
+
+    def update_new_bbox(self):
+        """ Update new bounding box for active_border_id
+            Called after moving or resizing image
+        """
+
+        _who = self.who + "update_new_bbox():"
+        #print(_who, "Method started.")
+
+        # meta_dict matching active_border_id. Same code in right_button_click
+        for md in self.meta_dicts:
+            if md["border_id"] == self.active_border_id:
+                break  # TODO: if self.active_border_id known, so should self.idx
+        else:
+            print(_who, "Could not find meta_dict for id:", self.active_border_id)
+            return
+
+        self.resize_image_to_border(md)
+        self.things[md["idx"]]["coords_pct"] = self.pix_coords_to_pct(md["coords"])
+
+        # Callback for parent to save changes to file
+        if self.resizeCB:
+            self.resizeCB()
+
+    def remove_border(self):
+        """ Remove the border when outside border outline """
+        _who = self.who + "remove_border():"
+        #print(_who)
+        try:  # Sometimes invalid width error
+            self.itemconfig(self.active_border_id, outline="", width=0)
+        except tk.TclError as e:
+            print(_who, "Error configuring image border:", e)
+            print("  active border_id:", self.active_border_id)
+        self.config(cursor="")
+        self.active_border_id = self.closest_border_id = 0
+        self.over_image = False  # cursor totally inside border outline and on image
+        self.over_border = self.active_moving = False
+        # Note self.active_context can be True when menu outside border outline
+
+    def check_hover(self, event):
+        """ Check mouse is hovering on or inside rectangle (image border)
+            Called when mouse moves anywhere inside canvas
+        """
+        _who = self.who + "check_hover():"
+
+        if self.active_moving or self.active_resizing:
+            self.left_button_motion(event)
+            return
+
+        # Define margin for "edge" detection
+        margin = 10
+
+        # Get bounding box of the image item
+        #print(_who, "find_closest to: event.x, event.y is:",
+        #      self.find_closest(event.x, event.y))
+        last_id = self.closest_border_id
+        self.closest_border_id = self.find_closest(event.x, event.y)[0]
+
+        # All images are odd number followed by even number which is it's border
+        if self.closest_border_id % 2 != 0:
+            #print("ADJUST odd number:", self.closest_border_id)
+            self.closest_border_id += 1  # found an image (odd number)
+
+        if last_id != self.closest_border_id:
+            #print(_who, "last_id:", last_id, "has changed.")
+            #print("  self.closest_border_id:", self.closest_border_id,
+            #      " | self.active_border_id:", self.active_border_id)
+            pass
+
+        bbox = self.bbox(self.closest_border_id)  # Get bounding box geometry
+        #x1, y1, x2, y2 = bbox if bbox is not None else -1, -1, 99999999, 99999999
+        # WRONG results: x1: (625, 375, 925, 555) y1: -1 x2: 99999999 y2: 99999999
+        if bbox is None:
+            x1, y1, x2, y2 = -1, -1, 99999999, 99999999
+        else:
+            x1, y1, x2, y2 = bbox
+
+        # Check if mouse outside the border outline
+        if event.x < x1 or event.x > x2 or event.y < y1 or event.y > y2:
+            #print(_who, "event.x, event.y:", event.x, event.y)
+            #print("  OUTSIDE OF bbox: - x1:", x1, "y1:", y1, "x2:", x2, "y2:", y2)
+            self.remove_border()
+            if self.active_border_id:
+                print(_who, "event.x, event.y:", event.x, event.y)
+                print("  bbox:", bbox, " | last_id:", last_id, "RESETTING:")
+                print(" | self.closest_border_id:", self.closest_border_id,
+                      " | self.active_border_id:", self.active_border_id)
+                self.remove_border()
+            return
+
+        # find_closest() looks at the visible part of overlapping images
+        if self.active_border_id and self.active_border_id != self.closest_border_id:
+            # New active border outline, remove previous border outline
+            self.remove_border()
+
+        if self.active_border_id == 0:
+            # New active border outline, activate the outline
+            self.active_border_id = self.closest_border_id
+            self.lift(self.closest_border_id - 1)  # canvas image is 1 less
+            self.lift(self.closest_border_id)  # border can stay below higher image
+            try:  # Sometimes invalid width error perhaps earlier false image_id value
+                self.itemconfig(self.active_border_id, outline="SkyBlue3", width=margin)
+            except tk.TclError as e:
+                print(_who, "Error configuring image border:", e)
+
+        # Determine if cursor resizeable when mouse pointer on the border outline
+        if (event.x < x1 + margin or event.x > x2 - margin or
+                event.y < y1 + margin or event.y > y2 - margin):
+            self.resize_mask, self.resize_cursor = self.set_resize_mask(
+                event.x, event.y, bbox, margin)
+            if any(self.resize_mask):
+                self.config(cursor=self.resize_cursor)  # Edge cursor
+                self.over_border = True
+                self.over_image = False  # cursor on border outline but NOT on image
+        else:
+            self.config(cursor="hand2")  # switch to "hand1" when holding left button
+            self.over_border = False
+            self.over_image = True  # cursor inside border outline and on image
+
+    def set_resize_mask(self, _x, _y, _bbox, _margin=10):
+        """ Calculate the boundary location (HTML clock-like location):
+                1 True flag and 7 False flags in 8 element list:
+
+                NW   N   NE
+                   +===+
+                W  |   | E
+                   +===+
+                SW   S   SE
+
+            Calculate tkinter cursor type:
+
+            Direction           Cursor Name         Description
+            -----------         ----------------    ----------------
+            Horizontal          sb_h_double_arrow   Horizontal double-headed arrow
+            Vertical            sb_v_double_arrow   Vertical double-headed arrow
+            Diagonal/Top-Left   size_nw_se          Resizing Top-Left or Bottom-Right
+            Diagonal/Top-Right  size_ne_sw          Resizing Top-Right or Bottom-Left
+
+                           - ERROR FALLBACK icons -
+            All Directions      fleur               Four-way arrow (used for moving)
+            General Resizing    sizing              General resizing indicator
+        """
+
+        _mask = [False] * 8
+        _cursor = ""
+        _who = self.who + "set_resize_mask():"
+        _x1, _y1, _x2, _y2 = _bbox
+        if not (_x < _x1 + _margin or _x > _x2 - _margin or
+                _y < _y1 + _margin or _y > _y2 - _margin):
+            print(_who, "over image, not on border within margin!")
+            print("  _x:", _x, "_y:", _y, "_bbox:", _bbox, "_margin:", _margin)
+            return _mask, _cursor
+
+        _found = None
+        # Top-Left (NW) or Bottom-Right (SE)?
+        if _x < _x1 + _margin and _y < _y1 + _margin:  # Top-Left (NW)?
+            _found = self.BNW
+            _cursor = "size_nw_se" if self.DIAGONAL_CURSOR else "top_left_corner"
+        elif _x > _x2 - _margin and _y < _y1 + _margin:  # Top-Right (NE)?
+            _found = self.BNE
+            _cursor = "size_ne_sw" if self.DIAGONAL_CURSOR else "top_right_corner"
+        elif _x < _x1 + _margin and _y > _y2 - _margin:  # Bottom-Left (SW)?
+            _found = self.BSW
+            _cursor = "size_ne_sw" if self.DIAGONAL_CURSOR else "bottom_left_corner"
+        elif _x > _x2 - _margin and _y > _y2 - _margin:  # Bottom-Right (SE)?
+            _found = self.BSE
+            _cursor = "size_nw_se" if self.DIAGONAL_CURSOR else "bottom_right_corner"
+        elif _y > _y2 - _margin:  # Bottom (South)?
+            _found = self.BS
+            _cursor = "sb_v_double_arrow" if self.DIAGONAL_CURSOR else "bottom_side"
+        elif _y < _y1 + _margin:  # Top (North)?
+            _found = self.BN
+            _cursor = "sb_v_double_arrow" if self.DIAGONAL_CURSOR else "top_side"
+        elif _x > _x2 - _margin:  # Right (East)?
+            _found = self.BE
+            _cursor = "sb_h_double_arrow" if self.DIAGONAL_CURSOR else "right_side"
+        elif _x < _x1 + _margin:  # Left (West)?
+            _found = self.BW
+            _cursor = "sb_h_double_arrow" if self.DIAGONAL_CURSOR else "left_side"
+        else:
+            print(_who, "FAILED to set border position!")
+            print("  _x:", _x, "_y:", _y, "_bbox:", _bbox, "_margin:", _margin)
+            return _mask, _cursor
+
+        _mask[_found] = True  # Boolean flag within returned direction mask
+
+        # noinspection SpellCheckingInspection
+        '''
+        IGNORE BELOW see: https://tkdocs.com/shipman/cursors.html
+
+        Not all X11 cursor themes support size_nw_se or size_ne_sw. These do:
+
+            Breeze (KDE Plasma): Modern, high-quality theme that includes
+                comprehensive support for diagonal (size_ne_sw / size_nw_se)
+            resizing.Adwaita (GNOME): The default GNOME theme is very complete and
+                handles all diagonal resizing roles correctly.Capitaine Cursors: A
+                popular, stylish, and highly complete theme, often used for Xfce,
+                that maps diagonal cursors flawlessly.
+            DMZ-White / DMZ-Black: The classic X11 default. While basic, it covers
+                all required diagonal resize paths.Volantes-Cursors: Known for
+                being fully featured and visually appealing, supporting the
+                required diagonal shapes.X11-cursor-themes
+            (SourceForge Collection): Specific themes in this collection, such as
+                Plain, Delta, and Bold, are updated to include diagonal resize
+                cursors.
+
+            On Ubuntu use "Tweak" tool to change cursors. If none work set
+                self.DIAGONAL_CURSOR = False
+
+        '''
+        return _mask, _cursor
 
     def on_resize(self, event):
         """ determine the ratio of previous width/height to new width/height """
         _wid_adj_factor = float(event.width)/self.width
         _hgt_adj_factor = float(event.height)/self.height
-        # Save new values as old values
+        # Save new values as next old values
         self.width = event.width
         self.height = event.height
         # images use ratio of original width/height to new width/height
         _wid_scale = float(event.width)/self.start_wid
         _hgt_scale = float(event.height)/self.start_hgt
 
-        # resize _images
-        for _idx, _image in enumerate(self.images):
-            fill = self.fills[_idx]
-            _new_w = int(_image.width()*_wid_scale)
-            _new_h = int(_image.height()*_hgt_scale)
-            # Window _image
-            _image = Image.new('RGBA', (_new_w, _new_h), fill)
-            _image = ImageTk.PhotoImage(_image)
-            self.itemconfig(items[_idx], image=_image)
-            resized[_idx] = _image  # stop garbage collector from removing _image
-
         # resize the canvas
         self.config(width=self.width, height=self.height)
+
         # rescale all objects with the "all" tag
         self.scale("all", 0, 0, _wid_adj_factor, _hgt_adj_factor)
+        # border outlines scale, but photo images do not. So regenerate
+        # photo images using border outline's new bbox (bounding box)
+
+        def update_images():
+            """ 500 ms after mouse stops moving, update the images. """
+            for md in self.meta_dicts:
+                self.resize_image_to_border(md)
+            self.event_id = None  # to cancel multiple delayed updates waiting
+
+        if self.event_id:
+            self.after_cancel(self.event_id)
+        self.event_id = self.after(500, update_images)
+
+    def right_button_click(self, event):
+        """ Right button clicked. Check if over image. If not return.
+            When over image, get closest border ID or image ID and find
+            it's idx. Pass this to context menu callback along with the
+            event ID
+        """
+        _who = self.who + "right_button_click():"
+
+        # Must be over image or border outline.
+        if not self.over_border and not self.over_image:
+            print(_who, "Not over border nor over image!")
+            return
+
+        # meta_dict matching active_border_id. Same code in update_new_bbox()
+        for md in self.meta_dicts:
+            if md["border_id"] == self.active_border_id:
+                break  # TODO: if self.active_border_id known, so should self.idx
+        else:
+            print(_who, "Could not find meta_dict for id:", self.active_border_id)
+            return
+        
+        self.contextCB(md["idx"], event)
+
+    def create_text(self, _x1, _y1, **kwargs):
+        """ Create text widget for canvas """
+        if 'thick' in kwargs:
+            thick = kwargs.pop('thick')
+            if thick > 5:
+                thick = 0
+        else:
+            thick = 0
+
+        if 'shade_color' in kwargs:
+            shade_color = kwargs.pop('shade_color')
+        else:
+            canvas.create_text(_x1, _y1, **kwargs)
+            return
+
+        if 'fill' in kwargs:
+            fill = kwargs.pop('fill')
+        else:
+            fill = "black"
+
+        x = _x1 + 1 + thick
+        y = _y1 + 1 + thick
+        if thick > 1:
+            thinner = thick - 1
+        else:
+            thinner = 1
+
+        while thinner > 0:
+            canvas.create_text(x-thinner, y+thick, fill=shade_color, **kwargs)
+            canvas.create_text(x+thinner, y+thick, fill=shade_color, **kwargs)
+            canvas.create_text(x-thick, y-thinner, fill=shade_color, **kwargs)
+            canvas.create_text(x+thick, y+thinner, fill=shade_color, **kwargs)
+            thinner -= 1
+            thick -= 1
+        canvas.create_text(x, y, fill=fill, **kwargs)
 
 
 # ==============================================================================

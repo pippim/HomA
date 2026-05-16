@@ -363,6 +363,7 @@ class Globals(DeviceCommonSelf):
             "CONFIG_FNAME": "config.json",  # Future configuration file.
             "DEVICES_FNAME": "devices.json",  # mirrors ni.mac_dicts[{}, {}, ... {}]
             "VIEW_ORDER_FNAME": "view_order.json",  # Read into ni.view_order[mac1, mac2, ... mac9]
+            "LAYOUT_FNAME": "view_order.json",  # Read into ni.view_order[mac1, mac2, ... mac9]
 
             # Timeouts improve device interface performance
             "PLUG_TIME": "2.0",  # Smart plug timeout to turn power on/off
@@ -397,6 +398,7 @@ class Globals(DeviceCommonSelf):
             "SENSOR_CHECK": 1.0,  # Check `sensors` (CPU/GPU temp & fan speeds) every x seconds
             "SENSOR_LOG": 3600.0,  # Log `sensors` every x seconds. Log more if fan speed changes
             "FAN_GRANULAR": 200,  # Skip logging when fan changes <= FAN_GRANULAR
+            "DIAGONAL_CURSOR": False,  # Tkinter provides explicit diagonal resizing cursors
 
             # Device type global identifier hard-coded in "inst.type_code"
             "HS1_SP": 10,  # TP-Link Kasa WiFi Smart Plug HS100, HS103 or HS110 using hs100.sh
@@ -645,6 +647,9 @@ class Globals(DeviceCommonSelf):
             ("FAN_GRANULAR", 5, RW, INT, INT, 6, DEC, MIN, MAX, CB,
              "Only log when Fan RPM speed changes > 'FAN_GRANULAR'.\n"
              "Avoids excessive up/down minor fan speed logging."),
+            ("DIAGONAL_CURSOR", 5, RW, BOOL, BOOL, 2, DEC, MIN, MAX, CB,
+             "Does Linux Tkinter provide explicit cursors for\n"
+             "diagonal resizing of images?  1=True / 0=False"),
             # Device type global identifier hard-coded in "inst.type_code"
             ("HS1_SP", 3, RO, INT, INT, 2, DEC, MIN, MAX, CB,
              "TP-Link Kasa WiFi Smart Plug HS100,\nHS103 or HS110 using hs100.sh"),  #
@@ -657,9 +662,11 @@ class Globals(DeviceCommonSelf):
             ("CONFIG_FNAME", 6, RO, STR, STR, WID, DEC, MIN, MAX, CB,
              "Configuration filename"),
             ("DEVICES_FNAME", 6, RO, STR, STR, WID, DEC, MIN, MAX, CB,
-             "discovered network devices filename"),
+             "Discovered Network Devices filename"),
             ("VIEW_ORDER_FNAME", 6, RO, STR, STR, WID, DEC, MIN, MAX, CB,
              "Network Devices Treeview display order filename"),
+            ("LAYOUT_FNAME", 6, RO, STR, STR, WID, DEC, MIN, MAX, CB,
+             "Network Devices layout schematic filename"),
             ("BACKLIGHT_NAME", 7, RW, STR, STR, 30, DEC, MIN, MAX, CB,
              "E.G. 'intel_backlight', 'nvidia_backlight', etc."),
             ("BACKLIGHT_ON", 7, RW, STR, STR, 2, DEC, MIN, MAX, CB,
@@ -1177,7 +1184,8 @@ class AudioControl(DeviceCommonSelf):
         DeviceCommonSelf.__init__(self, "AudioControl().")  # Define self.who
         _who = self.who + "__init()__:"
 
-        self.requires = ['vu_meter.py', 'pyaudio.py', 'numpy.py', 'pulsectl.py']
+        self.requires = ['vu_meter.py', 'pyaudio.py', 'numpy.py', 'pulsectl.py',
+                         'pa_listen.py']
         self.installed = []
         self.checkDependencies(self.requires, self.installed)
         v2_print(self.who, "Dependencies:", self.requires)
