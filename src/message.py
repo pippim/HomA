@@ -691,7 +691,6 @@ def body_func(self):
         If align = 'left' prepend 'Em' space on lines not beginning with '\t'
 
     :param self: ShowInf0(), AskQuestion() or AskString() class parent
-    :param name: Unique name to assign to Child Windows key
     :return: Formatted text box as newly created widget called self.textbox
     """
 
@@ -926,7 +925,7 @@ class AskString(simpledialog.Dialog, AskCommonSelf):
         tk.Label(self, text="Input or Paste below:",  # Append label and entry
                  font=g.FONT).pack(fill="none", padx=5)
 
-        if self.pwd_char  is not None:  # Show password *'s
+        if self.pwd_char is not None:  # Show password *'s
             self.entry = tk.Entry(self, font=g.FONT, insertbackground="white",
                                   show=self.pwd_char,  # Password character to display
                                   bg="#282B2B", fg="white", width=self.string_width)
@@ -1059,7 +1058,7 @@ class AskDirectory(filedialog.Directory, AskCommonSelf):
 
     #
     # standard body semantics
-    def body(self, parent):
+    def body(self, _parent):  # 2026-05-19 "parent" not used, is it passed?
         """ 2026-05-02 test to get window to open overtop of GUI app window """
         self.textbox = body_func(self)
         self.wm_attributes("-topmost", 1)  # Force window to stay on top

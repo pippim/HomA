@@ -4993,21 +4993,6 @@ class ThingOfThings(tk.Canvas):
         self.images = images  # Original raw images to create photos
         self.event_id = None  # to cancel multiple delayed image resizing operations
 
-        # Temporary generate photos to see on canvas until robust version written
-        _start = time.time()
-        for _image in self.images:
-            photo = ImageTk.PhotoImage(
-                _image.resize((defaultWidth, defaultHeight), Image.ANTIALIAS))
-            self.photos.append(photo)
-        #print(self.who, "photo generation time:", time.time() - _start)  # 0.17 for 9 images
-
-        self.texts = []  # text name overlays for Thing photo images
-        # Example of self.text{} defined in caller and callback is used for hover excluding
-        #   edges of image.
-        self.text = {"name": "", "long_name": "", "host_name": "",  # s/b "name3" instead?
-                     "host_optional": "", "MAC": "", "IP": "", "dev_type": 0,
-                     "power_state": "?"}
-
         self.things = things  # list of devices, index corresponds to photos[] & texts[]
         # Thing geometry is percentage of canvas. "inst" is instance of a thing in caller
         # inst = (self.power_text, self.values
@@ -5038,7 +5023,7 @@ class ThingOfThings(tk.Canvas):
         self.meta_dicts = []  # List of every image's geom
         self.meta_dict = {"idx": 0, "image_id": 0, "border_id": 0, "bbox": (),
                           "coords:": []}
-        # idx = zero-based idx within self.things[]
+        # idx = zero-based idx within self.things[] and self.images[]
         # image_id = odd number, border_id = even number, both in order created.
         # bbox = integer bounding box geometry in (x1, y1, x2, y2) format
         # coords = float geometry in [x1, y1, x2, y2] format more accurate than bbox
@@ -5060,26 +5045,26 @@ class ThingOfThings(tk.Canvas):
     def add_image(self, idx, _name=None, _name_shadow=True, _context_menu=None):
         """ Add new tkinter image. Called by parent after a "thing" initialized.
 
-            Overlay the image with name in white text with black shadow when
-                `name_shadow=True` or black text with white shadow when False.
-            return widget for caller to manipulate if required.
+            When adding a new device it is 300x180 pixels and placed in cascading
+            positions on canvas. Then it can be moved with left click and/or
+            resized by left clicking on image border.
 
-            When adding an image it is scaled to 10% of canvas. Afterwards
-            left clicking on image edge can resize and left clicking on image
-            can move.
-
-            Right clicking on an image invokes "context_menu" callback.
+            Right clicking on an image invokes "context_menu" callback to parent.
         """
         _who = self.who + "add_image():"
-        #print(_who, "idx:", idx, "name:", name, "_image:", self.photos[idx])
-        # 2026-05-09 future support to crop portion of image
-        #_image = raw_desk_img.crop((
-        #    _monitor[MON_X], _monitor[MON_Y], _monitor[MON_X] + _monitor[MON_W],
-        #    _monitor[MON_Y] + _monitor[MON_H]))
 
-        # Existing Image coordinates or use new?
-        _existing_coords = False
-        x1 = self.newX;  y1 = self.newY
+        _existing_coords = False  # Existing Image coordinates or use new?
+        x1 = self.newX;  y1 = self.newY  # Default coordinates for new devices
+
+        def add_new_device():
+            """ When there are no existing bbox for an image.
+                New devices assigned rotating coordinates with fixed photo size
+            """
+            _photo = ImageTk.PhotoImage(
+                self.images[idx].resize((self.defaultWidth, self.defaultHeight),
+                                        Image.ANTIALIAS))
+            self.photos.append(_photo)  # idx are strictly incremental in parent
+
         try:
             coords_pct = self.things[idx]["coords_pct"]
             _coords = self.pct_coords_to_pix(coords_pct)
@@ -5087,16 +5072,16 @@ class ThingOfThings(tk.Canvas):
             if _x2 > _x1 >= 0.0 and _y2 > y1 >= 0.0:
                 _existing_coords = True
                 x1 = _x1; y1 = _y1
-                # Temporary - Make new image
-                _image = self.images[idx]
-                photo = ImageTk.PhotoImage(
-                    _image.resize((_x2 - _x1, _y2 - _y1), Image.ANTIALIAS))
-                self.photos[idx] = photo
 
+                photo = ImageTk.PhotoImage(
+                    self.images[idx].resize((_x2 - _x1, _y2 - _y1), Image.ANTIALIAS))
+                self.photos.append(photo)  # idx are strictly incremental in parent
+            else:
+                add_new_device()
         except Exception as e:
             print(_who, "Exception:\n ", e)
+            add_new_device()
 
-        # TODO: generate photo from image filename
         image_id = self.create_image(x1, y1, image=self.photos[idx], anchor='nw')
         # Get bounding box of the image item
         bbox = self.bbox(image_id)
@@ -5351,6 +5336,9 @@ class ThingOfThings(tk.Canvas):
         """ Update image size to border_id size. Also updates meta_dict's
                 bbox and coords geometry. Consider dropping bbox in future...
             Called after moving or resizing image and resizing canvas.
+            
+            BONUS: Parent can select a new image, put it in self.images[] and
+                call this method.
         """
         bbox = self.bbox(md['border_id'])
         coords = self.coords(md['border_id'])
@@ -5358,7 +5346,7 @@ class ThingOfThings(tk.Canvas):
         photo = ImageTk.PhotoImage(  # coords are floating point numbers
             self.images[md['idx']].resize((int(x2f - x1f), int(y2f - y1f)),
                                           Image.ANTIALIAS))
-        self.photos[md['idx']] = photo  # Consider ditching self.photos[] list...
+        self.photos[md['idx']] = photo  # self.photos[] prevents garbage collection
         self.itemconfig(md['image_id'], image=photo)
         self.coords(md['image_id'], x1f, y1f)
         md.update({'bbox': bbox, 'coords': coords})
