@@ -1361,7 +1361,7 @@ Key Considerations
             return
 
         self.win_grp.unregister_child(self.top)
-        #self.tt.close(self.top)
+        self.tt.close(self.top)
         self.top.destroy()
         self.top = self.app.select_image_is_active = self.app.select_image_top = None
 
@@ -1421,10 +1421,8 @@ Key Considerations
 
             widget.grid(row=_row, column=_col, padx=10, pady=10, sticky="")
 
-            #self.tt.add_tip(widget, _img_path)
-            #   File "/home/rick/HomA/toolkit.py", line 6113, in calc_fade_in_out
-            #     words = self.text.replace('\n', ' ')
-            # AttributeError: 'function' object has no attribute 'replace'
+            _path, _ext = os.path.split(full_path)
+            self.tt.add_tip(widget, _ext)
 
             return widget
 
@@ -1455,7 +1453,7 @@ Key Considerations
 
             # without _i snapshot always get last _i in loop
             not_last_closure = lambda _i=_i: self.doSelection(self.paths[_i])
-            button_widget = add_button(row, col, self.thumbnails[-1], img_path,
+            button_widget = add_button(row, col, self.thumbnails[-1], full_path,
                                        not_last_closure)
 
             self.widgets.append(button_widget)  # To regrid on resize
@@ -1952,17 +1950,23 @@ Advanced Selection Options
 
             _who2 = _who[:-3] + ".get_image_name():"
             self.tt.zap_tip_window(self.top)  # Close any tooltip windows
+
+            # self.last_xxx variables for .set_image_name() to reference
             self.last_img_list = img_list  # img_list is mutable tree_images[]
-            self.last_idx = idx  # or mutable layout_images[]
+            self.last_idx = idx  # or mutable layout_images[] filenames lists
             self.last_row = _row  # The "last" are used by .set_image_name().
 
-            i_path, i_base = os.path.split(img_list[idx])
-            if i_path == "":
-                i_path = g.PROGRAM_DIR
-
+            # view contains the last value "Device Layout" at lambda execution
+            # time and not view's value at declaration time.
+            _view = "Device List" if self.layout["tree_images"] == img_list \
+                else "Device Layout"
+            i_path, i_base = os.path.split(os.path.abspath(img_list[idx]))
             _count = count_pictures(i_path, (".png", ".jpg", ".jpeg"))
-            title = str(_count) + " images in " + img_list[idx] + "  "
-            title += "Select " + img_name + " Image"
+
+            title = str(_count) + " images in '" + i_path + "'.  Select '" + \
+                img_name + "' image for '" + self.layout["short_name"] + \
+                "' in '" + _view + "'."
+
             SelectImage(self.app, set_image_name, title, i_path)
 
         def get_directory(_row, _column, img_name, img_list, idx):
@@ -2010,13 +2014,13 @@ Advanced Selection Options
             # Selecting new image calls .set_image_name() to update last idx.
             #SelectImage(self.app, set_image_name, title, new_path)
 
-        def heading_line(row, list_type, other_columns=True):
+        def heading_line(row, other_columns=True):
             """ paint heading line with columns:
                     row 0 = List images, Search, Folder name, Search, Image
                     row 3 = Layout images, Search, Folder name, Search, Image
             """
             bold = ha_font + ('"bold"',)
-            ttk.Label(self.img_frm, text=list_type+" images", font=bold).\
+            ttk.Label(self.img_frm, text=view, font=bold).\
                 grid(row=row, column=0, sticky=tk.W, padx=15, pady=10)
             if not other_columns:
                 return
@@ -2066,12 +2070,14 @@ Advanced Selection Options
         #   ^^^ ---| key_value pairs maintained in "Details" context menu.
 
         # rows 0 (heading) to 3 (3 List images)
-        heading_line(0, "List")
+        view = "Device List"
+        heading_line(0)
         detail_line(1, "Built-in", self.layout["tree_images"], 0, built_in=True)
         detail_line(2, "Device Class", self.layout["tree_images"], 1)
         detail_line(3, "This Device", self.layout["tree_images"], 2)
         # rows 4 (heading) to 7 (3 layout images)
-        heading_line(4, "Layout", other_columns=False)
+        view = "Device Layout"
+        heading_line(4, other_columns=False)
         detail_line(5, "Built-in", self.layout["layout_images"], 0, built_in=True)
         detail_line(6, "Device Class", self.layout["layout_images"], 1)
         detail_line(7, "This Device", self.layout["layout_images"], 2)
@@ -3098,7 +3104,6 @@ https://stackoverflow.com/questions/2829613/how-do-you-tell-if-a-string-contains
 
         GLO['LOG_EVENTS'] = True if log_status else False  # Sony done, restore logging
 
-
     def checkPowerOffSuspend(self, forgive=False):
         """ If TV powered off with remote control. If so suspend system.
             Called from app.refreshApp() every 16 to 33 milliseconds
@@ -3606,8 +3611,6 @@ List of devices attached
 
         Methods:
 
-            AdbReset() - adb kill-server && adb start-server
-            getPower() - timeout 2.0 adb shell dumpsys input_method | grep -i screen on
             isDevice() - timeout 0.1 adb connect <ip>
             Connect() - Call isDevice followed by wakeonlan up to 60 times
             turnOn() - timeout 0.5 adb shell input key event KEYCODE_WAKEUP
@@ -3662,6 +3665,11 @@ List of devices attached
         _who = self.who + "__init__():"
         v3_print(_who, "Dependencies:", self.requires)
         v3_print(_who, "Installed?  :", self.installed)
+
+        # Mimic Sony TV settings for Picture On/Off for simpler coding
+        self.powerSavingMode = "OFF"  # "ON"="Audio Only", "OFF"=Picture On
+        self.audio_only = False  # When True, the display/picture is turned off
+        self.all_settings = None  # used by self.app.DisplayTvSettings(cr)
 
         if not self.dependencies_installed:
             v1_print(_who, "Google Android TV dependencies are not installed.")
@@ -3973,6 +3981,203 @@ Application().Rediscover(): FOUND NEW INSTANCE or REDISCOVERED LOST INSTANCE:
 
         time.sleep(0.5)  # Required to get "OFF" into treeview
         return self.getPower(forgive=forgive)
+
+    def getPowerSavingMode(self):
+        """ Sony method compatibility to mimic powerSettingMode of 'OFF' or 'ON'. """
+        self.powerSavingMode = "ON" if self.audio_only else "OFF"
+
+    def getAllSettings(self):
+        """ Get  power and sound settings for .app.DisplayTvSettings(cr)
+            Mimics Sony TV variables using adb commands instead of curl.
+            2026-05-29 initial version doesn't support logging.
+        """
+        _who = self.who + "getAllSettings():"
+
+        if not self.checkInstalled('ppadb'):
+            v3_print(_who, "`ppadb.py` not installed.")
+            return self.powerStatus
+
+        if self.AdbDevice is None or not self.recheckConnection():
+            v1_print(_who, "No connection to:", self.ip)
+            if self.Connect(forgive=forgive):  # TODO else: error message
+                self.getAdbDeviceByIP()
+                if self.AdbFound:
+                    v1_print(_who, "Connection established to IP:", self.ip)
+                else:
+                    return self.powerStatus
+            else:
+                return self.powerStatus
+
+        v2_print("\n" + _who, "Get Power Status for:", self.ip)
+        grep_input = "dumpsys input | grep screenOn"  # 0.1 seconds
+        grep_power = "dumpsys power | grep 'Display Power'"  # 0.5 seconds
+        grep_display = "dumpsys display | grep mScreenState"  # 0.1 seconds
+        grep_audio = "dumpsys audio | " + \
+                     'grep -A5 "\- STREAM_MUSIC" | tail -n1'  # 0.13 sec
+
+        def dumpsys(_txt):
+            """ Call `adb shell dumpsys... | grep ...` """
+            _res = None  # Make pyCharm happy :)
+            try:  # dumpsys: input / power / display / audio
+                _res = self.AdbDevice.shell(_txt, timeout=2)
+            except Exception as e:
+                v0_print(_who, _txt, "ERROR:", "\n ", e)
+
+            if _res is None:
+                return None  # Nothing found or Exception
+
+            v0_print("{} {}: '{}'.".format(_who, _txt, _res))
+            _return = None  # Neither "ON" nor "OFF"
+            if ":" in _res:
+                _return = _res.split(":")[1].rstrip()  # remove \n
+            elif "=" in _res:
+                _return = _res.split("=")[1].rstrip()  # remove \n
+
+            return _return  # Return "ON", "OFF", "true", "false" or volume
+
+        self.all_settings = list()
+        self.all_settings.append(("Input screen on:", str(dumpsys(grep_input)), ))
+        self.all_settings.append(("Power display power:", str(dumpsys(grep_power)), ))
+        self.all_settings.append(("Display screen state:", str(dumpsys(grep_display)), ))
+        self.all_settings.append(("Audio stream volume:", str(dumpsys(grep_audio)), ))
+
+    def sendKeycodeList(self, _caller, _keycodes):
+        """ Take list of keycodes and send them one by one. """
+        _who = _caller
+        v1_print(_who, "Run ADB script for device:", self.ip)
+
+        def send_keycode(_keycode, _desc):
+            """ Send a single KEYCODE to device. """
+            try:
+                _start = time.time()
+                self.AdbDevice.shell("input keyevent " + _keycode,
+                                     timeout=float(GLO['ADB_KEY_TIME']))
+                v1_print("  Send", _keycode, " |", _desc, " | seconds:",
+                         round(time.time() - _start, 2))
+            except Exception as e:
+                v0_print(_who, "input keyevent ERROR:\n ", e)
+                return False
+            return True
+
+        start_time = time.time()
+        for keycode, desc in _keycodes:
+            if send_keycode(keycode, desc):
+                pass  # TV shows current progress as if remote was used
+            else:
+                v0_print(_who, "ABORTED after total seconds of:",
+                         round(time.time() - start_time, 2))
+                return False  # TODO: error message
+        v1_print(_who, "Total seconds:", round(time.time() - start_time, 2))
+        return True
+
+    def turnPictureOn(self, forgive=False):
+        """ Turn On Google Android TV Picture (Set Audio Only to False) """
+
+        _who = self.who + "turnPictureOn():"
+        self.audio_only = False
+
+        if not self.checkInstalled('ppadb'):
+            v3_print(_who, "`ppadb.py` not installed.")
+            return False
+
+        keycode_script = [
+            ("KEYCODE_DPAD_CENTER", "Center button to turn on picture")
+        ]
+
+        if self.sendKeycodeList(_who, keycode_script):
+            return "ON"
+        else:
+            return "?"
+
+    def turnPictureOff(self, forgive=False):
+        """ Turn Off Google Android TV Picture (Set Audio Only to True)
+
+            Uglier programming than Sony REST API because you can't simply
+            select "Picture Off".
+        """
+
+        _who = self.who + "turnPictureOff():"
+        self.audio_only = True
+
+        if not self.checkInstalled('ppadb'):
+            v3_print(_who, "`ppadb.py` not installed.")
+            return False
+
+        # KEYCODE_SETTINGS must start at "Audio" settings. The last time the
+        # remote control is manually used it MUST be to audio settings and no
+        # other menu options on the Android TV.
+        keycode_script = [  # KEYCODE_SETTINGS must start at "Audio" settings
+            ("KEYCODE_SETTINGS", "Settings Button"),
+            ("KEYCODE_DPAD_CENTER", "Select Audio Menu"),
+            ("KEYCODE_DPAD_DOWN", "Skip Sound Mode"),
+            ("KEYCODE_DPAD_DOWN", "Skip Audio Delay"),
+            ("KEYCODE_DPAD_DOWN", "Skip Audio Output"),
+            ("KEYCODE_DPAD_CENTER", "Select Advanced Settings"),
+            ("KEYCODE_DPAD_CENTER", "Select Audio Only"),
+            ("KEYCODE_DPAD_RIGHT", "Skip Countdown Cancel option"),
+            ("KEYCODE_DPAD_CENTER", "Select Countdown OK option")
+        ]  # Remote control starts at "All Settings" option
+
+        #from ppadb.keycode import \
+        #    KEYCODE_SETTINGS, KEYCODE_DPAD_CENTER, KEYCODE_DPAD_DOWN, KEYCODE_DPAD_RIGHT
+        # Above Integers not needed because adb shell recognizes strings including
+        # KEYCODE_SLEEP which is not known to ppadb.py
+
+        # noinspection SpellCheckingInspection
+        ''' It's reported each Android TV can have a different set of keystrokes.
+            
+            NOTE: KEYCODE_BUTTON_SELECT doesn't work so use KEYCODE_DPAD_CENTER 
+
+            For this method use:
+
+                Settings button (KEYCODE_SETTINGS = 176)
+                    NOTE: "All settings" is first option highlighted
+
+                Select button picks "All settings" (KEYCODE_DPAD_CENTER = 109)
+                Down button to skip "Set up Google TV" (KEYCODE_DPAD_DOWN = 20)
+                Down button to skip "Channels & Inputs"
+                    NOTE: "Display & Sound" option is now highlighted
+
+                Select button picks "Display & Sound" (KT = 109)
+                Down button to skip "Intelligent Settings"
+                Down button to skip "Picture"
+                    NOTE: "Audio" option is now highlighted
+
+
+            From computer, first KEYCODE_SETTINGS use starts here when the
+                last time menus were used the Audio was changed. Otherwise, 
+                the menu option initially opened will depend on the last 
+                remote control usage and results will be incorrect!
+                 
+
+                Select button picks "Audio"
+                Down button to skip "Sound Mode"
+                Down button to skip "Audio Delay"
+                Down button to skip "Audio Output"
+                Select button picks "Advanced Settings"
+                    NOTE: "Audio Only Mode" option is now highlighted
+                Select button picks "Audio Only Mode"
+                    NOTE: Dialog box with 10 second countdown appears
+                        Right button to skip "Cancel" (KEYCODE_DPAD_RIGHT)
+                            NOTE: "OK" option is now highlighted
+                        Select button picks "OK"
+                
+                NOTE: Picture is off until Settings button or Menu button is sent.
+                      The button itself is ignored and only turns on display.
+
+                Set cursor style to normal.
+                ShowInfo completion menu.
+                Close progress window.
+
+            Tuple:
+                (KEYCODE_SETTINGS, "KEYCODE_SETTINGS", "Settings button", result_str)
+
+        '''
+
+        if self.sendKeycodeList(_who, keycode_script):
+            return "Pic. OFF"
+        else:
+            return "?"
 
     def isDevice(self, forgive=False, timeout=None):
         """ Return True if adb connection for Android device (using IP address).
@@ -6295,7 +6500,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.tree.update_idletasks()  # Status "Wait..." now "ON" or "OFF"
             cr.fadeIn(item)  # 10 steps of 32ms row highlight fade in to green
 
-        #name = cr.mac_dict['name']  # name for menu options' text
+        #name = cr.mac_dict['name']  # 2026-05-21 superseded
         name = cr.layout['short_name']  # name for menu options' text
 
         if cr.mac_dict['type_code'] == GLO['LAPTOP_D']:
@@ -6305,9 +6510,10 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             # so double check backlight power status.
             cr.inst.getPower()  # Set current laptop display cr.inst.powerStatus
 
-        if cr.mac_dict['type_code'] == GLO['KDL_TV']:
-            # Sony TV has power save mode to turn picture off and listen to music
-            help_id = "HelpRightClickSonyTV"
+        if cr.mac_dict['type_code'] == GLO['KDL_TV'] or \
+                cr.mac_dict['type_code'] == GLO['ADB_TV']:
+            # Sony TV and ADB TV can turn picture off and listen to audio
+            help_id = "HelpRightClickSonyTV"  # 2026-05-28 need Android TV update
             menu.add_command(
                 label=name + " Picture On ", font=g.FONT, state=tk.DISABLED, compound=tk.LEFT,
                 image=self.img_picture_on, command=lambda: self.turnPictureOn(cr))
@@ -6315,8 +6521,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 label=name + " Picture Off ", font=g.FONT, state=tk.DISABLED, compound=tk.LEFT,
                 image=self.img_picture_off, command=lambda: self.turnPictureOff(cr))
             menu.add_command(
-                label=name + " Sound Control ", font=g.FONT, state=tk.NORMAL, compound=tk.LEFT,
-                image=self.img_mag_glass, command=lambda: self.DisplaySony(cr))
+                label=name + " Display Settings ", font=g.FONT, state=tk.NORMAL, compound=tk.LEFT,
+                image=self.img_mag_glass, command=lambda: self.DisplayTvSettings(cr))
 
             menu.add_separator()
 
@@ -6401,11 +6607,13 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         menu.bind("<FocusOut>", _closePopup)
 
         # Enable Turn On/Off menu options depending on current power status.
-        if cr.mac_dict['type_code'] == GLO['KDL_TV'] and cr.inst.powerStatus == "ON":
+        if (cr.mac_dict['type_code'] == GLO['KDL_TV'] or
+                cr.mac_dict['type_code'] == GLO['ADB_TV']) and \
+                cr.inst.powerStatus == "ON":
             cr.inst.getPowerSavingMode()  # Get power savings mode
-            if cr.inst.powerSavingMode == "OFF":
+            if cr.inst.powerSavingMode == "OFF":  # Picture is on
                 menu.entryconfig(name + " Picture Off ", state=tk.NORMAL)
-            elif cr.inst.powerSavingMode == "ON":
+            elif cr.inst.powerSavingMode == "ON":  # Picture is off
                 menu.entryconfig(name + " Picture On ", state=tk.NORMAL)
             else:
                 pass  # powerSavingMode == "?"
@@ -8293,14 +8501,15 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         ''' Button frame background shows monitor facsimile color of LED lights '''
         self.event_btn_frm.configure(bg=self.bleSaveInst.monitor_color)
 
-    def DisplaySony(self, cr):
-        """ Display Sony KDL/Bravia TV controls in real time.
+    def DisplayTvSettings(self, cr):
+        """ Display Sony KDL/Bravia TV or Android TV Settings in real time.
 
             Calls DisplayCommon to create Window, Frame and Scrollbox.
         """
-        _who = self.who + "DisplaySony():"
-        sony = cr.inst_dict['instance']  # saveSony
-        title = "Sony TV Settings"
+        _who = self.who + "DisplayTvSettings():"
+        sound = cr.inst_dict['instance']  # shorthand alias
+        #title = "Sony TV Settings"
+        title = cr.layout['short_name'] + " Settings"
 
         #x, y = hc.GetMouseLocation()  # 2025-05-30 TODO move into DisplayCommon()
         #scrollbox = self.DisplayCommon(_who, title, x=x, y=y, width=1200,
@@ -8310,7 +8519,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         if scrollbox is None:
             return  # Window already opened and method is running
 
-        sony.getAllSettings()  # defaults to no_log=True
+        sound.getAllSettings()  # defaults to no_log=True
 
         # Tabs for self.event_scrollbox created by self.DisplayCommon()
         tabs = ("400", "right", "550", "right", "700", "right",
@@ -8332,27 +8541,32 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             scrollbox.insert("end", line)
 
         ''' Single column mode with TV Position shown
-        ''' 
-        in4("Power Status", sony.powerStatus)
-        in4("Power Saving Mode", sony.powerSavingMode)
-        in4("TV Position", sony.tvPosition)
-        in4("Speaker Volume", sony.volumeSpeaker)
-        in4("Headphones Volume", sony.volumeHeadphones)
-        in4("Subwoofer Level", sony.subwooferLevel)
-        in4("Subwoofer Freq", sony.subwooferFreq)
-        in4("Subwoofer Phase", sony.subwooferPhase)
-        in4("Subwoofer Power", sony.subwooferPower)
+        '''
+        if cr.mac_dict['type_code'] == GLO['KDL_TV']:
+            in4("Power Status", sound.powerStatus)
+            in4("Power Saving Mode", sound.powerSavingMode)
+            in4("TV Position", sound.tvPosition)
+            in4("Speaker Volume", sound.volumeSpeaker)
+            in4("Headphones Volume", sound.volumeHeadphones)
+            in4("Subwoofer Level", sound.subwooferLevel)
+            in4("Subwoofer Freq", sound.subwooferFreq)
+            in4("Subwoofer Phase", sound.subwooferPhase)
+            in4("Subwoofer Power", sound.subwooferPower)
+        else:
+            for _label, _value in sound.all_settings:
+                in4(_label, _value)
+
         scrollbox.insert("end", "\n\n")
 
         ''' Double column mode with TV Position hidden
-        in4("Power Status", sony.powerStatus,
-             "Subwoofer Power", sony.subwooferPower)
-        in4("Power Saving Mode", sony.powerSavingMode,
-             "Subwoofer Phase", sony.subwooferPhase)
-        in4("Speaker Volume", sony.volumeSpeaker,
-             "Subwoofer Level", sony.subwooferLevel)
-        in4("Headphones Volume", sony.volumeHeadphones,
-             "Subwoofer Freq", sony.subwooferFreq)
+        in4("Power Status", sound.powerStatus,
+             "Subwoofer Power", sound.subwooferPower)
+        in4("Power Saving Mode", sound.powerSavingMode,
+             "Subwoofer Phase", sound.subwooferPhase)
+        in4("Speaker Volume", sound.volumeSpeaker,
+             "Subwoofer Level", sound.subwooferLevel)
+        in4("Headphones Volume", sound.volumeHeadphones,
+             "Subwoofer Freq", sound.subwooferFreq)
         scrollbox.insert("end", "\n\n")
         '''
 
@@ -8466,14 +8680,14 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             text_index.set(str(active.index))  # Could be 3 second alarm sound
             text_app.set(active.application)  #
             text_video.set(toolkit.normalize_tcl(active.name))
-            v0_print("New Active Sink Input:", active)
+            v2_print("New Active Sink Input:", active)
 
             ''' Get matching window attributes '''
             mon.make_wn_list()
             if match_window(active):
-                v0_print("Matching window:", mon.wn_dict)
+                v2_print(_who, "Matching window:", mon.wn_dict)
             else:
-                v0_print("Matching window NOT FOUND!")
+                v2_print(_who, "Matching window NOT FOUND!")
 
             last_sink_inputs = sink_inputs  # deepcopy NOT required
 
