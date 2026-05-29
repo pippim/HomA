@@ -36,6 +36,7 @@ warnings.filterwarnings("ignore", "ResourceWarning")  # PIL python 3 unclosed fi
 #       2026-04-26 - Throttle Sony KDL REST API calls to 1/second.
 #       2026-05-16 - Device Layout with moving/resizing and shared context menu.
 #       2026-05-24 - Select custom images for Treeview & Device Layout by MAC.
+#       2026-05-29 - Toggle Android TV "audio only" (picture on/off) using adb.
 #
 # ==============================================================================
 
@@ -1445,12 +1446,6 @@ Key Considerations
             self.thumbnails.append(tk_img)  # save from garbage collection
 
             # 3. Add image button
-            if col >= self.column_count:
-                row += 1
-                col = 1
-            else:
-                col += 1
-
             # without _i snapshot always get last _i in loop
             not_last_closure = lambda _i=_i: self.doSelection(self.paths[_i])
             button_widget = add_button(row, col, self.thumbnails[-1], full_path,
@@ -1458,6 +1453,12 @@ Key Considerations
 
             self.widgets.append(button_widget)  # To regrid on resize
             self.frame.update_idletasks()
+
+            if col >= self.column_count:
+                row += 1
+                col = 1
+            else:
+                col += 1
 
         '''
 To create a thumbnail image for a UI label using the Pillow (PIL) library in 
@@ -2014,13 +2015,13 @@ Advanced Selection Options
             # Selecting new image calls .set_image_name() to update last idx.
             #SelectImage(self.app, set_image_name, title, new_path)
 
-        def heading_line(row, other_columns=True):
+        def heading_line(row, list_type, other_columns=True):
             """ paint heading line with columns:
                     row 0 = List images, Search, Folder name, Search, Image
                     row 3 = Layout images, Search, Folder name, Search, Image
             """
             bold = ha_font + ('"bold"',)
-            ttk.Label(self.img_frm, text=view, font=bold).\
+            ttk.Label(self.img_frm, text=list_type, font=bold).\
                 grid(row=row, column=0, sticky=tk.W, padx=15, pady=10)
             if not other_columns:
                 return
@@ -2070,14 +2071,12 @@ Advanced Selection Options
         #   ^^^ ---| key_value pairs maintained in "Details" context menu.
 
         # rows 0 (heading) to 3 (3 List images)
-        view = "Device List"
-        heading_line(0)
+        heading_line(0, "Device List")
         detail_line(1, "Built-in", self.layout["tree_images"], 0, built_in=True)
         detail_line(2, "Device Class", self.layout["tree_images"], 1)
         detail_line(3, "This Device", self.layout["tree_images"], 2)
         # rows 4 (heading) to 7 (3 layout images)
-        view = "Device Layout"
-        heading_line(4, other_columns=False)
+        heading_line(4, "Device Layout", other_columns=False)
         detail_line(5, "Built-in", self.layout["layout_images"], 0, built_in=True)
         detail_line(6, "Device Class", self.layout["layout_images"], 1)
         detail_line(7, "This Device", self.layout["layout_images"], 2)
