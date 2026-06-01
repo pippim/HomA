@@ -33,6 +33,7 @@ from __future__ import with_statement       # Error handling for file opens
 #       Feb. 05 2025 - Create Tooltips().zap_tip_window() call before suspend
 #       June 14 2025 - Create VolumeMeters() ported from mserve for use in HomA
 #       Apr. 19 2026 - Create class Tot "Thing of Things" ported from mmm.py
+#       May. 31 2026 - Enhance ThingOfThings() and Tooltips().
 #
 #==============================================================================
 
@@ -4969,26 +4970,24 @@ class ThingOfThings(tk.Canvas):
 
     """
 
-
     def __init__(self, parent, images, things, diagonal_cursor=False, resizeCB=None,
-                 contextCB=None, defaultWidth=300, defaultHeight=180, **kwargs):
-        tk.Canvas.__init__(self, parent, **kwargs)  # ttk doesn't exist
+                 contextCB=None, new_wid=300, new_hgt=180, border=10, **kwargs):
+        self.canvas = tk.Canvas.__init__(self, parent, **kwargs)  # only tk version no ttk
+        # self.canvas = None
 
         self.who = "ThingOfThings()."  # Class name for error reporting
+        #print(self.who, "self.winfo_parent():", self.winfo_parent())
+        # ThingOfThings(). self.winfo_parent(): .140708383580312
+        #print(self.who, "self.master:", self.master)
+        # ThingOfThings(). self.master: .140708383580312
         self.bind("<Configure>", self.on_resize)
         self.height = self.winfo_reqheight()
         self.width = self.winfo_reqwidth()
-        # Starting width & height for images resizing Things photo images
-        self.start_wid = self.width
-        self.start_hgt = self.height
 
-        # 2026-04-19 Initial design supports homa.py TreeviewRow() photos[], inst_dict[]
-        #   so self.photos is duplicate of existing HomA. In the future, instead of generic
-        #   photo image based on `dev_type`, each device can have `map_dev_photo` to be
-        #   used here and `net_dev_photo` to be used in HomA Network Devices treeview.
-        #   It's up to the caller to provide TK photo images and it's beyond the scope of
-        #   this class to select the images. There is a callback for right-click menu
-        #   where the caller would provide an option to change TK photo image and save it.
+        self.parent = parent
+        self.tt = self.parent.tt if self.parent.tt else None  # Not all callers have tt
+        #self.tt = None  # override until tooltips() class upgraded to handle pyimage99
+
         self.photos = []  # Thing photos, immune from Garbage collection
         self.images = images  # Original raw images to create photos
         self.event_id = None  # to cancel multiple delayed image resizing operations
@@ -5004,8 +5003,9 @@ class ThingOfThings(tk.Canvas):
 
         self.resizeCB = resizeCB  # resizing or moving photo image of device
         self.contextCB = contextCB  # Right-click menu
-        self.defaultWidth = defaultWidth  # Default image display width
-        self.defaultHeight = defaultHeight  # Default image display height
+        self.defaultWidth = new_wid  # Default image display width
+        self.defaultHeight = new_hgt  # Default image display height
+        self.border_width = border
 
         self.newX = self.newY = 25  # When adding a new image with no saved coords
         self.lastX = self.lastY = 25
@@ -5029,6 +5029,7 @@ class ThingOfThings(tk.Canvas):
         # coords = float geometry in [x1, y1, x2, y2] format more accurate than bbox
 
         self.active_border_id = 0  # Active Border line ID and canvas image within
+        # Canvas images start at number 1 and borders start at number 2
         self.closest_border_id = 0  # Result from .find_closest(x, y) adjusted if image
         self.resizeable = False  # cursor within 10 pixels of border outline
         self.resize_mask = [False] * 8  # N, NE, E, SE, S, SW, W, NW
@@ -5037,6 +5038,7 @@ class ThingOfThings(tk.Canvas):
         self.over_border = False  # cursor over border outline
         self.active_resizing = self.active_moving = self.active_context = False
         self.move_start_x = self.move_start_y = None
+        self.splash_active = False  # tooltips slash window is open
 
         # Borders of image 8 direction points arranged clockwise like HTML:
         self.BN = 0; self.BNE = 1; self.BE = 2; self.BSE = 3
@@ -5056,9 +5058,9 @@ class ThingOfThings(tk.Canvas):
         _existing_coords = False  # Existing Image coordinates or use new?
         x1 = self.newX;  y1 = self.newY  # Default coordinates for new devices
 
-        def add_new_device():
+        def add_new_photo(_e):
             """ When there are no existing bbox for an image.
-                New devices assigned rotating coordinates with fixed photo size
+                New photo assigned rotating coordinates with fixed photo size
             """
             _photo = ImageTk.PhotoImage(
                 self.images[idx].resize((self.defaultWidth, self.defaultHeight),
@@ -5077,10 +5079,10 @@ class ThingOfThings(tk.Canvas):
                     self.images[idx].resize((_x2 - _x1, _y2 - _y1), Image.ANTIALIAS))
                 self.photos.append(photo)  # idx are strictly incremental in parent
             else:
-                add_new_device()
+                add_new_photo()  # existing "thing" with invalid coordinates.
         except Exception as e:
-            print(_who, "Exception:\n ", e)
-            add_new_device()
+            #print(_who, "Exception:\n ", e)
+            add_new_photo(e)  # New "thing" with no coords
 
         image_id = self.create_image(x1, y1, image=self.photos[idx], anchor='nw')
         # Get bounding box of the image item
@@ -5092,13 +5094,17 @@ class ThingOfThings(tk.Canvas):
         self.meta_dict["idx"] = idx  # Index into self.things NOT self.meta_dicts
         self.meta_dict["image_id"] = image_id
         self.meta_dict["border_id"] = border_id
-        self.meta_dict["bbox"] = bbox  # bbox of image_id
+        self.meta_dict["bbox"] = bbox  # bbox of image_id (integer)
         self.meta_dict["coords"] = coords  # coords of border_id (float)
 
         self.meta_dicts.append(self.meta_dict)
 
         # <Leave> tag_bind() event is invoked before self.tag("<Motion") event
         self.tag_bind(border_id, "<Leave>", self.on_leave)
+
+        if self.tt:
+            self.tag_bind(image_id, "<Enter>", lambda event: self.tt_splash(event, image_id))
+            self.tag_bind(image_id, "<Leave>", lambda event: self.tt_leave(event, image_id))
 
         if self.contextCB:  # TODO: Mac is Button-2
             self.tag_bind(image_id, "<Button-3>", self.right_button_click)
@@ -5156,6 +5162,88 @@ class ThingOfThings(tk.Canvas):
         y1 = int(y1p * self.height)
         y2 = int(y2p * self.height)
         return x1, y1, x2, y2  # Always tuple of ints
+
+    def tt_splash(self, event, image_id):
+        """ Entered an image. Create splash tooltip. """
+
+        _who = self.who + "tt_splash():"
+
+        if not self.active_border_id:
+            print(_who, "not self.active_border_id for image_id:", image_id)
+            return  # Nothing to test
+
+        if self.active_moving or self.active_resizing:
+            print(_who, "moving or resizing for image_id:", image_id)
+            return  # When resizing mouse moves outside saved bbox
+
+        for meta_dict in self.meta_dicts:
+            if meta_dict["image_id"] == image_id:
+                break
+        else:
+            print(_who, "idx not found:", idx)
+            return  # Still within a known border bbox
+
+        image_id = meta_dict["image_id"]
+        image_name = self.itemcget(image_id, "image")  # "pyimage99"
+        name = self.things[meta_dict["idx"]]["name"]
+
+        text = name + "\n\nleft-click on border to resize image.\n"
+        text += "left-click inside border to move image.\n\n"
+        text += "right-click inside border for context menu.\n"
+
+        # Convert canvas bbox relative coordinates to root absolute coordinates
+        x1, y1, x2, y2 = meta_dict["bbox"]
+        root_bbox = (x1 + self.master.winfo_rootx(), y1 + self.master.winfo_rooty(),
+                     x2 + self.master.winfo_rootx(), y2 + self.master.winfo_rooty())
+
+        ''' Set anchor based on where image sits within canvas:
+                        |
+                tk.SW   |   tk.SE
+              x<.5 y<.5 | x>.5 y<.5
+            ------------+-----------
+              x<.5 y>.5 | x>.5 y>.5
+                tk.NW   |   tk.NE 
+                        |
+        '''
+        x1p, y1p, x2p, y2p = self.pix_coords_to_pct(meta_dict["coords"])
+        anchor = None
+        anchor = tk.SW if x1p <= .5 and y1p <= .5 else anchor
+        anchor = tk.SE if x1p > 0.5 and y1p <= .5 else anchor
+        anchor = tk.NW if x1p <= .5 and y1p > 0.5 else anchor
+        anchor = tk.NE if x1p > 0.5 and y1p > 0.5 else anchor
+        #print(_who, "anchor:", anchor, "x1p:", x1p, "y1p:", y1p)
+
+        self.tt.add_tip(image_name, text, 'splash', 0, pb_close=self.tt_close,
+                        anchor=anchor, bbox=root_bbox, parent=self.master)
+
+        ''' Force Splash Display in toolkit.py Tooltips(). '''
+        self.tt.log_event('enter', image_name, event.x_root, event.y_root)
+        self.splash_active = True
+
+    def tt_leave(self, _event, image_id):
+        """ Left an image when image_id passed or splash tooltip has been
+            closed when life-span exhausted.
+        """
+        _who = self.who + "tt_leave():"
+        if self.splash_active:  # Tooltips() class may have closed tip window
+            self.tt_close(image_id)
+
+    def tt_close(self, image_id=None):
+        """ Left an image when image_id passed or splash tooltip has been
+            closed when life-span exhausted and tooltips() passed on image_id.
+        """
+        _who = self.who + "tt_close():"
+        if image_id is None:  # Called from Tooltips natural .close() method.
+            self.splash_active = False
+            return
+
+        if not self.splash_active:
+            print(_who, "Programming error: not self.splash_active")
+            return
+
+        image_name = self.itemcget(image_id, "image")  # "pyimage99"
+        self.tt.close(image_name)
+        self.splash_active = False
 
     def on_leave(self, event):
         """ Leaving a border_id.
@@ -5403,10 +5491,11 @@ class ThingOfThings(tk.Canvas):
         margin = 10
 
         # Get bounding box of the image item
-        #print(_who, "find_closest to: event.x, event.y is:",
-        #      self.find_closest(event.x, event.y))
         last_id = self.closest_border_id
-        self.closest_border_id = self.find_closest(event.x, event.y)[0]
+        try:
+            self.closest_border_id = self.find_closest(event.x, event.y)[0]
+        except IndexError:
+            return  # mouse out of canvas entirely.
 
         # All images are odd number followed by even number which is it's border
         if self.closest_border_id % 2 != 0:
@@ -5451,15 +5540,16 @@ class ThingOfThings(tk.Canvas):
             self.lift(self.closest_border_id - 1)  # canvas image is 1 less
             self.lift(self.closest_border_id)  # border can stay below higher image
             try:  # Sometimes invalid width error perhaps earlier false image_id value
-                self.itemconfig(self.active_border_id, outline="SkyBlue3", width=margin)
+                self.itemconfig(self.active_border_id, outline="SkyBlue3",
+                                width=self.border_width)
             except tk.TclError as e:
                 print(_who, "Error configuring image border:", e)
 
         # Determine if cursor resizeable when mouse pointer on the border outline
-        if (event.x < x1 + margin or event.x > x2 - margin or
-                event.y < y1 + margin or event.y > y2 - margin):
+        if (event.x < x1 + self.border_width or event.x > x2 - self.border_width or
+                event.y < y1 + self.border_width or event.y > y2 - self.border_width):
             self.resize_mask, self.resize_cursor = self.set_resize_mask(
-                event.x, event.y, bbox, margin)
+                event.x, event.y, bbox)
             if any(self.resize_mask):
                 self.config(cursor=self.resize_cursor)  # Edge cursor
                 self.over_border = True
@@ -5469,7 +5559,7 @@ class ThingOfThings(tk.Canvas):
             self.over_border = False
             self.over_image = True  # cursor inside border outline and on image
 
-    def set_resize_mask(self, _x, _y, _bbox, _margin=10):
+    def set_resize_mask(self, _x, _y, _bbox):
         """ Calculate the boundary location (HTML clock-like location):
                 1 True flag and 7 False flags in 8 element list:
 
@@ -5497,6 +5587,7 @@ class ThingOfThings(tk.Canvas):
         _cursor = ""
         _who = self.who + "set_resize_mask():"
         _x1, _y1, _x2, _y2 = _bbox
+        _margin = self.border_width  # shorthand alias
         if not (_x < _x1 + _margin or _x > _x2 - _margin or
                 _y < _y1 + _margin or _y > _y2 - _margin):
             print(_who, "over image, not on border within margin!")
@@ -5566,15 +5657,9 @@ class ThingOfThings(tk.Canvas):
         """ determine the ratio of previous width/height to new width/height """
         _wid_adj_factor = float(event.width)/self.width
         _hgt_adj_factor = float(event.height)/self.height
-        # Save new values as next old values
-        self.width = event.width
+        self.width = event.width  # Save new values as next old values
         self.height = event.height
-        # images use ratio of original width/height to new width/height
-        _wid_scale = float(event.width)/self.start_wid
-        _hgt_scale = float(event.height)/self.start_hgt
-
-        # resize the canvas
-        self.config(width=self.width, height=self.height)
+        self.config(width=self.width, height=self.height)  # resize the canvas
 
         # rescale all objects with the "all" tag
         self.scale("all", 0, 0, _wid_adj_factor, _hgt_adj_factor)
@@ -5611,44 +5696,10 @@ class ThingOfThings(tk.Canvas):
         else:
             print(_who, "Could not find meta_dict for id:", self.active_border_id)
             return
-        
+
+        if self.splash_active:
+            self.tt_close(md["image_id"], suppress_error=True)
         self.contextCB(md["idx"], event)
-
-    def create_text(self, _x1, _y1, **kwargs):
-        """ Create text widget for canvas """
-        if 'thick' in kwargs:
-            thick = kwargs.pop('thick')
-            if thick > 5:
-                thick = 0
-        else:
-            thick = 0
-
-        if 'shade_color' in kwargs:
-            shade_color = kwargs.pop('shade_color')
-        else:
-            canvas.create_text(_x1, _y1, **kwargs)
-            return
-
-        if 'fill' in kwargs:
-            fill = kwargs.pop('fill')
-        else:
-            fill = "black"
-
-        x = _x1 + 1 + thick
-        y = _y1 + 1 + thick
-        if thick > 1:
-            thinner = thick - 1
-        else:
-            thinner = 1
-
-        while thinner > 0:
-            canvas.create_text(x-thinner, y+thick, fill=shade_color, **kwargs)
-            canvas.create_text(x+thinner, y+thick, fill=shade_color, **kwargs)
-            canvas.create_text(x-thick, y-thinner, fill=shade_color, **kwargs)
-            canvas.create_text(x+thick, y+thinner, fill=shade_color, **kwargs)
-            thinner -= 1
-            thick -= 1
-        canvas.create_text(x, y, fill=fill, **kwargs)
 
 
 # ==============================================================================
@@ -5726,6 +5777,11 @@ class CommonTip:
         self.pb_leave = None            # Tell 'piggy_back' mouse left widget
         self.pb_ready = None            # Tell 'piggy_back' it can display msg
         self.pb_close = None            # Tell 'piggy_back' tip_window closed
+        # Splash tooltip passes pb_close callback to skip it's own tt.close()
+
+        # Canvas images have no "widget" that can be queried for coordinates
+        self.bbox = None                # tuple(x1, y1, x2, y2)
+        self.parent = None              # Cannot devine parent name so pass it.
 
 
 class ToolTips(CommonTip):
@@ -5859,6 +5915,8 @@ class ToolTips(CommonTip):
         self.pb_leave = self.dict['pb_leave']                       # 31
         self.pb_ready = self.dict['pb_ready']                       # 32
         self.pb_close = self.dict['pb_close']                       # 33
+        self.bbox = self.dict['bbox']                               # 34
+        self.parent = self.dict['parent']                           # 35
 
     def fields_to_dict(self):
         """ Easy names to cryptic dictionary fields """
@@ -5895,6 +5953,8 @@ class ToolTips(CommonTip):
         self.dict['pb_leave'] = self.pb_leave                       # 31
         self.dict['pb_ready'] = self.pb_ready                       # 32
         self.dict['pb_close'] = self.pb_close                       # 33
+        self.dict['bbox'] = self.bbox                               # 34
+        self.dict['parent'] = self.parent                           # 35
 
     def log_event(self, action, widget, x, y):
         """ action is 'enter', 'leave', 'press' or 'release'.
@@ -6110,7 +6170,8 @@ class ToolTips(CommonTip):
     def add_tip(self, widget, text='Pass text here', tool_type='button',
                 visible_delay=None, visible_span=None, extra_word_span=None,
                 fade_in_span=None, fade_out_span=None, anchor="sw", menu_tuple=None,
-                pb_alpha=None, pb_leave=None, pb_ready=None, pb_close=None):
+                pb_alpha=None, pb_leave=None, pb_ready=None, pb_close=None,
+                bbox=None, parent=None):
         """ Declare Tooltip """
         CommonTip.__init__(self)            # Initialize all tip instances
 
@@ -6122,7 +6183,9 @@ class ToolTips(CommonTip):
         self.pb_leave = pb_leave            # Piggy-back callback when mouse leaves widget
         self.pb_ready = pb_ready            # Piggy-back callback when tip can be displayed
         self.pb_close = pb_close            # Piggy-back callback when tip destroyed
-        # Also used by "splash" tool_type to wrapup
+        # Also used by "splash" tool_type to skip tt.close() call of it's own.
+        self.bbox = bbox                    # Canvas images pass their bbox
+        self.parent = parent                # Canvas images pass their tk.canvas path
 
         self.visible_delay = visible_delay if visible_delay else VISIBLE_DELAY
         self.visible_span = visible_span if visible_span else VISIBLE_SPAN
@@ -6164,7 +6227,7 @@ class ToolTips(CommonTip):
         # 2024-09-02 - def pb_close(
         callback_function = old_dict['pb_close']
         if callback_function is not None:
-            # Loudness toggle splash
+            # mserve.py Loudness toggle splash
             d_print("  running callback_function:", callback_function)
             callback_function()  # Tell "piggy_back" to destroy it's frame
             self.poll_tips()
@@ -6273,8 +6336,9 @@ class ToolTips(CommonTip):
 
         """
         #if not self.widget.winfo_exists():  # Oct 18/23 - enhancement
-        if not self.widget.winfo_exists() and self.tool_type is not 'piggy_back' \
-                and self.tool_type is not 'splash':
+        if self.tool_type is not 'piggy_back' \
+                and self.tool_type is not 'splash' \
+                and not self.widget.winfo_exists():  # 2026-05-30 check last
             # If parent closed, tool tip is irrelevant. bserve bup_view close
             d_print("Parent closed, tool tip irrelevant. bserve bup_view close",
                     str(self.widget)[-4:])
@@ -6446,17 +6510,27 @@ class ToolTips(CommonTip):
         # Screen coordinates of widget  NW -- NE
         #                               |      |
         #                               SW -- SE
-        widget_nw = (self.widget.winfo_rootx(), self.widget.winfo_rooty())
-        widget_ne = (self.widget.winfo_rootx() + self.widget.winfo_width(),
-                     widget_nw[1])
-        widget_sw = (widget_nw[0], widget_nw[1] + self.widget.winfo_height())
-        widget_se = (widget_ne[0], widget_sw[1])
+        if self.bbox:
+            x1, y1, x2, y2 = self.bbox
+            widget_nw = (x1, y1)
+            widget_ne = (x2, y1)
+            widget_sw = (x1, y2)
+            widget_se = (x2, y2)
+        else:
+            widget_nw = (self.widget.winfo_rootx(), self.widget.winfo_rooty())
+            widget_ne = (self.widget.winfo_rootx() + self.widget.winfo_width(),
+                         widget_nw[1])
+            widget_sw = (widget_nw[0], widget_nw[1] + self.widget.winfo_height())
+            widget_se = (widget_ne[0], widget_sw[1])
 
         ''' June 15, 2023 - mserve fake ruler can be 7000 px wide on 1000 frame 
             Patch code to support new anchor "sc" (South Center) '''
-        parent_name = self.widget.winfo_parent()
-        # noinspection PyProtectedMember
-        parent = self.widget._nametowidget(parent_name)
+        if self.parent:
+            parent = self.parent
+        else:
+            parent_name = self.widget.winfo_parent()
+            # noinspection PyProtectedMember
+            parent = self.widget._nametowidget(parent_name)
         parent_nw = (parent.winfo_rootx(), parent.winfo_rooty())
         parent_ne = (parent.winfo_rootx() + parent.winfo_width(),
                      parent_nw[1])
@@ -6467,8 +6541,11 @@ class ToolTips(CommonTip):
             # Above: widget_ne: (9442, 169) parent_ne: (4043, 169)
             widget_ne = parent_ne
 
-        x = self.widget.winfo_rootx() + 20
-        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 10
+        # initial x, y for tip window will be widget's x1 + 20 and widget's y2 + 10
+        x = widget_nw[0] + 20  # could use ne[0] as well
+        y = widget_se[1] + 10  # could use sw[1] as well
+        #x = self.widget.winfo_rootx() + 20
+        #y = self.widget.winfo_rooty() + self.widget.winfo_height() + 10
 
         #print("parent.__dict__:", parent.__dict__)
         # parent.__dict__: {
@@ -6512,7 +6589,7 @@ class ToolTips(CommonTip):
         try:
             self.fg = self.widget["background"]  # self.tool_type 'button' or
             self.bg = self.widget["foreground"]  # 'menu' using tk. NOT ttk.
-        except tk.TclError:
+        except (tk.TclError, TypeError):
             self.fg = self.dft_fg  # 'canvas_button', 'label', 'splash',
             self.bg = self.dft_bg  # 'piggy-back' have no fg/bg colors.
         ''' 2024-09-07 - Original code broken by ttk.Button() 
@@ -6540,9 +6617,12 @@ class ToolTips(CommonTip):
             self.tip_window.wm_geometry("+%d+%d" % (x, y))
             parent.update()
         else:
-            self.tip_window = tk.Toplevel(self.widget)
+            if self.parent:
+                self.tip_window = tk.Toplevel(self.parent)
+            else:
+                self.tip_window = tk.Toplevel(self.widget)
             self.tip_window.wm_overrideredirect(1)   # Undecorated
-            self.tip_window.wm_geometry("+%d+%d" % (x, y))
+            self.tip_window.wm_geometry("+%d+%d" % (x, y))  # changes later
 
         # Track mouse movements to change window geometry
         self.window_mouse_xy = self.current_mouse_xy
@@ -6745,13 +6825,14 @@ class ToolTips(CommonTip):
         d_print('REL_S:', str(event.widget)[-4:], event.x, event.y)
         self.log_event('release', event.widget, event.x, event.y)
 
-    def close(self, widget, flush_log=True):
+    def close(self, widget, flush_log=True, suppress_error=False):
         """ When a window closes, all tooltips in it must be removed.
             Can be called externally.  Extra steps required to ensure
             window isn't visible.  Caller needs top.update() afterwards.
 
         :param widget: either button or parent / grandparent of button.
         :param flush_log: empty self.log_list for all events.
+        :param suppress_error: When True don't print trace
         """
         new_list = []
         start = len(self.tips_list)  # Compare length at end to ensure found
@@ -6784,7 +6865,7 @@ class ToolTips(CommonTip):
             pass
         end = len(self.tips_list)
         if start == end:
-            if self.print_error:
+            if self.print_error and not suppress_error:
                 print("\n" + self.who + "close() called with no effect:", start)
                 print_trace()
                 print("Widget:", widget)

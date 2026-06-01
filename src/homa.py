@@ -1180,9 +1180,10 @@ class SelectImage(DeviceCommonSelf):
 
     """
 
-    def __init__(self, ApplicationSelf, updateCB, title, folder_path, width=150, height=125):
+    def __init__(self, ApplicationSelf, updateCB, title, folder_path,
+                 img_width=150, img_height=125):
         """ DeviceCommonSelf(): Variables used by all classes """
-        DeviceCommonSelf.__init__(self, "LayoutDetails().")  # Define self.who
+        DeviceCommonSelf.__init__(self, "SelectImage().")  # Define self.who
         _who = self.who + "__init__():"
 
         global ni  # Updating mutable ni.layout within ni.layouts[]
@@ -1191,7 +1192,7 @@ class SelectImage(DeviceCommonSelf):
         self.updateCB = updateCB
         self.title = title
         self.folder_path = folder_path
-        self.width = width; self.height = height
+        self.img_width = img_width; self.img_height = img_height
 
         if self.app.select_image_is_active and self.app.select_image_top:
             # Above declared in self.app() class but are changed here.
@@ -1199,14 +1200,12 @@ class SelectImage(DeviceCommonSelf):
             self.top.lift()
             return
 
-        self.win_grp = self.app.win_grp
-        self.tt = self.app.tt
+        self.win_grp = self.app.win_grp  # Child Windows Group
+        self.tt = self.app.tt  # Tooltips()
         self.isActive = self.app.isActive  # If False, HomA is shutting down
 
-        # regular image names to make code copying easier
-        self.img_mag_glass = self.app.img_mag_glass
-        self.img_checkmark = self.app.img_checkmark
-
+        self.img_mag_glass = self.app.img_mag_glass  # Help button image
+        self.img_checkmark = self.app.img_checkmark  # Close (Done) button image
 
         self.top = tk.Toplevel()  # new top level inside Application() top level.
         _geom = [self.app.winfo_width(), self.app.winfo_height(),
@@ -1239,6 +1238,7 @@ class SelectImage(DeviceCommonSelf):
         self.top.bind("<Escape>", self.Close)
         self.top.protocol("WM_DELETE_WINDOW", self.Close)
 
+        ''' To support scrolling on a frame, it must be packed inside canvas '''
         # 1. Main container and Canvas
         container = ttk.Frame(self.top)
         canvas = tk.Canvas(container)
@@ -1257,101 +1257,43 @@ class SelectImage(DeviceCommonSelf):
         canvas.create_window((0, 0), window=self.frame, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
 
-        # 5. Bind mouse wheel
-        canvas.bind("<MouseWheel>", lambda event: self.app.MouseWheel(event))
+        def on_mouse_wheel(event):
+            """ Mouse wheel scroll event bound to canvas """
+            # For Windows (<MouseWheel>) and Linux (<Button-5>/<Button-4>)
+            if event.num == 5 or event.delta < 0:
+                canvas.yview_scroll(1, "units")
+            else:
+                canvas.yview_scroll(-1, "units")
+
+        # 5. Bind mouse wheel (2026-05-31 was bind, now use bind_all)
+        canvas.bind_all("<MouseWheel>", lambda event: on_mouse_wheel(event))
         # Button-4 is mousewheel scroll up event
-        canvas.bind("<Button-4>", lambda event: self.app.MouseWheel(event))
+        canvas.bind_all("<Button-4>", lambda event: on_mouse_wheel(event))
         # Button-5 is mousewheel scroll down event
-        canvas.bind("<Button-5>", lambda event: self.app.MouseWheel(event))
+        canvas.bind_all("<Button-5>", lambda event: on_mouse_wheel(event))
 
         # 6. Layout
         container.pack(fill="both", expand=True)
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
-
         self.top.update()
 
-        if not self.folder_path:  # Folder path should be passed because there is no
-            self.folder_path = g.HOME  # directory navigation available
-        self.selectedPath = None
+        ''' Bind <Configure> (Resize and move event) to calculate columns '''
+        self.top.bind("<Configure>", self.on_resize)
+        width = self.top.winfo_width()
+        self.event_id = None  # Regrid event delayed until resize stops
 
-        # noinspection SpellCheckingInspection
-        '''
-In standard Tkinter, the Frame widget does not natively support scrolling. To 
-scroll clickable button images, you must embed a Frame inside a Canvas and link 
-the canvas to a Scrollbar. 
+        if not self.folder_path:  # Folder path wasn't passed and it is needed
+            self.folder_path = g.HOME  # for .askdirectory() initial directory
+        self.selectedPath = None  # new path from .askdirectory()
 
-Core Implementation Steps
-
-    Canvas & Scrollbar: Create a Canvas widget and a Scrollbar. Link them 
-        together using yscrollcommand and command=canvas.yview.
-    Inner Frame: Create a separate Frame (the "scrolling content") as a child 
-        of the Canvas.
-    Window Creation: Use canvas.create_window() to place the inner frame onto 
-        the canvas.
-    Buttons with Images: Load images using PhotoImage (or Pillow for JPGs) and 
-        pack them as Button widgets into the inner frame.
-    Dynamic Scroll Region: Bind the inner frame's <Configure> event to update 
-        the canvas's scrollregion so the scrollbar knows the content's size. 
-
-Example Code Template
-
-python
-
-import tkinter as tk
-from tkinter import ttk
-
-root = tk.Tk()
-
-# 1. Main container and Canvas
-container = tk.Frame(root)
-canvas = tk.Canvas(container)
-scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
-
-# 2. The Inner Frame where buttons go
-scrollable_frame = tk.Frame(canvas)
-
-# 3. Update the scroll region whenever the inner frame changes size
-scrollable_frame.bind(
-    "<Configure>",
-    lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-)
-
-# 4. Add the inner frame to the canvas
-canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-canvas.configure(yscrollcommand=scrollbar.set)
-
-# 5. Populate with button images
-# Note: Keep a reference to your images so they aren't garbage collected
-for i in range(20):
-    btn = tk.Button(scrollable_frame, text=f"Image Button {i}")
-    btn.pack(pady=5)
-
-# Layout
-container.pack(fill="both", expand=True)
-canvas.pack(side="left", fill="both", expand=True)
-scrollbar.pack(side="right", fill="y")
-
-root.mainloop()
-
-Use code with caution.
-Key Considerations
-
-    Image Management: Always keep a reference to your image objects 
-        (e.g., in a list) to prevent them from disappearing due to 
-        Python's garbage collection.
-    Mouse Wheel: By default, the mouse wheel won't work automatically. 
-    You must bind <MouseWheel> to the canvas or the entire application.
-    Modern Alternative: If you prefer a simpler API, the CustomTkinter 
-        library provides a CTkScrollableFrame widget that handles this 
-        complexity automatically. 
-        '''
-
-        # Button thumbnail images and paths synchronize
-        self.thumbnails = []
-        self.paths = []
+        self.thumbnails = []  # Button thumbnail images and paths synchronize
+        self.paths = []  # Button thumbnail images and paths synchronize
         self.widgets = []  # Save widgets to regrid during resize
-        self.column_count = 6  # TODO calculate using pad y
+        self.img_pad = 10
+        self.column_width = self.img_width + self.img_pad * 2
+        self.gutter = self.column_width / 2  # gutter prevents partial image
+        self.column_count = int((width - self.gutter) // self.column_width)
 
         self.BuildSelections()
 
@@ -1363,12 +1305,9 @@ Key Considerations
 
         self.win_grp.unregister_child(self.top)
         self.tt.close(self.top)
-        self.top.destroy()
+        self.top.destroy()  # This will unbind all widget events within
+        # Let parent know there is no need to lift destroyed window in stacking order
         self.top = self.app.select_image_is_active = self.app.select_image_top = None
-
-        # if close_cb:
-        #    close_cb()
-        # self.updateDropdown()
 
     def doSelection(self, selected_path):
         """ Image has been selected. Inform parent """
@@ -1420,7 +1359,8 @@ Key Considerations
                                 command=_command, style="C.TButton",
                                 image=_pic)  # , compound="left"
 
-            widget.grid(row=_row, column=_col, padx=10, pady=10, sticky="")
+            widget.grid(row=_row, column=_col, sticky="",  # sticky to center
+                        padx=self.img_pad, pady=self.img_pad)
 
             _path, _ext = os.path.split(full_path)
             self.tt.add_tip(widget, _ext)
@@ -1439,7 +1379,7 @@ Key Considerations
                 v0_print(_who, e)
                 continue
 
-            raw_img.thumbnail((self.width, self.height))
+            raw_img.thumbnail((self.img_width, self.img_height))
 
             # 2. Convert for Tkinter
             tk_img = ImageTk.PhotoImage(raw_img)
@@ -1460,71 +1400,39 @@ Key Considerations
             else:
                 col += 1
 
-        '''
-To create a thumbnail image for a UI label using the Pillow (PIL) library in 
-Python, you typically use the thumbnail() method. 
+    def on_resize(self, _event):
+        """ Window has been resized. Calculate new column count and regrid
+            photos when column count changes. """
+        _who = self.who + "on_resize():"
 
-Key Method: thumbnail()
-The thumbnail() method modifies an image in-place to be no larger than a 
-specified size while preserving its aspect ratio. Unlike resize(), it will not 
-enlarge an image if the target size is larger than the original. 
+        def update_images():
+            """ 500 ms after mouse stops moving, update the columns. """
+            width = self.top.winfo_width()
+            new_column_count = int((width - self.gutter) // self.column_width)
+            if new_column_count == self.column_count:
+                self.event_id = None  # Allow another delayed update
+                return
 
-Implementation Steps
+            self.column_count = new_column_count
+            column = 1; row = 1
+            for widget in self.widgets:
+                widget.grid(column=column, row=row)
+                if column >= self.column_count:
+                    column = 1; row += 1
+                else:
+                    column += 1
 
-    Open the Image: Load your file using Image.open().
-    Define Size: Provide a tuple representing the maximum width and height 
-        (e.g., (128, 128)).
-    Generate Thumbnail: Call the thumbnail() method.
-    Display in Label: If using Tkinter, convert the Pillow image to a 
-        PhotoImage to display it in a tk.Label. 
+            self.event_id = None  # Allow another delayed update
 
-Example Code (Tkinter)
-python
-
-from PIL import Image, ImageTk
-import tkinter as tk
-
-root = tk.Tk()
-
-# 1. Open and create thumbnail
-img = Image.open("your_image.jpg")
-img.thumbnail((150, 150))  # Max dimensions for the label
-
-# 2. Convert for Tkinter
-tk_img = ImageTk.PhotoImage(img)
-
-# 3. Add to Label
-label = tk.Label(root, image=tk_img)
-label.pack()
-
-root.mainloop()
-
-Use code with caution.
-Important Tips
-
-    Modifies In-Place: Because thumbnail() modifies the original object,
-        it is often best to create a copy first if you need to keep the 
-        original image data in memory.
-    Quality: Use a resampling filter like Image.Resampling.LANCZOS for 
-        higher quality if you are manually resizing.
-    Automatic Resizing: To make an image automatically fit a container or 
-        label as it resizes, you may need to bind a callback to the 
-        <Configure> event.
-        '''
+        # Delay recalculations for 1/2 second
+        if self.event_id:  # Cancel previous delayed recalculation
+            self.top.after_cancel(self.event_id)
+        self.event_id = self.top.after(500, update_images)
 
 
-class LayoutDetails(DeviceCommonSelf):
-    """ Network Information for every MAC address is stored in devices.json
-        which is read into self.mac_dicts list.
-
-        Use mac_dtl = LayoutDetails(self, current_row) within Application().
-
-        Application() class self is inherited here as self.app.
-
-        Call self.app.readLayouts() to build new Layout(s) if necessary.
-
-        Then to edit (or simply show) details for current self.app.mac call
-        self.mac_dtl.edit() from Application().
+class DeviceImages(DeviceCommonSelf):
+    """ Open window to get device short name, long name, is_light flag and
+        image filenames for device treeview (list) and device canvas (layout).
 
 frame   +---------------------------------------------------------------------+
         |                                                                     |
@@ -1568,7 +1476,7 @@ static  |                                            +------+     +-------+   |
 
     def __init__(self, ApplicationSelf, cr, updateCallback):
         """ DeviceCommonSelf(): Variables used by all classes """
-        DeviceCommonSelf.__init__(self, "LayoutDetails().")  # Define self.who
+        DeviceCommonSelf.__init__(self, "DeviceImages().")  # Define self.who
         _who = self.who + "__init__():"
 
         global ni  # Updating mutable ni.layout within ni.layouts[]
@@ -1763,6 +1671,7 @@ dynamic |                                                                     |
         def on_change(*_args):
             """ Header variable has changed. Write to disk. """
             self.layout["short_name"] = self.short_text.get()
+            self.layout["name"] = self.layout["short_name"]  # used by canvas
             self.layout["long_name"] = self.long_text.get()
             # Get 1/0
             try:
@@ -1855,14 +1764,20 @@ img_frm | This Device        +Q+       ~/images              +Q+      XXXX
             raw_img.thumbnail((125, 75))  # Max dimensions for the label
 
             # 2. Convert for Tkinter
-            tk_img = ImageTk.PhotoImage(raw_img)
+            tk_photo = ImageTk.PhotoImage(raw_img)
             if idx == -1:
-                self.thumbnails.append(tk_img)  # save from garbage collection
+                self.thumbnails.append(tk_photo)  # save from garbage collection
             else:
-                self.thumbnails[idx] = tk_img  # save from garbage collection
+                self.thumbnails[idx] = tk_photo  # save from garbage collection
+                # new image can be smaller so clear old image with empty string
+                target_label = self.img_frm.grid_slaves(row=row, column=4)[0]
+                target_label.config(image="")
 
-            # 3. Add to Label
-            ttk.Label(self.img_frm, image=tk_img). \
+            target_label = self.img_frm.grid_slaves(row=row, column=4)
+            if hasattr(target_label, 'config'):
+                target_label.config(image="")  # first time no label exists
+
+            ttk.Label(self.img_frm, image=tk_photo). \
                 grid(row=row, column=4, padx=5, pady=10)
 
         def set_image_name(img_path):
@@ -2133,47 +2048,14 @@ static  |                                            +------+     +-------+   |
         device_button(0, 1, "Done", self.Close, "Close Detail Settings.",
                       "ne", pic=self.img_checkmark)
 
-    def Get(self, item):
-        """ Get device information. Based on TreeviewRow.Get() """
-
-        _who = self.who + "Get():"
-        if not self.isActive:
-            return  # Shutting down
-
-        # 2026-05-23 All this appears unnecessary
-        if True is True:
-            v0_print(_who, "Early exit from method that does nothing.")
-            return
-
-        self.item = str(item)  # iid - Becomes invalid when swapping rows!
-
-        if self.usingDevicesTreeview:
-            self.values = self.tree.item(self.item)['values']
-            self.power_text = self.tree.item(self.item)['text']  # FUTURE?
-        else:
-            self.power_text, self.values = self.fake_tree[int(item)]
-
-        self.name_column = self.values[0]  # Host name / IP address
-        self.attribute_column = self.values[1]  # Host alias / MAC / Type Code
-        self.mac = self.values[2]  # mac_dict['mac'] is non-displayed value
-
-        try:
-            self.mac_dict = ni.get_mac_dict(self.mac)
-            self.layout = ni.layout_for_mac(self.mac)
-            self.inst_dict = ni.inst_for_mac(self.mac)
-            self.inst = self.inst_dict['instance']
-        except IndexError:
-            v0_print(_who, "Catastrophic Error. MAC not found:", self.mac)
-            v0_print("  Name:", self.name_column)
-
-
+      
 class SystemMonitor(DeviceCommonSelf):
     """ System Monitor - sensors CPU/GPU Temp and Fan Speeds.
 
         Print results to console unless `homa.py -s` (silent) was used.
     """
 
-    def __init__(self, top):
+    def __init__(self, ApplicationSelf):
         """ DeviceCommonSelf(): Variables used by all classes
         :param top: Toplevel created by Application() class instance.
         """
@@ -2198,28 +2080,10 @@ class SystemMonitor(DeviceCommonSelf):
 
         _who = self.who + "__init__():"
 
-        self.top = top  # Copy of toplevel for creating treeview
-        self.tree = self.top.tree  # Pre-existing Applications() devices tree
-
-        # 2026-05-26 Comment out unused attributes below
-        #self.isActive = self.top.isActive
-
-        #self.photos = self.top.photos  # Applications() device photos
-        #self.item = None  # Applications() Treeview Row iid
-        #self.photo = None  # Applications() Photo image
-        #self.power_text = None  # Applications() Row text, E.G. "ON", "OFF"
-
-        #self.values = None  # Applications() Row values - Name lines, Attribute lines, MAC
-        #self.name_column = None  # Applications() Device Name & IP address - values[0]
-        #self.attribute_column = None  # Applications() 3 line device Attributes - values[1]
-        #self.mac = None  # Applications() MAC address - hidden row values[-1] / values[2]
-
-        #self.mac_dict = None  # Applications() device dictionary
-        #self.inst = None  # Applications() device instance
-        #self.inst_dict = None  # Applications() instance dictionary
-
-        #self.type = "System Monitor"
-        #self.type_code = 900  # 2025-03-01 Fake type_code, need code setup
+        self.app = ApplicationSelf
+        self.tree = self.app.tree  # Pre-existing Applications() devices tree
+        self.isActive = self.app.isActive  # To detect shutdown
+        self.photos = self.app.photos  # Applications() device photos
         self.requires = ['ifconfig', 'iwconfig', 'sensors', 'top']
         self.installed = []
         self.checkDependencies(self.requires, self.installed)
@@ -2487,11 +2351,11 @@ Later:
 
         ''' Create treeview frame with scrollbars '''
         # Also once image placed into treeview row, it can't be read from the row.
-        self.tree = ttk.Treeview(self.top, column=('Seconds', 'CPU', 'GPU', 'Time'),
+        self.tree = ttk.Treeview(self.app, column=('Seconds', 'CPU', 'GPU', 'Time'),
                                  selectmode='none', style="Treeview", show="headings")
 
         self.tree.grid(row=0, column=0, sticky='nsew')
-        v_scroll = tk.Scrollbar(self.top, orient=tk.VERTICAL,
+        v_scroll = tk.Scrollbar(self.app, orient=tk.VERTICAL,
                                 width=14, command=self.tree.yview)
         v_scroll.grid(row=0, column=1, sticky=tk.NS)
         self.tree.configure(yscrollcommand=v_scroll.set)
@@ -3998,7 +3862,7 @@ Application().Rediscover(): FOUND NEW INSTANCE or REDISCOVERED LOST INSTANCE:
 
         if self.AdbDevice is None or not self.recheckConnection():
             v1_print(_who, "No connection to:", self.ip)
-            if self.Connect(forgive=forgive):  # TODO else: error message
+            if self.Connect():  # TODO else: error message
                 self.getAdbDeviceByIP()
                 if self.AdbFound:
                     v1_print(_who, "Connection established to IP:", self.ip)
@@ -4007,10 +3871,11 @@ Application().Rediscover(): FOUND NEW INSTANCE or REDISCOVERED LOST INSTANCE:
             else:
                 return self.powerStatus
 
-        v2_print("\n" + _who, "Get Power Status for:", self.ip)
-        grep_input = "dumpsys input | grep screenOn"  # 0.1 seconds
-        grep_power = "dumpsys power | grep 'Display Power'"  # 0.5 seconds
-        grep_display = "dumpsys display | grep mScreenState"  # 0.1 seconds
+        v1_print("\n" + _who, "Get Power Status for:", self.ip)
+        # extra whitespace for printing to line up
+        grep_input   = "dumpsys input | grep screenOn       "  # 0.1 seconds
+        grep_power   = 'dumpsys power | grep "Display Power"'  # 0.5 seconds
+        grep_display = "dumpsys display | grep mScreenState "  # 0.1 seconds
         grep_audio = "dumpsys audio | " + \
                      'grep -A5 "\- STREAM_MUSIC" | tail -n1'  # 0.13 sec
 
@@ -4025,7 +3890,7 @@ Application().Rediscover(): FOUND NEW INSTANCE or REDISCOVERED LOST INSTANCE:
             if _res is None:
                 return None  # Nothing found or Exception
 
-            v0_print("{} {}: '{}'.".format(_who, _txt, _res))
+            v1_print("{}\n  '{}'  RESULT: '{}'".format(_who, _txt, _res.rstrip()))
             _return = None  # Neither "ON" nor "OFF"
             if ":" in _res:
                 _return = _res.split(":")[1].rstrip()  # remove \n
@@ -4086,6 +3951,8 @@ Application().Rediscover(): FOUND NEW INSTANCE or REDISCOVERED LOST INSTANCE:
         if self.sendKeycodeList(_who, keycode_script):
             return "ON"
         else:
+            if not forgive:
+                v0_print(_who, "keycode_script[] failed to run.")
             return "?"
 
     def turnPictureOff(self, forgive=False):
@@ -4176,6 +4043,8 @@ Application().Rediscover(): FOUND NEW INSTANCE or REDISCOVERED LOST INSTANCE:
         if self.sendKeycodeList(_who, keycode_script):
             return "Pic. OFF"
         else:
+            if not forgive:
+                v0_print(_who, "keycode_script[] failed to run.")
             return "?"
 
     def isDevice(self, forgive=False, timeout=None):
@@ -6046,7 +5915,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         self.canvas = toolkit.ThingOfThings(
             self, self.images, things=self.layouts, diagonal_cursor=GLO['DIAGONAL_CURSOR'],
             resizeCB=self.saveLayout, contextCB=self.LayoutContextCallback,
-            width=1000, height=600, highlightthickness=3
+            width=1000, height=600, highlightthickness=3  # tt.add
         )
         self.canvas.grid(row=0, column=0, sticky='nsew')
         self.update()
@@ -6448,6 +6317,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         _who = self.who + "LayoutContextCallback():"
         #print(_who, "x:", event.x, "y:", event.y)
 
+        ''' Close any opened tooltips '''
+        # self.tt.zap(self.canvas)
+
         ''' Get fake treeview row instance '''
         cr = TreeviewRow(self)  # Get current row into instance variables
         cr.Get(idx, treeview=False, all_data=self.fake_tree)
@@ -6593,8 +6465,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         menu.add_separator()
         state = tk.DISABLED if self.details_is_active else tk.NORMAL
-        menu.add_command(label="Details", font=g.FONT,
-                         command=lambda: self.editDetails(cr),
+        menu.add_command(label="Aliases and Images", font=g.FONT,
+                         command=lambda: self.editDeviceImages(cr),
                          image=self.img_details, compound=tk.LEFT, state=state)
         menu.add_command(label="Help", font=g.FONT, command=lambda: g.web_help(help_id),
                          image=self.img_mag_glass, compound=tk.LEFT)
@@ -6838,25 +6710,24 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         cr.tree.delete(str(new_count))  # Delete the last treeview row moved
         self.photos.pop(new_count)  # Delete the last photo moved
 
-    def editDetails(self, cr):
-        """ Details - Edit names and link images for devices treeview and map.
+    def editDeviceImages(self, cr):
+        """ Edit name aliases and link images for devices treeview and map.
             Called from device right-click in device treeview and device map.
             Two buttons "Save" and "Cancel"
 
             Labels:
             - Long name (for device list / treeview)
-            - Short name (for device map / layout)
-            - three lines with directory name and pencil icon to edit:
-                o All images
+            - Short name (for device map / layout and context menu)
+            - three lines with directory name and search button to change:
+                o Built-in images
                 o Device class (defaults to All images)
                 o This device (defaults to Device Class)
-            - two lines with image name and pencil icon to edit:
-                o Device class (defaults to All images)
-                o This device (defaults to Device Class)
+            - three lines repeated twice, once for device treeview (list)
+                and once for device layout (map).
 
             Saved to memory self.mac_dicts then to file devices.json
         """
-        _who = self.who + "editDetails():"
+        _who = self.who + "editDeviceImages():"
 
         # Make copy of current row Layout{} before changes are made
         old_layout = copy.deepcopy(cr.layout)
@@ -6914,20 +6785,22 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             cr.Update(cr.item)
 
 
-        def updateImages(image_list):
-            """ Check all images in list for validity """
-            _who2 = _who[:-3] + ".updateImage()[" + image_list + "]:"
+        def validateImages(image_list):
+            """ Check all images in list for validity. Restore old filename
+                if new filename doesn't exist or cannot be read as image.
+            """
+            _who2 = _who[:-3] + ".validateImages()[" + image_list + "]:"
             v1_print(_who2, "Validate images.")
             for _i, path in enumerate(cr.layout[image_list]):
                 if not img.is_valid_image(path):
                     cr.layout[image_list][_i] = old_layout[image_list][_i]
                     overrides_made[image_list] = True
 
-        def updateTreeImages():
+        def updateTreePhotos():
             """ Treeview image paths are stored in layout["tree_images"]. """
-            _who2 = _who[:-3] + ".updateTreeImage():"
+            _who2 = _who[:-3] + ".updateTreePhotos():"
             v1_print(_who2, "New images encountered.")
-            updateImages("tree_images")  # This can reverse changes made
+            validateImages("tree_images")  # This can reverse changes made
 
             if not self.usingDevicesTreeview:
                 return  # No image on screen to update at this time.
@@ -6943,11 +6816,11 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             v1_print(_who2, "self.photos[] updated. \n  Calling cr.Update()")
             cr.Update(cr.item)
 
-        def updateLayoutImages():
+        def updateRawImages():
             """ Layout image paths are stored in layout["layout_images"]. """
-            _who2 = _who[:-3] + ".updateTreeImage():"
+            _who2 = _who[:-3] + ".updateRawImages():"
             v1_print(_who2, "New images encountered.")
-            updateImages("layout_images")  # This can reverse changes made
+            validateImages("layout_images")  # This can reverse changes made
 
             if not self.usingDevicesCanvas:
                 return  # No image on screen to update at this time.
@@ -6972,12 +6845,12 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                      'self.canvas.meta_dict["idx"]', md["idx"])
             self.canvas.resize_image_to_border(md)
 
-        def updateDetails():
-            """ File layout.json is automatically updated in LayoutDetails()
+        def updateAliasesAndImages():
+            """ File layout.json is automatically updated in DeviceImages()
                 class. From here the images can be updated in DevicesTreeview
-                rows and DevicesCanvas widgets.
+                rows or DevicesCanvas widgets.
             """
-            _who2 = _who[:-3] + ".updateDetails():"
+            _who2 = _who[:-3] + ".updateAliasesAndImages():"
             v1_print(_who2, "Start final updates(overrides)")
             # This outputs a new dictionary showing {key: (old_value, new_value)}
             mismatched = {}
@@ -6988,9 +6861,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
             updateTreeData()  # May or may not have been changes. Check all
             if old_layout["tree_images"] != cr.layout["tree_images"]:
-                updateTreeImages()
+                updateTreePhotos()
             if old_layout["layout_images"] != cr.layout["layout_images"]:
-                updateLayoutImages()
+                updateRawImages()
 
             if bool(overrides_made):
                 v0_print(_who2, "Reversing changes:\n ",
@@ -6998,7 +6871,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
                 self.saveLayout()
 
         # Class to create window and process Device Details
-        LayoutDetails(self, cr, updateDetails)
+        DeviceImages(self, cr, updateAliasesAndImages)
 
     def refreshApp(self, tk_after=True):
         """ Sleeping loop until need to do something. Fade tooltips. Resume from
