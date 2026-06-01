@@ -8379,8 +8379,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             Calls DisplayCommon to create Window, Frame and Scrollbox.
         """
         _who = self.who + "DisplayTvSettings():"
-        sound = cr.inst_dict['instance']  # shorthand alias
-        #title = "Sony TV Settings"
+        inst = cr.inst_dict['instance']  # shorthand alias
+
         title = cr.layout['short_name'] + " Settings"
 
         #x, y = hc.GetMouseLocation()  # 2025-05-30 TODO move into DisplayCommon()
@@ -8391,7 +8391,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         if scrollbox is None:
             return  # Window already opened and method is running
 
-        sound.getAllSettings()  # defaults to no_log=True
+        inst.getAllSettings()  # defaults to no_log=True
 
         # Tabs for self.event_scrollbox created by self.DisplayCommon()
         tabs = ("400", "right", "550", "right", "700", "right",
@@ -8415,30 +8415,30 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         ''' Single column mode with TV Position shown
         '''
         if cr.mac_dict['type_code'] == GLO['KDL_TV']:
-            in4("Power Status", sound.powerStatus)
-            in4("Power Saving Mode", sound.powerSavingMode)
-            in4("TV Position", sound.tvPosition)
-            in4("Speaker Volume", sound.volumeSpeaker)
-            in4("Headphones Volume", sound.volumeHeadphones)
-            in4("Subwoofer Level", sound.subwooferLevel)
-            in4("Subwoofer Freq", sound.subwooferFreq)
-            in4("Subwoofer Phase", sound.subwooferPhase)
-            in4("Subwoofer Power", sound.subwooferPower)
+            in4("Power Status", inst.powerStatus)
+            in4("Power Saving Mode", inst.powerSavingMode)
+            in4("TV Position", inst.tvPosition)
+            in4("Speaker Volume", inst.volumeSpeaker)
+            in4("Headphones Volume", inst.volumeHeadphones)
+            in4("Subwoofer Level", inst.subwooferLevel)
+            in4("Subwoofer Freq", inst.subwooferFreq)
+            in4("Subwoofer Phase", inst.subwooferPhase)
+            in4("Subwoofer Power", inst.subwooferPower)
         else:
-            for _label, _value in sound.all_settings:
+            for _label, _value in inst.all_settings:
                 in4(_label, _value)
 
         scrollbox.insert("end", "\n\n")
 
         ''' Double column mode with TV Position hidden
-        in4("Power Status", sound.powerStatus,
-             "Subwoofer Power", sound.subwooferPower)
-        in4("Power Saving Mode", sound.powerSavingMode,
-             "Subwoofer Phase", sound.subwooferPhase)
-        in4("Speaker Volume", sound.volumeSpeaker,
-             "Subwoofer Level", sound.subwooferLevel)
-        in4("Headphones Volume", sound.volumeHeadphones,
-             "Subwoofer Freq", sound.subwooferFreq)
+        in4("Power Status", inst.powerStatus,
+             "Subwoofer Power", inst.subwooferPower)
+        in4("Power Saving Mode", inst.powerSavingMode,
+             "Subwoofer Phase", inst.subwooferPhase)
+        in4("Speaker Volume", inst.volumeSpeaker,
+             "Subwoofer Level", inst.subwooferLevel)
+        in4("Headphones Volume", inst.volumeHeadphones,
+             "Subwoofer Freq", inst.subwooferFreq)
         scrollbox.insert("end", "\n\n")
         '''
 
@@ -8535,7 +8535,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             if not self.refreshApp(tk_after=False) or self.suspending:
                 break
             try:
-                self.after(5)  # tk_after=False is too FAST
+                self.after(15)  # tk_after=False is too FAST
                 _vum.update_display()  # paint LED meters reflecting amplitude
             except (tk.TclError, AttributeError):
                 break  # Break in order to terminate vu_meter.py below
@@ -9085,7 +9085,7 @@ def main():
             vu_meter_pid = pid  # command was 'vu_meter.py stereo homa'
 
     ''' One or more fingerprints indicating another copy running? '''
-    if h_pid or homa_pid:
+    if h_pid or homa_pid or vu_meter_pid:
         title = "Another copy of HomA is running!"
         text = "Cannot start two copies of homa. Switch to the other version."
         text += "\n\nIf the other version crashed, the process(es) still running"
