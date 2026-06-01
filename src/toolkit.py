@@ -5058,9 +5058,10 @@ class ThingOfThings(tk.Canvas):
         _existing_coords = False  # Existing Image coordinates or use new?
         x1 = self.newX;  y1 = self.newY  # Default coordinates for new devices
 
-        def add_new_photo(_e):
+        def add_new_photo(_e=None):
             """ When there are no existing bbox for an image.
                 New photo assigned rotating coordinates with fixed photo size
+                :param _e: Dummy argument for Exception not used.
             """
             _photo = ImageTk.PhotoImage(
                 self.images[idx].resize((self.defaultWidth, self.defaultHeight),
@@ -5088,6 +5089,7 @@ class ThingOfThings(tk.Canvas):
         # Get bounding box of the image item
         bbox = self.bbox(image_id)
         border_id = self.create_rectangle(bbox, outline="", width=0, tags=("all",))
+        # noinspection PyTypeChecker
         coords = self.coords(border_id)
         # "all" tag used to rescale all border outlines on resize, photos can't resize
         self.meta_dict = dict()  # Must reinit or all meta_dicts have last meta_dict
@@ -5242,7 +5244,7 @@ class ThingOfThings(tk.Canvas):
             return
 
         image_name = self.itemcget(image_id, "image")  # "pyimage99"
-        self.tt.close(image_name)
+        self.tt.close(image_name, suppress_error=True)
         self.splash_active = False
 
     def on_leave(self, event):
@@ -5487,9 +5489,6 @@ class ThingOfThings(tk.Canvas):
             self.left_button_motion(event)
             return
 
-        # Define margin for "edge" detection
-        margin = 10
-
         # Get bounding box of the image item
         last_id = self.closest_border_id
         try:
@@ -5698,7 +5697,7 @@ class ThingOfThings(tk.Canvas):
             return
 
         if self.splash_active:
-            self.tt_close(md["image_id"], suppress_error=True)
+            self.tt_close(md["image_id"])
         self.contextCB(md["idx"], event)
 
 
