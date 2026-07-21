@@ -409,7 +409,7 @@ AttributeError: 'module' object has no attribute 'pulsectl'
         # 06:51:24.8 Reversing self.youAssumeAd
         if print_error is False:
             return 24.2424
-        print(who, "\n\tUnable to find 'sink_no_str': " + sink_no_str,
+        print("\n" + who, "\n\tUnable to find 'sink_no_str': " + sink_no_str,
               "Type:", type(sink_no_str), "'refresh':", refresh)
         print("AVAILABLE SINKS:")
         for Sink in self.sinks_now:

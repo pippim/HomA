@@ -1214,7 +1214,7 @@ parser.add_argument('-v', '--verbose1', action='store_true')  # Print Overview
 parser.add_argument('-vv', '--verbose2', action='store_true')  # Print Functions
 parser.add_argument('-vvv', '--verbose3', action='store_true')  # Print Commands
 p_args = parser.parse_args()
-spamming = False  # 2025-08-11 undefined when at bottom
+spamming = False  # When spam printing active, "\n" required before print()
 last_spam_callback = None
 
 

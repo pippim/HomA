@@ -32,11 +32,14 @@ warnings.filterwarnings("ignore", "ResourceWarning")  # PIL python 3 unclosed fi
 #       2025-08-10 - yt-skip.py coordinates outside Ad Skip Button triangle.
 #       2026-02-25 - New configuration "key: value" pair "SYSTRAY_ADJUST: -40".
 #       2026-03-15 - Thermal Cruise fan speed use "↑", "↓", or "━" (unchanged).
-#       2026-04-25 - Calling `adb shell` in loop burns out Xorg. Use ppadb.py.
+#       2026-04-25 - Calling `adb shell` is CPU intensive so use ppadb.py.
 #       2026-04-26 - Throttle Sony KDL REST API calls to 1/second.
 #       2026-05-16 - Device Layout with moving/resizing and shared context menu.
 #       2026-05-24 - Select custom images for Treeview & Device Layout by MAC.
 #       2026-05-29 - Toggle Android TV "audio only" (picture on/off) using adb.
+#       2026-06-01 - Use `pa_listen.py` to reduce CPU from 6% to < 1%.
+#       2026-06-10 - Xorg leaks appears to have been in ytads and not homa.py.
+#       2026-07-21 - Tooltips for Device Aliases and Light? prompt.
 #
 # ==============================================================================
 
@@ -599,8 +602,8 @@ class NetworkInfo(DeviceCommonSelf):
         v2_print(_who, "mac_dicts:", self.mac_dicts)  # 2024-11-09 now has Computer()
         v2_print(_who, "instances:", self.instances)  # Empty list until discovery
         v2_print(_who, "view_order:", self.view_order)  # Empty list until discovery
-        v2_print(_who, "cp.ether_name:", cp.ether_name,  " | cp.ether_mac:",
-                 cp.ether_mac,  " | cp.ether_ip:", cp.ether_ip)
+        v2_print(_who, "cp.ether_name:", cp.ether_name, " | cp.ether_mac:",
+                 cp.ether_mac, " | cp.ether_ip:", cp.ether_ip)
         # name: enp59s0  | mac: 28:f1:0e:2a:1a:ed  | ip: 192.168.0.12
         v2_print(_who, "cp.wifi_name :", cp.wifi_name, " | cp.wifi_mac :",
                  cp.wifi_mac, " | cp.wifi_ip :", cp.wifi_ip)
@@ -1548,7 +1551,7 @@ static  |                                            +------+     +-------+   |
             self.layout = ni.layout_for_mac(self.mac)  # self.layout is mutable
 
         # Device Settings toplevel, frame & bt_frm fields
-        title = "Device Settings"  # Stored in `~/.local/share/homa/layout.json`
+        title = "Aliases and Images"  # Stored in `~/.local/share/homa/layout.json`
 
         self.top = tk.Toplevel()  # new top level inside Application() top level.
         _geom = [self.app.winfo_width(), self.app.winfo_height(),
@@ -1649,6 +1652,13 @@ dynamic |                                                                     |
         label1.grid(row=0, column=0, sticky=tk.EW, padx=15, pady=10)
         short_entry = ttk.Entry(self.hdr_frm, textvariable=self.short_text, width=13)
         short_entry.grid(row=0, column=1, sticky=tk.EW, padx=15, pady=10)
+        _text = 'The "Short name" appears in drop down menus.\n\n'
+        _text += 'It is initialized using the "host name" from\n'
+        _text += 'the configuration file "/etc/hosts".\n\n'
+        _text += 'Change the name here for more meaning without\n'
+        _text += 'effecting the configuration file "/etc/hosts".\n'
+        self.tt.add_tip(short_entry, _text, anchor=tk.SW)
+
         #self.hdr_frm.columnconfigure(1, weight=1)  # short name entry 30%
 
         self.long_text = tk.StringVar()
@@ -1657,6 +1667,12 @@ dynamic |                                                                     |
         label2.grid(row=0, column=2, sticky=tk.EW, padx=15, pady=10)
         long_entry = ttk.Entry(self.hdr_frm, textvariable=self.long_text, width=33)
         long_entry.grid(row=0, column=3, sticky=tk.EW, padx=15, pady=10)
+        _text = 'The "Long name" appears in the "Device List" window.\n\n'
+        _text += 'It is initialized using the "host description" from\n'
+        _text += 'the configuration file "/etc/hosts".\n\n'
+        _text += 'Change the name here for more meaning without\n'
+        _text += 'effecting the configuration file "/etc/hosts".\n'
+        self.tt.add_tip(long_entry, _text, anchor=tk.SE)
         #self.hdr_frm.columnconfigure(3, weight=3)  # long name entry 70%
 
         self.is_light = tk.BooleanVar()
@@ -1666,6 +1682,11 @@ dynamic |                                                                     |
         label2.grid(row=0, column=4, sticky=tk.EW, padx=15, pady=10)
         light_entry = ttk.Entry(self.hdr_frm, textvariable=self.is_light, width=3)
         light_entry.grid(row=0, column=5, padx=15, pady=10)  # sticky=tk.EW,
+        _text = 'Enter "1" to "Light?" prompt and device will be\n'
+        _text += 'controlled by the "Turn all lights power On" and\n'
+        _text += '"OFF" functions.\n\n'
+        _text = 'Enter "0" to indicate device is NOT a light.\n'
+        self.tt.add_tip(light_entry, _text, anchor=tk.SE)
         self.hdr_frm.columnconfigure(5, weight=0)  # is_light? needs 3 chars
 
         def on_change(*_args):
@@ -1865,7 +1886,7 @@ Advanced Selection Options
             """ Function to ask for and update image pathname. """
 
             _who2 = _who[:-3] + ".get_image_name():"
-            self.tt.zap_tip_window(self.top)  # Close any tooltip windows
+            self.tt.zap_tip_window(self.top)  # Clear all displayed tooltips
 
             # self.last_xxx variables for .set_image_name() to reference
             self.last_img_list = img_list  # img_list is mutable tree_images[]
@@ -2045,7 +2066,7 @@ static  |                                            +------+     +-------+   |
 
         ''' ✘ CLOSE BUTTON  '''
         # noinspection PyTypeChecker
-        device_button(0, 1, "Done", self.Close, "Close Detail Settings.",
+        device_button(0, 1, "Done", self.Close, "Close Aliases and Images.",
                       "ne", pic=self.img_checkmark)
 
       
@@ -5351,7 +5372,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
         ''' Big Number Calculator and Delayed Textbox (dtb) are child windows '''
         self.calculator = self.calc_top = self.dtb = None
-        self.yt_skip = self.skip_top = None  # openAdSkip() also child window
 
         ''' DisplayCommon() cmdEvents (toolkit.CustomScrolledText) as child window 
             Also used to display Bluetooth devices and Breathing stats '''
@@ -5419,12 +5439,28 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             if GLO['LED_LIGHTS_STARTUP'] is True:
                 self.bleSaveInst.turnOn()
 
-        ''' If Sony TV used, enable Sony Volume menu controls '''
+        ''' Update dropdown menu with features depending on instances discovered  '''
         self.updateDropdown()
+
+        ''' Launch pa_listen.py '''
+        self.pa_listen_pid = 0  # PulseAudio event listener on sink_input changes
+        if not self.audio.isWorking:
+            self.showInfoMsg(APP_NAME,
+                             "PulseAudio isn't working or software is missing.")
+
+        ''' Spawn pa_listen.py daemon for homa (Move to self.audio later). '''
+        ext_name = "./pa_listen.py options homa 2>/dev/null"
+        self.pa_listen_pid = \
+            ext.launch_command(ext_name, toplevel=self)
 
         ''' Polling and processing with refresh tkinter forever loop '''
         while self.refreshApp():  # Run forever until quit
             pass  # 2025-09-14 TODO: Redesign like yt-skip.py self.loopForever()
+
+        # Application shutting down. Is pa_listen.py still running?
+        if self.pa_listen_pid and ext.check_pid_running(self.pa_listen_pid):
+            os.kill(self.pa_listen_pid, signal.SIGTERM)
+            self.pa_listen_pid = 0  # Prevent double-tap
 
     def getWindowID(self, title):
         """ Use wmctrl to get window ID in hex and convert to decimal for xdotool
@@ -5626,14 +5662,17 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         # Default to enabled
         self.view_menu.entryconfig("Bluetooth devices", state=tk.NORMAL)
         self.view_menu.entryconfig("Discovery timings", state=tk.NORMAL)
+        self.view_menu.entryconfig("Network devices", state=tk.NORMAL)
+        self.view_menu.entryconfig("Thermal cruise", state=tk.NORMAL)
+        self.view_menu.entryconfig("Device Layout", state=tk.NORMAL)
 
-        # Enable options depending on Sensors Treeview or Devices Treeview mounted
+        # Disable active options for Sensors, Devices Treeview and, Layout
         if self.usingDevicesTreeview:  # Devices Treeview is displayed
             self.view_menu.entryconfig("Network devices", state=tk.DISABLED)
-            self.view_menu.entryconfig("Thermal cruise", state=tk.NORMAL)
+        elif self.usingDevicesCanvas:  # Devices Layout is displayed
+            self.view_menu.entryconfig("Device Layout", state=tk.DISABLED)
         else:  # Sensors Treeview is displayed
             self.view_menu.entryconfig("Thermal cruise", state=tk.DISABLED)
-            self.view_menu.entryconfig("Network devices", state=tk.NORMAL)
 
         if GLO['EVENT_ERROR_COUNT'] == 0:
             self.view_menu.entryconfig("Discovery errors", state=tk.DISABLED)
@@ -7651,7 +7690,8 @@ class Application(DeviceCommonSelf, tk.Toplevel):
 
     def refreshThreadSafe(self):
         """ Prevent self.refreshApp rerunning a second rediscovery during
-            error message waiting for acknowledgement
+            first error message waiting for acknowledgement. Called by:
+            showInfoMsg() -> message.ShowInfo(...thread=self.refreshThreadSafe)
         """
         self.last_refresh_time = time.time()  # Prevent resume from suspend
         self.last_rediscover_time = self.last_refresh_time
@@ -8023,50 +8063,21 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         #_pi.terminate()
         #DisplayCommonInst.close()  # 2025-06-26. Stale window still open??
 
-    def openAdSkip(self):
-        """ YouTube Ad Mute and Skip 
-            2025-07-20 - NOT FINISHED YET.
-        """
-        if self.yt_skip and self.skip_top:
-            self.skip_top.focus_force()
-            self.skip_top.lift()
-            return
+    def checkSinkInputChanges(self):
+        """ Open for read/write. """
+        _who = self.who + "checkSinkInputChanges"
+        filepath = "/run/user/1000/homa_pa_listen.txt"
 
-        geom = monitor.get_window_geom('yt_skip')
-        self.skip_top = tk.Toplevel()
+        if os.path.getsize(filepath) == 0:
+            return None
 
-        # Set Calculator program icon in taskbar
-        cfg_key = ['calculator', 'toplevel', 'taskbar_icon', 'height & colors']
-        ti = cfg.get_cfg(cfg_key)
-        #img.taskbar_icon(self.skip_top, ti['height'], ti['outline'],
-        #                 ti['fill'], ti['text'], char="AS")
-
-        ''' Set program icon in taskbar. '''
-        img.taskbar_icon(self.skip_top, 64, 'red', 'green', 'blue', char='AS')
-
-        # Create yt_skip class instance
-        self.yt_skip = Calculator(self.skip_top, g.BIG_FONT, geom,
-                                  btn_fg=ti['text'], btn_bg=ti['fill'])
-        self.win_grp.register_child('Calculator', self.skip_top)
-        # Do not auto raise children. homa.py will take care of that with focusIn()
-
-        def yt_skip_close(*_args):
-            """ Save last geometry for next Calculator startup """
-            last_geom = monitor.get_window_geom_string(
-                self.skip_top, leave_visible=False)  # Leave toplevel invisible
-            monitor.save_window_geom('yt_skip', last_geom)
-            self.win_grp.unregister_child(self.skip_top)
-            self.skip_top.destroy()
-            self.skip_top = None  # Prevent lifting window
-            self.yt_skip = None  # Prevent lifting window
-
-        # Trap <Escape> key and  '✘' Window Close Button
-        self.skip_top.bind("<Escape>", yt_skip_close)
-        self.skip_top.protocol("WM_DELETE_WINDOW", yt_skip_close)
-        self.skip_top.update_idletasks()
-
-        # 2025-07-22 TODO: GLO['YT_SKIP_WINDOW_NAME']
-        hc.MoveHere("YouTube Ad Mute and Skip", 'top_left')
+        with open(filepath, 'r+') as f:
+            # Read the single line
+            line = f.readline()
+            # Truncate file to 0 bytes
+            f.seek(0)
+            f.truncate(0)
+            return line
 
     def DisplayErrors(self):
         """ Loop through ni.instances and display cmdEvents errors
@@ -8519,7 +8530,7 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             text_app = add_row(2, "Application:", "?")  # exists including those
             text_video = add_row(4, "Video:", "?")
 
-        # Volume Meters in third and fourth columns
+        # Volume Meters in third (#2) and fourth (#3) columns
         _vum = toolkit.VolumeMeters(
             'homa', self.event_top, left_col=2, right_col=3, rowspan=5)
         _vum.reset_history_size(10)  # Default is 2. Try 10 decay to slow
@@ -8543,6 +8554,10 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.last_refresh_time = self.last_rediscover_time  # Prevent Resume
 
             ''' Have Pippim flavor sink_input(s) changed? '''
+            timestamp = self.checkSinkInputChanges()
+            if not timestamp:
+                continue  # input_sinks didn't change
+
             sink_inputs = pav.get_all_inputs()
             if sink_inputs == last_sink_inputs:
                 continue  # input_sinks didn't change
@@ -8550,7 +8565,12 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             ''' Get last active sink into new_sink. May be more than one found. '''
             active = pav.active_input_tuple  # last uncorked sink_input
             text_index.set(str(active.index))  # Could be 3 second alarm sound
-            text_app.set(active.application)  #
+            try:
+                text_app.set(active.application)  #
+            except AttributeError:
+                last_sink_inputs = sink_inputs
+                v0_print(_who, "invalid active sink input: ", active)
+                continue
             text_video.set(toolkit.normalize_tcl(active.name))
             v2_print("New Active Sink Input:", active)
 
@@ -9072,22 +9092,24 @@ def main():
     # result = os.popen("ps aux | grep -v grep | grep python").read().splitlines()
     programs_running = ext.get_running_apps(PYTHON_VER)
     this_pid = os.getpid()  # Don't commit suicide!
-    h_pid = homa_pid = vu_meter_pid = 0  # Running PIDs found later
+    h_pid = homa_pid = vu_meter_pid = pa_listen_pid = 0  # Running PIDs found later
 
     ''' Loop through all running programs with 'python' in name '''
     for pid, prg, parameters in programs_running:
         if prg == "h" and pid != this_pid:
-            h_pid = pid  # 'm' splash screen found
+            h_pid = pid  # 'h' splash screen found
         if prg == "homa.py" and pid != this_pid:
             homa_pid = pid  # 'homa.py' found
         if prg == "vu_meter.py" and parameters[1] == "homa":
             # VU meter instance from HomA and not mserve
             vu_meter_pid = pid  # command was 'vu_meter.py stereo homa'
+        if prg == "pa_listen.py" and parameters[1] == "homa":
+            pa_listen_pid = pid  # 'pa_listen.py' found
 
     ''' One or more fingerprints indicating another copy running? '''
     if h_pid or homa_pid or vu_meter_pid:
         title = "Another copy of HomA is running!"
-        text = "Cannot start two copies of homa. Switch to the other version."
+        text = "Cannot start two copies of HomA. Switch to the other version."
         text += "\n\nIf the other version crashed, the process(es) still running"
         text += " can be killed:\n\n"
         if h_pid:
@@ -9098,32 +9120,12 @@ def main():
         if vu_meter_pid:
             text += "\t'vu_meter.py' (" + str(vu_meter_pid) + \
                     ") - VU Meter speaker to microphone\n"
+        if pa_listen_pid:
+            text += "\t'pa_listen.py' (" + str(pa_listen_pid) + \
+                    ") - PulseAudio (sound system) listener\n"
         text += "\nDo you want to kill previous crashed version?"
         v0_print(title + "\n\n" + text)
 
-        # ERROR calling homa.py after fresh boot when it was auto-started.
-
-        # Another copy of HomA is running!
-        #
-        # Cannot start two copies of homa. Switch to the other version.
-        #
-        # If the other version crashed, the process(es) still running can be killed:
-        #
-        # 	'homa.py' (8287) - homa without splash screen
-        #
-        # Do you want to kill previous crashed version?
-        # Traceback (most recent call last):
-        #   File "./homa.py", line 7848, in <module>
-        #     main()
-        #   File "./homa.py", line 7823, in main
-        #     icon='error', thread=dummy_thread)
-        #   File "/home/rick/HomA/message.py", line 786, in __init__
-        #     simpledialog.Dialog.__init__(self, parent, title=title)
-        #   File "/usr/lib/python2.7/lib-tk/tkSimpleDialog.py", line 85, in __init__
-        #     self.grab_set()
-        #   File "/usr/lib/python2.7/lib-tk/Tkinter.py", line 679, in grab_set
-        #     self.tk.call('grab', 'set', self._w)
-        # _tkinter.TclError: grab failed: another application has grab
         def dummy_thread():
             """ Needed for showInfoMsg from root window. """
             root.update()
@@ -9148,6 +9150,10 @@ def main():
             # v0_print("killing vu_meter_pid:", vu_meter_pid)
             if not ext.kill_pid_running(vu_meter_pid):
                 v0_print("killing vu_meter_pid FAILED!:", vu_meter_pid)
+        if pa_listen_pid:
+            # v0_print("killing pa_listen_pid FAILED!:", pa_listen_pid)
+            if not ext.kill_pid_running(pa_listen_pid):
+                v0_print("killing pa_listen_pid FAILED!:", pa_listen_pid)
 
     ''' Open Main Application GUI Window '''
     app = Application(root)  # Treeview of ni.discovered[{}, {}...{}]

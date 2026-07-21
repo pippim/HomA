@@ -2043,6 +2043,12 @@ def gtk_screenshot(x, y, width, height):
     #src_img = Image.from bytes('RGB', (src_geom[2], src_geom[3]), win_pixels,
     src_img = Image.frombytes('RGB', (width, height), win_pixels,
                               'raw', 'RGB', pb.get_rowstride(), 1)
+    # 2026-06-10 Explicitly drop the resource to prevent a Gdk-pix buf leak
+    if pb:
+        # In Python PyGObject bindings, GObjects use unref() or garbage collection
+        # Manual explicit drop:
+        del pb
+        # https://docs.gtk.org/gdk-pixbuf/method.Pixbuf.get_rowstride.html
 
     return src_img
 

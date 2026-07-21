@@ -15,6 +15,7 @@ from __future__ import with_statement  # Error handling for file opens
 #       pa_listen.py - PulseAudio sink-input change listener
 #
 #       2026-05-03 - Initial design based on pa_meter.py
+#       2026-06-01 - homa and ytads were stealing each other's notifications
 #
 #==============================================================================
 
@@ -54,7 +55,7 @@ def PulseListener():
         pa_file.write(str(time.time()))
 
     # Set masks for what to listen to
-    pulse = pulsectl.Pulse('tk-listener')
+    pulse = pulsectl.Pulse('pippim-listener-' + appname)  # 2026-06-01
     pulse.event_mask_set('sink_input')
     pulse.event_callback_set(event_handler)
     pulse.event_listen()

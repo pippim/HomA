@@ -4494,6 +4494,12 @@ def gnome_screenshot(geom):
     # https://docs.gtk.org/gdk-pixbuf/method.Pixbuf.get_rowstride.html
     raw_img = Image.frombytes('RGB', (geom.w, geom.h), desk_pixels,
                               'raw', 'RGB', bytes_per_row, 1)
+    # 2026-06-10 Explicitly drop the resource to prevent a Gdk-pix buf leak
+    if pb:
+        # In Python PyGObject bindings, GObjects use unref() or garbage collection
+        # Manual explicit drop:
+        del pb
+        # https://docs.gtk.org/gdk-pixbuf/method.Pixbuf.get_rowstride.html
     return raw_img
 
 
@@ -5105,8 +5111,10 @@ class ThingOfThings(tk.Canvas):
         self.tag_bind(border_id, "<Leave>", self.on_leave)
 
         if self.tt:
-            self.tag_bind(image_id, "<Enter>", lambda event: self.tt_splash(event, image_id))
-            self.tag_bind(image_id, "<Leave>", lambda event: self.tt_leave(event, image_id))
+            self.tag_bind(image_id, "<Enter>",
+                          lambda event: self.tt_splash(event, image_id))
+            self.tag_bind(image_id, "<Leave>",
+                          lambda event: self.tt_leave(event, image_id))
 
         if self.contextCB:  # TODO: Mac is Button-2
             self.tag_bind(image_id, "<Button-3>", self.right_button_click)
@@ -5140,6 +5148,23 @@ class ThingOfThings(tk.Canvas):
             self.lastY += 50
             self.newX = self.lastX
             self.newY = self.lastY
+
+    def get_active_meta_dict(self):
+        """ Indirectly called by move_photo_start(), right_button_click() and
+            update_new_bbox() to get the self.meta_dict{} matching
+            self.active_border_id. Directly called via tt_close_active_id()
+        
+            Caller uses self.meta_dict["image_id"] as tooltips() key.
+        """
+        _who = self.who + "get_active_meta_dict():"
+
+        # meta_dict matching active_border_id.
+        for self.meta_dict in self.meta_dicts:
+            if self.meta_dict["border_id"] == self.active_border_id:
+                break  # TODO: if self.active_border_id known, so should self.idx
+        else:
+            print(_who, "Could not find meta_dict for id:", self.active_border_id)
+            self.meta_dict = dict()
 
     def pix_coords_to_pct(self, coords):
         """ Convert x1, y1, x2, y2 in pixels to percentage of canvas for
@@ -5175,7 +5200,8 @@ class ThingOfThings(tk.Canvas):
             return  # Nothing to test
 
         if self.active_moving or self.active_resizing:
-            print(_who, "moving or resizing for image_id:", image_id)
+            #print(_who, "Disable splash tooltip when moving or resizing image_id:",
+            #      image_id)
             return  # When resizing mouse moves outside saved bbox
 
         for meta_dict in self.meta_dicts:
@@ -5246,6 +5272,23 @@ class ThingOfThings(tk.Canvas):
         image_name = self.itemcget(image_id, "image")  # "pyimage99"
         self.tt.close(image_name, suppress_error=True)
         self.splash_active = False
+
+    def tt_close_active_id(self, _caller):
+        """ Called by move_photo_start(), right_button_click() and
+            update_new_bbox() to get the self.meta_dict{} matching
+            self.active_border_id.
+
+            Use self.meta_dict["image_id"] to close tooltips().
+        """
+        self.get_active_meta_dict()
+        if not bool(self.meta_dict):
+            print(_caller, "\n  Call to get_active_meta_dict() failed!")
+            return False
+
+        if self.splash_active:
+            self.tt_close(self.meta_dict["image_id"])
+
+        return True
 
     def on_leave(self, event):
         """ Leaving a border_id.
@@ -5348,6 +5391,15 @@ class ThingOfThings(tk.Canvas):
         self.active_moving = True
         self.move_start_x = event.x
         self.move_start_y = event.y
+
+        # meta_dict matching active_border_id.
+        self.tt_close_active_id(_who)
+        #self.get_active_meta_dict()
+        #if not bool(self.meta_dict):
+        #    print(_who, "Call to get_active_meta_dict() failed!")
+        #elif self.splash_active:
+        #    self.tt_close(self.meta_dict["image_id"])
+
         #print(_who, "ID:", self.active_border_id, "move_start_x:",
         #      self.move_start_x, "move_start_y:", self.move_start_y)
 
@@ -5449,13 +5501,16 @@ class ThingOfThings(tk.Canvas):
         _who = self.who + "update_new_bbox():"
         #print(_who, "Method started.")
 
-        # meta_dict matching active_border_id. Same code in right_button_click
-        for md in self.meta_dicts:
-            if md["border_id"] == self.active_border_id:
-                break  # TODO: if self.active_border_id known, so should self.idx
-        else:
-            print(_who, "Could not find meta_dict for id:", self.active_border_id)
+        # meta_dict matching active_border_id.
+        if not self.tt_close_active_id(_who):
             return
+        md = self.meta_dict  # 2026-07-05 quick support for shortened code
+        #self.get_active_meta_dict()
+        #if not bool(self.meta_dict):
+        #    print(_who, "Call to get_active_meta_dict() failed!")
+        #    return
+        #if self.splash_active:
+        #    self.tt_close(self.meta_dict["image_id"])
 
         self.resize_image_to_border(md)
         self.things[md["idx"]]["coords_pct"] = self.pix_coords_to_pct(md["coords"])
@@ -5669,7 +5724,7 @@ class ThingOfThings(tk.Canvas):
             """ 500 ms after mouse stops moving, update the images. """
             for md in self.meta_dicts:
                 self.resize_image_to_border(md)
-            self.event_id = None  # to cancel multiple delayed updates waiting
+            self.event_id = None  # No pending event left to cancel.
 
         if self.event_id:
             self.after_cancel(self.event_id)
@@ -5688,16 +5743,16 @@ class ThingOfThings(tk.Canvas):
             print(_who, "Not over border nor over image!")
             return
 
-        # meta_dict matching active_border_id. Same code in update_new_bbox()
-        for md in self.meta_dicts:
-            if md["border_id"] == self.active_border_id:
-                break  # TODO: if self.active_border_id known, so should self.idx
-        else:
-            print(_who, "Could not find meta_dict for id:", self.active_border_id)
+        # meta_dict matching active_border_id.
+        if not self.tt_close_active_id(_who):
             return
-
-        if self.splash_active:
-            self.tt_close(md["image_id"])
+        md = self.meta_dict  # 2026-07-05 quick support for shortened code
+        #self.get_active_meta_dict()
+        #if not bool(self.meta_dict):
+        #    print(_who, "Call to get_active_meta_dict() failed!")
+        #    return
+        #if self.splash_active:
+        #    self.tt_close(self.meta_dict["image_id"])
         self.contextCB(md["idx"], event)
 
 
