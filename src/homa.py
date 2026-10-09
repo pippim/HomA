@@ -8063,22 +8063,6 @@ class Application(DeviceCommonSelf, tk.Toplevel):
         #_pi.terminate()
         #DisplayCommonInst.close()  # 2025-06-26. Stale window still open??
 
-    def checkSinkInputChanges(self):
-        """ Open for read/write. """
-        _who = self.who + "checkSinkInputChanges"
-        filepath = "/run/user/1000/homa_pa_listen.txt"
-
-        if os.path.getsize(filepath) == 0:
-            return None
-
-        with open(filepath, 'r+') as f:
-            # Read the single line
-            line = f.readline()
-            # Truncate file to 0 bytes
-            f.seek(0)
-            f.truncate(0)
-            return line
-
     def DisplayErrors(self):
         """ Loop through ni.instances and display cmdEvents errors
             2024-12-18 - Initial version displays all errors in scrolled textbox.
@@ -8553,8 +8537,9 @@ class Application(DeviceCommonSelf, tk.Toplevel):
             self.last_rediscover_time = time.time()  # Prevent Rediscover
             self.last_refresh_time = self.last_rediscover_time  # Prevent Resume
 
-            ''' Have Pippim flavor sink_input(s) changed? '''
-            timestamp = self.checkSinkInputChanges()
+            ''' Have Pulse Audio sink_input(s) changed? '''
+            #timestamp = self.checkSinkInputChanges()
+            timestamp = self.audio.readPaListen("homa")
             if not timestamp:
                 continue  # input_sinks didn't change
 

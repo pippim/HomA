@@ -24,6 +24,7 @@ warnings.filterwarnings("ignore", "ResourceWarning")  # PIL python 3 unclosed fi
 #       2025-07-19 - Add "YT Ad Skip" (yt-skip.py) to menu.
 #       2025-11-09 - Fix check for no window returned from CheckRunning().
 #       2026-02-25 - Use homa configuration sudo password when available.
+#       2026-08-31 - Change call from `yt-skip.py` to more efficient`ytads`.
 #
 # ==============================================================================
 
@@ -168,14 +169,14 @@ def HomA(_):
 
 
 def Skip(_):
-    """ Call yt-skip.py ("YouTube Ad Mute and Skip")
-        Start yt-skip if it's not running.
+    """ Call ytads ("YouTube Ad Mute and Skip")
+        Start ytads if it's not running.
         If running, move window to current monitor at mouse location.
     """
 
     new_window = False if hc.CheckRunning(SKIP_TITLE) else True
     if new_window:
-        _out = os.popen("./yt-skip.py -f -s &")
+        _out = os.popen("./ytads -f -s &")
         time.sleep(1.0)
 
     # Move opened window to current mouse location

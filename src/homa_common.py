@@ -1205,6 +1205,27 @@ class AudioControl(DeviceCommonSelf):
         self.pulse_working_on_start = True
         self.isWorking = True  # All methods in AudioControl() should work now
 
+    def readPaListen(self, appname="ytads"):
+        """ Check PA listener file for Pulse Audio Sink-Input changes.
+            Called by ytads and homa.py (appname="homa".
+        """
+        _who = self.who + "readPaListen():"
+        # Same filename variable used in pa_listen.py
+        filepath = g.TEMP_DIR + appname + "_pa_listen.txt"
+
+        try:
+            if os.path.getsize(filepath) == 0:  # Is fie size zero?
+                return None  # No changes to PA sink-inputs
+        except OSError:
+            print(_who, "file doesn't exist:\n  ", filepath)
+            return None  # File doesn't exist which shouldn't happen
+
+        with open(filepath, 'r+') as f:
+            str_timestamp = f.readline()  # Read the single line
+            f.seek(0)  # Seek to B.O.F.
+            f.truncate(0)  # Truncate file to 0 bytes
+            return str_timestamp  # Time PA sink-inputs changed
+
 
 import argparse  # Command line argument parser
 parser = argparse.ArgumentParser()
