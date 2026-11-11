@@ -31,7 +31,7 @@ warnings.filterwarnings("ignore", "ResourceWarning")  # PIL python 3 unclosed fi
 #       2025-08-08 - Disable auto-rediscovery. Too flakey.
 #       2025-08-10 - yt-skip.py coordinates outside Ad Skip Button triangle.
 #       2026-02-25 - New configuration "key: value" pair "SYSTRAY_ADJUST: -40".
-#       2026-03-15 - Thermal Cruise fan speed use "↑", "↓", or "━" (unchanged).
+#       2026-03-15 - Thermal Cruise fan speed use "↑", "↓", or "-" (unchanged).
 #       2026-04-25 - Calling `adb shell` is CPU intensive so use ppadb.py.
 #       2026-04-26 - Throttle Sony KDL REST API calls to 1/second.
 #       2026-05-16 - Device Layout with moving/resizing and shared context menu.
@@ -2141,7 +2141,7 @@ class SystemMonitor(DeviceCommonSelf):
             Record CPU & GPU temperatures and fan speeds to self.sensors_log.
 
             2026-03-15 - If fan speed > last use "↑", if fan speed < last use "↓"
-                else use "━" as temperature / fan speed separator.
+                else use "-" as temperature / fan speed separator.
         """
 
         _who = self.who + "Sensors():"
@@ -2183,8 +2183,8 @@ class SystemMonitor(DeviceCommonSelf):
                 All sensor.log Keys: 'delta', 'CPU', 'SEP1', 'Processor Fan',
                                      'GPU', 'SEP2', 'Video Fan', 'time'
 
-                TK 8.6 SEPx is "↑" (up), "↓" (down) or "━" (unchanged from last speed).
-                TK 9.0 SEPx is "🡹🢁" (up), "🡻🢃" (down) or "━" (unchanged from last speed).
+                TK 8.6 SEPx is "↑" (up), "↓" (down) or "-" (unchanged from last speed).
+                TK 9.0 SEPx is "🡹🢁" (up), "🡻🢃" (down) or "-" (unchanged from last speed).
 
             :param key: 'Processor Fan' or 'Video Fan'
             :return: True when curr_sensor != last_sensor
@@ -2217,7 +2217,7 @@ class SystemMonitor(DeviceCommonSelf):
             elif _sep_key and curr < last:
                 self.curr_sensor[_sep_key] = "↓"  # indicate temp down
             elif _sep_key:
-                self.curr_sensor[_sep_key] = "━"  # indicate temp same
+                self.curr_sensor[_sep_key] = "-"  # indicate temp same
 
             # Override to only report fan speed differences > 200 RPM
             if diff <= GLO['FAN_GRANULAR']:
@@ -2229,9 +2229,9 @@ class SystemMonitor(DeviceCommonSelf):
             self.last_sensor_log = time.time() - GLO['SENSOR_LOG'] * 2
             return True
 
-        # Default xPU / Temp separator = "━"
-        self.curr_sensor["SEP1"] = "━"
-        self.curr_sensor["SEP2"] = "━"
+        # Default xPU / Temp separator = "-"
+        self.curr_sensor["SEP1"] = "-"
+        self.curr_sensor["SEP2"] = "-"
         # Process `sensors` output lines
         for res in result.split("\n"):
             parts = res.split(":")

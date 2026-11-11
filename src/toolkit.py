@@ -6476,7 +6476,8 @@ class ToolTips(CommonTip):
                         try:
                             print(ext.ch(), "widget['text']:", self.widget['text'])
                             # E.G. "Suspend" for HomA's suspend button
-                        except KeyError:
+                        except (KeyError, tk.TclError):
+                            # 2026-10-17 _tkinter.TclError: unknown option "-text"
                             pass  # Some widget's don't have text
                 else:
                     self.tip_window.destroy()

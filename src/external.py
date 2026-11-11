@@ -22,6 +22,7 @@ from __future__ import with_statement  # Error handling for file opens
 #       Dec. 04 2024 - if t_init() ends in ":" don't add another when printing
 #       June 01 2025 - Strip `env` from `#!/usr/bin/env python` for script name
 #       Sep. 19 2026 - t(hun=True) - Change hh:mm:ss.d to hh:mm:ss.dd for HomA
+#       Oct. 10 2026 - t(dec=4) - Change hh:mm:ss.dd to hh:mm:ss.dddd.
 #
 #==============================================================================
 
@@ -71,14 +72,30 @@ def t_end(option):
     return elapsed
 
 
-def t(float_time=None, short=False, hun=False):
-    """ Print date and time with AM/PM """
+def t(float_time=None, short=False, hun=False, dec=0):
+    """ By default, prints 12 hour date and time with AM/PM.
+
+        NOTE: short parameter must be True for hun or dec parameters to work.
+
+        :param float_time: defaults to current time.
+        :param short: if True supress month:day:year.
+        :param hun: if True print seconds in hundredth of second.
+        :param dec: if not zero print seconds to number of decimal positions.
+    """
     if not float_time:
         float_time = time.time()
     f_time = datetime.datetime.fromtimestamp(float_time)
+    _chop = -4
+    if 0 < dec < 7:
+        _chop = dec - 6
+        hun = True
+
     if short:
         if hun:
-            return f_time.strftime("%H:%M:%S.%f")[:-4]  # chop off 4 of 6 decs
+            if _chop:
+                return f_time.strftime("%H:%M:%S.%f")[:_chop]
+            else:
+                return f_time.strftime("%H:%M:%S.%f")  # return all 6 decimals.
         else:
             return f_time.strftime("%H:%M:%S")
     else:
